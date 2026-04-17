@@ -1,111 +1,462 @@
-import { useState, useRef, useEffect } from 'react';
-import { Calendar, ChevronDown } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Calendar, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface DateRangePickerProps {
   start: string;
   end: string;
   onChange: (start: string, end: string) => void;
+  className?: string;
+  fullWidth?: boolean;
 }
 
-const presets = [
-  { label: '7 дней', days: 7 },
-  { label: '14 дней', days: 14 },
-  { label: '28 дней', days: 28 },
-  { label: '90 дней', days: 90 },
+const MONTH_LABELS = [
+  'январь',
+  'февраль',
+  'март',
+  'апрель',
+  'май',
+  'июнь',
+  'июль',
+  'август',
+  'сентябрь',
+  'октябрь',
+  'ноябрь',
+  'декабрь',
 ];
 
-function formatDate(str: string): string {
-  const d = new Date(str);
-  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+const WEEKDAY_LABELS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+
+const QUICK_RANGES = [
+  { id: 'yesterday', label: 'Вчера', getRange: () => ({ start: shiftDays(getToday(), -1), end: shiftDays(getToday(), -1) }) },
+  { id: 'last-7-days', label: '7 дней', getRange: () => ({ start: shiftDays(getToday(), -6), end: getToday() }) },
+  { id: 'last-30-days', label: '30 дней', getRange: () => ({ start: shiftDays(getToday(), -29), end: getToday() }) },
+  { id: 'current-month', label: 'Текущий месяц', getRange: () => ({ start: getMonthStart(getToday()), end: getToday() }) },
+  { id: 'last-90-days', label: '90 дней', getRange: () => ({ start: shiftDays(getToday(), -89), end: getToday() }) },
+] as const;
+
+function getToday() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
-export function DateRangePicker({ start, end, onChange }: DateRangePickerProps) {
+function parseIsoDate(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatIsoDate(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatDisplayDate(value: string) {
+  const date = parseIsoDate(value);
+  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+}
+
+function formatInputDate(value: string) {
+  const date = parseIsoDate(value);
+  return `${`${date.getDate()}`.padStart(2, '0')}.${`${date.getMonth() + 1}`.padStart(2, '0')}.${date.getFullYear()}`;
+}
+
+function parseInputDate(value: string) {
+  const match = value.trim().match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!match) return null;
+
+  const [, dayStr, monthStr, yearStr] = match;
+  const day = Number(dayStr);
+  const month = Number(monthStr);
+  const year = Number(yearStr);
+  const date = new Date(year, month - 1, day);
+
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function shiftDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function getMonthStart(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addMonths(date: Date, months: number) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function getMonthDays(firstDayOfMonth: Date) {
+  const month = firstDayOfMonth.getMonth();
+  const cursor = new Date(firstDayOfMonth);
+  const startOffset = (cursor.getDay() + 6) % 7;
+  cursor.setDate(cursor.getDate() - startOffset);
+
+  const weeks: Date[][] = [];
+  while (weeks.length < 6) {
+    const week: Date[] = [];
+    for (let index = 0; index < 7; index += 1) {
+      week.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    weeks.push(week);
+  }
+
+  return weeks.map(week =>
+    week.map(day => ({
+      date: day,
+      iso: formatIsoDate(day),
+      isCurrentMonth: day.getMonth() === month,
+    }))
+  );
+}
+
+function rangesEqual(leftStart: string, leftEnd: string, rightStart: string, rightEnd: string) {
+  return leftStart === rightStart && leftEnd === rightEnd;
+}
+
+export function DateRangePicker({ start, end, onChange, className = '', fullWidth = false }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
   const [localStart, setLocalStart] = useState(start);
   const [localEnd, setLocalEnd] = useState(end);
+  const [startInput, setStartInput] = useState(formatInputDate(start));
+  const [endInput, setEndInput] = useState(formatInputDate(end));
+  const [visibleMonth, setVisibleMonth] = useState(getMonthStart(parseIsoDate(start)));
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    setLocalStart(start);
+    setLocalEnd(end);
+    setStartInput(formatInputDate(start));
+    setEndInput(formatInputDate(end));
+    setVisibleMonth(getMonthStart(parseIsoDate(start)));
+  }, [start, end]);
+
+  useEffect(() => {
+    const handleClick = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
     };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+
     document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
   }, []);
 
-  const applyPreset = (days: number) => {
-    const today = new Date();
-    const endStr = today.toISOString().split('T')[0];
-    const startDate = new Date(today);
-    startDate.setDate(startDate.getDate() - days + 1);
-    const startStr = startDate.toISOString().split('T')[0];
-    onChange(startStr, endStr);
-    setLocalStart(startStr);
-    setLocalEnd(endStr);
-    setOpen(false);
+  const applyPreset = (preset: (typeof QUICK_RANGES)[number]) => {
+    const range = preset.getRange();
+    const nextStart = formatIsoDate(range.start);
+    const nextEnd = formatIsoDate(range.end);
+    setLocalStart(nextStart);
+    setLocalEnd(nextEnd);
+    setStartInput(formatInputDate(nextStart));
+    setEndInput(formatInputDate(nextEnd));
+    setVisibleMonth(getMonthStart(range.start));
   };
 
-  const apply = () => {
-    if (localStart && localEnd && localStart <= localEnd) {
-      onChange(localStart, localEnd);
-      setOpen(false);
+  const handleDaySelect = (dateIso: string) => {
+    if (!localStart || (localStart && localEnd)) {
+      setLocalStart(dateIso);
+      setLocalEnd('');
+      setStartInput(formatInputDate(dateIso));
+      setEndInput('');
+      return;
+    }
+
+    if (dateIso < localStart) {
+      setLocalEnd(localStart);
+      setEndInput(formatInputDate(localStart));
+      setLocalStart(dateIso);
+      setStartInput(formatInputDate(dateIso));
+      return;
+    }
+
+    setLocalEnd(dateIso);
+    setEndInput(formatInputDate(dateIso));
+  };
+
+  const syncInput = (value: string, type: 'start' | 'end') => {
+    if (type === 'start') setStartInput(value);
+    else setEndInput(value);
+
+    const parsed = parseInputDate(value);
+    if (!parsed) return;
+
+    const iso = formatIsoDate(parsed);
+    if (type === 'start') {
+      setLocalStart(iso);
+      if (localEnd && iso > localEnd) {
+        setLocalEnd(iso);
+        setEndInput(formatInputDate(iso));
+      }
+      setVisibleMonth(getMonthStart(parsed));
+      return;
+    }
+
+    setLocalEnd(iso);
+    if (localStart && iso < localStart) {
+      setLocalStart(iso);
+      setStartInput(formatInputDate(iso));
+      setVisibleMonth(getMonthStart(parsed));
     }
   };
 
+  const resetDraft = () => {
+    setLocalStart(start);
+    setLocalEnd(end);
+    setStartInput(formatInputDate(start));
+    setEndInput(formatInputDate(end));
+    setVisibleMonth(getMonthStart(parseIsoDate(start)));
+  };
+
+  const apply = () => {
+    if (!localStart || !localEnd || localStart > localEnd) return;
+    onChange(localStart, localEnd);
+    setOpen(false);
+  };
+
+  const firstMonth = visibleMonth;
+  const secondMonth = addMonths(visibleMonth, 1);
+  const firstMonthDays = getMonthDays(firstMonth);
+  const secondMonthDays = getMonthDays(secondMonth);
+  const isApplyDisabled = !localStart || !localEnd || localStart > localEnd;
+
   return (
-    <div className="relative" ref={ref}>
+    <div className={`relative ${fullWidth ? 'w-full' : ''} ${className}`.trim()} ref={ref}>
       <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-colors"
+        type="button"
+        onClick={() => setOpen(current => !current)}
+        className={`flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 ${
+          fullWidth ? 'w-full justify-between' : ''
+        }`}
       >
         <Calendar size={14} className="text-slate-400" />
-        <span className="font-medium">
-          {formatDate(start)} – {formatDate(end)}
+        <span className={`font-medium ${fullWidth ? 'min-w-0 flex-1 text-left' : ''}`}>
+          {formatDisplayDate(start)} – {formatDisplayDate(end)}
         </span>
         <ChevronDown size={14} className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-4 min-w-[320px]">
-          <div className="flex gap-2 mb-4">
-            {presets.map(p => (
+        <div
+          className={`absolute top-full left-0 mt-2 z-50 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl ${
+            fullWidth ? 'w-full min-w-0' : 'w-[calc(100vw-32px)] max-w-[980px]'
+          }`}
+        >
+          <div className="flex flex-col border-b border-slate-200 xl:flex-row">
+            <div className="border-b border-slate-200 p-4 xl:flex-1 xl:border-b-0 xl:border-r xl:px-5 xl:pb-3 xl:pt-4">
+              <div className="flex flex-col gap-6 xl:flex-row">
+                <MonthPanel
+                  month={firstMonth}
+                  weeks={firstMonthDays}
+                  onPrev={() => setVisibleMonth(current => addMonths(current, -1))}
+                  onSelect={handleDaySelect}
+                  rangeStart={localStart}
+                  rangeEnd={localEnd}
+                  showPrev
+                />
+                <MonthPanel
+                  month={secondMonth}
+                  weeks={secondMonthDays}
+                  onNext={() => setVisibleMonth(current => addMonths(current, 1))}
+                  onSelect={handleDaySelect}
+                  rangeStart={localStart}
+                  rangeEnd={localEnd}
+                  showNext
+                />
+              </div>
+            </div>
+
+            <div className="w-full xl:w-80">
+              <div className="flex flex-wrap gap-2 px-5 pb-3 pt-4">
+                {QUICK_RANGES.map(preset => {
+                  const range = preset.getRange();
+                  const presetStart = formatIsoDate(range.start);
+                  const presetEnd = formatIsoDate(range.end);
+                  const isActive = rangesEqual(localStart, localEnd, presetStart, presetEnd);
+
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => applyPreset(preset)}
+                      className={`rounded-lg border px-4 py-2 text-sm transition-colors ${
+                        isActive
+                          ? 'border-blue-200 bg-blue-50 text-blue-700 ring-1 ring-blue-500/40'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="px-5 pb-5">
+                <div className="mb-2 pl-1 text-sm font-medium text-slate-700">Период</div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                    <input
+                      value={startInput}
+                      onChange={event => syncInput(event.target.value, 'start')}
+                      placeholder="дд.мм.гггг"
+                      className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-blue-300"
+                    />
+                    <div className="text-slate-300">—</div>
+                    <input
+                      value={endInput}
+                      onChange={event => syncInput(event.target.value, 'end')}
+                      placeholder="дд.мм.гггг"
+                      className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-blue-300"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-xs text-slate-500">
+              {localStart && localEnd ? `${formatInputDate(localStart)} - ${formatInputDate(localEnd)}` : 'Выберите диапазон'}
+            </div>
+            <div className="flex gap-3">
               <button
-                key={p.days}
-                onClick={() => applyPreset(p.days)}
-                className="flex-1 py-1.5 text-xs font-medium rounded-md border border-slate-200 text-slate-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors"
+                type="button"
+                onClick={resetDraft}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
               >
-                {p.label}
+                Сбросить
               </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <div>
-              <label className="text-xs text-slate-500 mb-1 block">Начало</label>
-              <input
-                type="date"
-                value={localStart}
-                onChange={e => setLocalStart(e.target.value)}
-                className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-slate-500 mb-1 block">Конец</label>
-              <input
-                type="date"
-                value={localEnd}
-                onChange={e => setLocalEnd(e.target.value)}
-                className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <button
+                type="button"
+                onClick={apply}
+                disabled={isApplyDisabled}
+                className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Готово
+              </button>
             </div>
           </div>
-          <button
-            onClick={apply}
-            className="w-full py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Применить
-          </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function MonthPanel({
+  month,
+  weeks,
+  onPrev,
+  onNext,
+  onSelect,
+  rangeStart,
+  rangeEnd,
+  showPrev = false,
+  showNext = false,
+}: {
+  month: Date;
+  weeks: Array<Array<{ date: Date; iso: string; isCurrentMonth: boolean }>>;
+  onPrev?: () => void;
+  onNext?: () => void;
+  onSelect: (iso: string) => void;
+  rangeStart: string;
+  rangeEnd: string;
+  showPrev?: boolean;
+  showNext?: boolean;
+}) {
+  const label = `${MONTH_LABELS[month.getMonth()]} ${month.getFullYear()}`;
+
+  return (
+    <div className="space-y-4">
+      <div className="relative flex items-center justify-center pt-1">
+        {showPrev && (
+          <button
+            type="button"
+            onClick={onPrev}
+            className="absolute left-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Предыдущий месяц"
+          >
+            <ChevronLeft size={16} />
+          </button>
+        )}
+        <div className="text-sm font-medium text-slate-800">{label}</div>
+        {showNext && (
+          <button
+            type="button"
+            onClick={onNext}
+            className="absolute right-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Следующий месяц"
+          >
+            <ChevronRight size={16} />
+          </button>
+        )}
+      </div>
+
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="flex text-slate-400">
+            {WEEKDAY_LABELS.map(day => (
+              <th key={day} className="w-9 rounded-md text-[0.8rem] font-normal">
+                {day}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {weeks.map((week, weekIndex) => (
+            <tr key={`${label}-${weekIndex}`} className="mt-2 flex w-full">
+              {week.map(day => {
+                const isSelectedStart = day.iso === rangeStart;
+                const isSelectedEnd = day.iso === rangeEnd;
+                const isInRange = Boolean(rangeStart && rangeEnd && day.iso >= rangeStart && day.iso <= rangeEnd);
+                const isSingleDay = isSelectedStart && isSelectedEnd;
+
+                return (
+                  <td
+                    key={day.iso}
+                    className={`relative h-9 w-9 p-0 text-center text-sm ${
+                      isInRange && !isSingleDay ? 'bg-blue-100/70' : ''
+                    } ${isSelectedStart ? 'rounded-l-md' : ''} ${isSelectedEnd ? 'rounded-r-md' : ''}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onSelect(day.iso)}
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-md text-sm transition-colors ${
+                        isSelectedStart || isSelectedEnd
+                          ? 'bg-blue-700 font-medium text-white'
+                          : isInRange
+                          ? 'bg-transparent text-blue-800'
+                          : day.isCurrentMonth
+                          ? 'text-slate-700 hover:bg-slate-100'
+                          : 'text-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      {day.date.getDate()}
+                    </button>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

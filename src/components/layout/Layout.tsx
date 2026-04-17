@@ -20,6 +20,7 @@ export function Layout({ children, currentPage, onNavigate, brands, categories, 
       <Sidebar currentPage={currentPage} onNavigate={onNavigate} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <FilterBar
+          currentPage={currentPage}
           brands={brands}
           categories={categories}
           marketplaces={marketplaces}

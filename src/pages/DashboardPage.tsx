@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFilters } from '../context/FilterContext';
+import { useReportMode } from '../context/ReportModeContext';
 import { useSalesData } from '../hooks/useSalesData';
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics';
 import { useInventoryData } from '../hooks/useInventoryData';
 import { MetricCard } from '../components/dashboard/MetricCard';
 import { formatCurrency, formatNumber, sumRecords } from '../lib/calculations';
-import { Activity, Check, ChevronDown, GripVertical, Info, Search, Settings2, TrendingUp, X } from 'lucide-react';
+import { Activity, ArrowDownWideNarrow, ArrowUpWideNarrow, Check, ChevronDown, ChevronLeft, ChevronRight, GripVertical, Info, Search, Settings2, TrendingUp, X } from 'lucide-react';
 import type { DashboardMetrics, Product, SalesRecord } from '../types';
 
 const WIDGET_PROFILES_STORAGE_KEY = 'dashboard-widget-profiles';
@@ -123,6 +124,7 @@ interface RevenueStructureRow {
 
 const TOP_MARGIN_OPTIONS = [10, 50, 100] as const;
 const ANALYTICS_TABLE_SETTINGS_KEY = 'dashboard-analytics-table-settings';
+const FINANCIAL_TOTAL_PAID_WIDGET_ID = 'metric-total-paid';
 
 const ANALYTICS_GROUP_OPTIONS = [
   { value: 'product', label: 'По товару' },
@@ -133,6 +135,24 @@ const ANALYTICS_GROUP_OPTIONS = [
 ] as const;
 
 type AnalyticsGroupBy = (typeof ANALYTICS_GROUP_OPTIONS)[number]['value'];
+type AnalyticsSortDirection = 'asc' | 'desc';
+
+interface AnalyticsSortState {
+  columnId: string | null;
+  direction: AnalyticsSortDirection | null;
+}
+
+interface AnalyticsRangeFilterState {
+  min: string;
+  max: string;
+}
+
+interface FloatingMenuPosition {
+  top: number;
+  left: number;
+}
+
+type ReportMode = 'management' | 'financial';
 
 interface AnalyticsTableRow {
   id: string;
@@ -295,6 +315,7 @@ const ANALYTICS_COLUMNS: AnalyticsColumnDefinition[] = [
 
 export function DashboardPage() {
   const { filters } = useFilters();
+  const { reportMode } = useReportMode();
   const { records, prevRecords, products, loading } = useSalesData(filters);
   const { totalValue, avgTurnover } = useInventoryData(filters, products);
   const metrics = useDashboardMetrics(records, prevRecords, totalValue, avgTurnover);
@@ -372,6 +393,16 @@ export function DashboardPage() {
       description: 'После всех вычетов',
       section: 'metrics',
       faq: 'Выручка за минусом логистики, рекламы, комиссии, хранения, налогов и прочих расходов.',
+    },
+    {
+      id: FINANCIAL_TOTAL_PAID_WIDGET_ID,
+      title: 'Итого к оплате',
+      metric: buildDerivedMetricValue(formulaMetricValues.totalPaid.current, formulaMetricValues.totalPaid.previous),
+      format: (v: number) => formatCurrency(v),
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
+      description: 'Сумма к перечислению на расчетный счет',
+      section: 'metrics',
+      faq: 'Сумма, которую селлер получит на расчетный счет от маркетплейса в режиме финансовой отчетности.',
     },
     {
       id: 'metric-roi',
@@ -544,7 +575,14 @@ export function DashboardPage() {
     }),
   ], [metrics, widgetDocuments, customMetrics, formulaMetricValues]);
 
-  const defaultWidgetIds = useMemo(() => widgetDefs.map(widget => widget.id), [widgetDefs]);
+  const availableWidgetDefs = useMemo(
+    () =>
+      widgetDefs.filter(widget =>
+        reportMode === 'financial' ? true : widget.id !== FINANCIAL_TOTAL_PAID_WIDGET_ID
+      ),
+    [reportMode, widgetDefs]
+  );
+  const defaultWidgetIds = useMemo(() => availableWidgetDefs.map(widget => widget.id), [availableWidgetDefs]);
   const [selectedWidgetIds, setSelectedWidgetIds] = useState<string[]>(defaultWidgetIds);
   const [draftWidgetIds, setDraftWidgetIds] = useState<string[]>(defaultWidgetIds);
   const [profiles, setProfiles] = useState<WidgetProfile[]>(() => {
@@ -567,6 +605,21 @@ export function DashboardPage() {
       current.length > 0 ? current.filter(id => defaultWidgetIds.includes(id)) : defaultWidgetIds
     );
   }, [defaultWidgetIds]);
+
+  useEffect(() => {
+    if (reportMode !== 'financial' || !defaultWidgetIds.includes(FINANCIAL_TOTAL_PAID_WIDGET_ID)) return;
+
+    setSelectedWidgetIds(current =>
+      current.includes(FINANCIAL_TOTAL_PAID_WIDGET_ID)
+        ? current
+        : [FINANCIAL_TOTAL_PAID_WIDGET_ID, ...current]
+    );
+    setDraftWidgetIds(current =>
+      current.includes(FINANCIAL_TOTAL_PAID_WIDGET_ID)
+        ? current
+        : [FINANCIAL_TOTAL_PAID_WIDGET_ID, ...current]
+    );
+  }, [defaultWidgetIds, reportMode]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -623,10 +676,10 @@ export function DashboardPage() {
   }, [isWidgetModalOpen, isCreateMetricModalOpen]);
 
   const orderedSelectedWidgetIds = selectedWidgetIds.filter(id =>
-    widgetDefs.some(widget => widget.id === id)
+    availableWidgetDefs.some(widget => widget.id === id)
   );
   const visibleMetricDefs = orderedSelectedWidgetIds
-    .map(id => widgetDefs.find(widget => widget.id === id && widget.section === 'metrics'))
+    .map(id => availableWidgetDefs.find(widget => widget.id === id && widget.section === 'metrics'))
     .filter((widget): widget is WidgetDefinition => Boolean(widget));
   const topMarginArticles = useMemo(
     () => buildTopMarginArticles(records, products),
@@ -646,7 +699,7 @@ export function DashboardPage() {
   );
   const showCostBreakdown = selectedWidgetIds.includes('detail-cost-breakdown');
   const showUnitEconomics = selectedWidgetIds.includes('detail-unit-economics');
-  const orderedWidgetDefs = orderWidgetDefinitions(widgetDefs, draftWidgetIds);
+  const orderedWidgetDefs = orderWidgetDefinitions(availableWidgetDefs, draftWidgetIds);
   const filteredWidgetDefs = orderedWidgetDefs.filter(widget => {
     const search = widgetSearch.trim().toLowerCase();
     if (!search) return true;
@@ -707,7 +760,7 @@ export function DashboardPage() {
     if (draggedId === targetId) return;
 
     setDraftWidgetIds(current => {
-      const orderedIds = orderWidgetDefinitions(widgetDefs, current).map(widget => widget.id);
+      const orderedIds = orderWidgetDefinitions(availableWidgetDefs, current).map(widget => widget.id);
       const fromIndex = orderedIds.indexOf(draggedId);
       const toIndex = orderedIds.indexOf(targetId);
 
@@ -989,6 +1042,7 @@ export function DashboardPage() {
                           setDragOverWidgetId(widget.id);
                           setDragInsertPosition('before');
                           event.dataTransfer.effectAllowed = 'move';
+                          event.dataTransfer.setData('text/plain', widget.id);
 
                           const dragPreview = event.currentTarget.cloneNode(true) as HTMLDivElement;
                           dragPreview.style.position = 'fixed';
@@ -1020,13 +1074,15 @@ export function DashboardPage() {
                         }}
                         onDrop={event => {
                           event.preventDefault();
-                          if (draggedWidgetId) {
-                            moveDraftWidget(draggedWidgetId, widget.id, dragInsertPosition);
+                          const draggedId = draggedWidgetId || event.dataTransfer.getData('text/plain');
+                          if (draggedId) {
+                            moveDraftWidget(draggedId, widget.id, dragInsertPosition);
                           }
                           setDraggedWidgetId(null);
                           setDragOverWidgetId(null);
                         }}
-                        className={`relative flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors hover:bg-slate-50 ${
+                        onClick={() => toggleDraftWidget(widget.id)}
+                        className={`relative flex w-full cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors hover:bg-slate-50 ${
                           isDragging ? 'scale-[1.01] border-blue-300 bg-blue-50/60 opacity-70 shadow-lg' : 'border-slate-200'
                         }`}
                       >
@@ -1040,21 +1096,7 @@ export function DashboardPage() {
                         <button
                           type="button"
                           draggable={false}
-                          onClick={() => toggleDraftWidget(widget.id)}
-                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md"
-                          aria-label={checked ? 'Скрыть виджет' : 'Показать виджет'}
-                        >
-                          <div className={`flex h-5 w-5 items-center justify-center rounded-md border ${
-                            checked ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white text-transparent'
-                          }`}>
-                            <Check size={12} />
-                          </div>
-                        </button>
-                        <button
-                          type="button"
-                          draggable={true}
-                          onDragStart={() => setDraggedWidgetId(widget.id)}
-                          onDragEnd={() => setDraggedWidgetId(null)}
+                          onClick={event => event.stopPropagation()}
                           className="cursor-grab rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
                           aria-label="Перетащить виджет"
                           title="Перетащить виджет"
@@ -1066,6 +1108,23 @@ export function DashboardPage() {
                           <div className="text-sm text-slate-500">{widget.description}</div>
                         </div>
                         <div className="text-xs uppercase tracking-wider text-slate-400">{widget.section === 'metrics' ? 'Карточка' : 'Блок'}</div>
+                        <button
+                          type="button"
+                          onClick={event => {
+                            event.stopPropagation();
+                            toggleDraftWidget(widget.id);
+                          }}
+                          className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors ${
+                            checked ? 'bg-blue-600' : 'bg-slate-200'
+                          }`}
+                          aria-label={checked ? 'Скрыть виджет' : 'Показать виджет'}
+                        >
+                          <span
+                            className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                              checked ? 'translate-x-5' : 'translate-x-0.5'
+                            }`}
+                          />
+                        </button>
                       </div>
                     );
                   })}
@@ -1636,6 +1695,10 @@ function buildCustomMetricValue(
 ) {
   const current = evaluateFormula(formula, variables, 'current');
   const previous = evaluateFormula(formula, variables, 'previous');
+  return buildDerivedMetricValue(current, previous);
+}
+
+function buildDerivedMetricValue(current: number, previous: number) {
   const delta = current - previous;
   const deltaPercent = previous !== 0 ? (delta / Math.abs(previous)) * 100 : 0;
 
@@ -1900,8 +1963,25 @@ function MarginLeaderboardCard({
       {isExpanded && (
         <div className="mt-4">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-xs text-slate-400">
-              {viewMode === 'circle' ? 'Круги' : 'Список'} · {limit === 'all' ? 'Все' : `Топ ${limit}`}
+            <div className="inline-flex rounded-full bg-slate-100 p-1">
+              <button
+                type="button"
+                onClick={() => setViewMode('circle')}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                  viewMode === 'circle' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Круги
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                  viewMode === 'list' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Список
+              </button>
             </div>
 
             <div className="relative" ref={optionsRef}>
@@ -1916,33 +1996,6 @@ function MarginLeaderboardCard({
               {isOptionsOpen && (
                 <div className="absolute right-0 top-full z-20 mt-2 w-52 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
                   <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                    Вид
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setViewMode('circle');
-                      setIsOptionsOpen(false);
-                    }}
-                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                      viewMode === 'circle' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    Круги
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setViewMode('list');
-                      setIsOptionsOpen(false);
-                    }}
-                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                      viewMode === 'list' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    Список
-                  </button>
-                  <div className="mt-2 px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                     Диапазон
                   </div>
                   <button
@@ -2138,14 +2191,20 @@ function AnalyticsDataSection({
   const [sourceTable, setSourceTable] = useState('Исходная таблица');
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
-  const [isBrandFilterOpen, setIsBrandFilterOpen] = useState(false);
-  const [brandSearch, setBrandSearch] = useState('');
-  const [brandDraftValues, setBrandDraftValues] = useState<string[]>([]);
-  const [brandFilterValues, setBrandFilterValues] = useState<string[]>([]);
+  const [openColumnMenuId, setOpenColumnMenuId] = useState<string | null>(null);
+  const [columnMenuPosition, setColumnMenuPosition] = useState<FloatingMenuPosition | null>(null);
+  const [columnMenuSearch, setColumnMenuSearch] = useState('');
+  const [draftColumnFilterValues, setDraftColumnFilterValues] = useState<string[]>([]);
+  const [appliedColumnFilterValues, setAppliedColumnFilterValues] = useState<Record<string, string[]>>({});
+  const [draftRangeFilter, setDraftRangeFilter] = useState<AnalyticsRangeFilterState>({ min: '', max: '' });
+  const [appliedRangeFilters, setAppliedRangeFilters] = useState<Record<string, AnalyticsRangeFilterState>>({});
+  const [sortState, setSortState] = useState<AnalyticsSortState>({ columnId: null, direction: null });
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isColumnSettingsOpen, setIsColumnSettingsOpen] = useState(false);
   const [columnSearch, setColumnSearch] = useState('');
   const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
-  const brandFilterRef = useRef<HTMLDivElement | null>(null);
+  const columnMenuRef = useRef<HTMLDivElement | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
 
   const initialSettings = useMemo(() => {
     if (typeof window === 'undefined') {
@@ -2191,57 +2250,114 @@ function AnalyticsDataSection({
   }, [columnOrder, visibleColumnIds]);
 
   useEffect(() => {
-    if (!isBrandFilterOpen) return;
+    if (!openColumnMenuId) return;
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (!brandFilterRef.current?.contains(event.target as Node)) {
-        setIsBrandFilterOpen(false);
+      if (!columnMenuRef.current?.contains(event.target as Node)) {
+        setOpenColumnMenuId(null);
+        setColumnMenuPosition(null);
       }
     };
 
     document.addEventListener('mousedown', handlePointerDown);
     return () => document.removeEventListener('mousedown', handlePointerDown);
-  }, [isBrandFilterOpen]);
+  }, [openColumnMenuId]);
+
+  useEffect(() => {
+    if (!isExportMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!exportMenuRef.current?.contains(event.target as Node)) {
+        setIsExportMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [isExportMenuOpen]);
 
   const rows = useMemo(() => buildAnalyticsRows(records, products, groupBy), [records, products, groupBy]);
-  const brandOptions = useMemo(
-    () => Array.from(new Set(rows.map(row => row.brand || 'Нет бренда'))).sort((a, b) => a.localeCompare(b, 'ru')),
-    [rows]
-  );
-
-  useEffect(() => {
-    setBrandDraftValues(brandFilterValues);
-  }, [brandFilterValues]);
-
   useEffect(() => {
     setCurrentPage(1);
-  }, [groupBy, pageSize, brandFilterValues]);
-
-  const filteredBrandOptions = brandOptions.filter(option =>
-    option.toLowerCase().includes(brandSearch.trim().toLowerCase())
-  );
-
-  const filteredRows = rows.filter(row => {
-    if (brandFilterValues.length === 0) return true;
-    const brand = row.brand || 'Нет бренда';
-    return brandFilterValues.includes(brand);
-  });
+  }, [groupBy, pageSize, appliedColumnFilterValues, appliedRangeFilters, sortState]);
 
   const orderedColumns = orderAnalyticsColumns(ANALYTICS_COLUMNS, columnOrder).filter(column =>
     visibleColumnIds.includes(String(column.id))
   );
 
-  const totalRow = useMemo(() => buildAnalyticsTotalRow(filteredRows), [filteredRows]);
+  const filterableValueOptions = useMemo(() => {
+    const options = new Map<string, string[]>();
+    ANALYTICS_COLUMNS.forEach(column => {
+      const values = Array.from(
+        new Set(
+          rows
+            .map(row => String(getAnalyticsComparableValue(row, column.id) ?? '—').trim() || '—')
+            .filter(Boolean)
+        )
+      ).sort((a, b) => a.localeCompare(b, 'ru'));
+      options.set(String(column.id), values);
+    });
+    return options;
+  }, [rows]);
+
+  const filteredRows = useMemo(() => {
+    return rows.filter(row =>
+      ANALYTICS_COLUMNS.every(column => {
+        const columnId = String(column.id);
+        const valueFilters = appliedColumnFilterValues[columnId];
+        if (valueFilters?.length) {
+          const rawValue = String(getAnalyticsComparableValue(row, column.id) ?? '—').trim() || '—';
+          if (!valueFilters.includes(rawValue)) return false;
+        }
+
+        const rangeFilter = appliedRangeFilters[columnId];
+        if (rangeFilter && (rangeFilter.min || rangeFilter.max)) {
+          const numericValue = Number(getAnalyticsComparableValue(row, column.id));
+          if (!Number.isFinite(numericValue)) return false;
+          if (rangeFilter.min !== '' && numericValue < Number(rangeFilter.min)) return false;
+          if (rangeFilter.max !== '' && numericValue > Number(rangeFilter.max)) return false;
+        }
+
+        return true;
+      })
+    );
+  }, [appliedColumnFilterValues, appliedRangeFilters, rows]);
+
+  const sortedRows = useMemo(() => {
+    if (!sortState.columnId || !sortState.direction) return filteredRows;
+
+    return [...filteredRows].sort((left, right) => {
+      const leftValue = getAnalyticsComparableValue(left, sortState.columnId);
+      const rightValue = getAnalyticsComparableValue(right, sortState.columnId);
+
+      if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+        return sortState.direction === 'asc' ? leftValue - rightValue : rightValue - leftValue;
+      }
+
+      const safeLeft = String(leftValue ?? '');
+      const safeRight = String(rightValue ?? '');
+      const compared = safeLeft.localeCompare(safeRight, 'ru', { numeric: true, sensitivity: 'base' });
+      return sortState.direction === 'asc' ? compared : -compared;
+    });
+  }, [filteredRows, sortState]);
+
+  const totalRow = useMemo(() => buildAnalyticsTotalRow(sortedRows), [sortedRows]);
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
-  const pageRows = filteredRows.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const pageRows = sortedRows.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  const exportTable = () => {
-    const headers = orderedColumns.map(column => column.label).join(',');
-    const allRows = [totalRow, ...filteredRows]
+  const exportTable = (mode: 'article' | 'barcode') => {
+    const headers = orderedColumns
+      .map(column => (column.id === 'article' ? (mode === 'barcode' ? 'Штрихкод' : column.label) : column.label))
+      .join(',');
+    const allRows = [totalRow, ...sortedRows]
       .map(row =>
         orderedColumns
           .map(column => {
+            if (column.id === 'article') {
+              const identifier = mode === 'barcode' ? getAnalyticsBarcode(row) : row.productName;
+              return `"${String(identifier).replace(/"/g, '""')}"`;
+            }
             const value = column.exportValue ? column.exportValue(row) : getAnalyticsExportValue(row, column.id);
             return `"${String(value).replace(/"/g, '""')}"`;
           })
@@ -2252,9 +2368,10 @@ function AnalyticsDataSection({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `analytics-table-${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `analytics-table-${mode}-${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     URL.revokeObjectURL(url);
+    setIsExportMenuOpen(false);
   };
 
   const columnSettingsColumns = orderAnalyticsColumns(ANALYTICS_COLUMNS, draftColumnOrder).filter(column =>
@@ -2272,6 +2389,59 @@ function AnalyticsDataSection({
       next.splice(to, 0, moved);
       return next;
     });
+  };
+
+  const openColumnMenu = (columnId: string, anchor: HTMLElement) => {
+    setOpenColumnMenuId(current => {
+      if (current === columnId) {
+        setColumnMenuPosition(null);
+        return null;
+      }
+
+      setColumnMenuSearch('');
+      setDraftColumnFilterValues(appliedColumnFilterValues[columnId] ?? []);
+      setDraftRangeFilter(appliedRangeFilters[columnId] ?? { min: '', max: '' });
+      const rect = anchor.getBoundingClientRect();
+      setColumnMenuPosition({
+        top: rect.bottom + 8,
+        left: Math.min(rect.left, window.innerWidth - 304),
+      });
+      return columnId;
+    });
+  };
+
+  const applyColumnMenu = (columnId: string) => {
+    setAppliedColumnFilterValues(current => ({
+      ...current,
+      [columnId]: draftColumnFilterValues,
+    }));
+    setAppliedRangeFilters(current => ({
+      ...current,
+      [columnId]: draftRangeFilter,
+    }));
+    setOpenColumnMenuId(null);
+    setColumnMenuPosition(null);
+  };
+
+  const resetColumnMenu = (columnId: string) => {
+    setDraftColumnFilterValues([]);
+    setDraftRangeFilter({ min: '', max: '' });
+    setAppliedColumnFilterValues(current => {
+      const next = { ...current };
+      delete next[columnId];
+      return next;
+    });
+    setAppliedRangeFilters(current => {
+      const next = { ...current };
+      delete next[columnId];
+      return next;
+    });
+    setColumnMenuSearch('');
+    if (sortState.columnId === columnId) {
+      setSortState({ columnId: null, direction: null });
+    }
+    setOpenColumnMenuId(null);
+    setColumnMenuPosition(null);
   };
 
   const openColumnSettings = () => {
@@ -2303,20 +2473,41 @@ function AnalyticsDataSection({
               options={ANALYTICS_GROUP_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
             />
             <ToolbarSelect
-              label="Исходная таблица"
+              label=""
               value={sourceTable}
               onChange={setSourceTable}
               options={[{ value: 'Исходная таблица', label: 'Исходная таблица' }]}
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={exportTable}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-            >
-              Экспорт
-            </button>
+            <div className="relative" ref={exportMenuRef}>
+              <button
+                type="button"
+                onClick={() => setIsExportMenuOpen(current => !current)}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                <span>Экспорт</span>
+                <ChevronDown size={14} className={`transition-transform ${isExportMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {isExportMenuOpen && (
+                <div className="absolute right-0 top-full z-[95] mt-2 min-w-[220px] overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
+                  <button
+                    type="button"
+                    onClick={() => exportTable('article')}
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50"
+                  >
+                    Экспорт по артикулу
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => exportTable('barcode')}
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50"
+                  >
+                    Экспорт по штрихкоду
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               type="button"
               onClick={openColumnSettings}
@@ -2328,7 +2519,7 @@ function AnalyticsDataSection({
         </div>
       </div>
 
-      <div className="overflow-hidden">
+      <div className="overflow-visible">
         <div className="max-h-[720px] overflow-auto">
           <table className="min-w-[2200px] w-full text-sm">
             <thead className="sticky top-0 z-30 bg-white">
@@ -2341,81 +2532,30 @@ function AnalyticsDataSection({
                     } ${column.sticky ? `sticky ${stickyLeft(column)} bg-slate-50/95` : ''}`}
                     style={column.sticky === 'photo' ? { width: 72, minWidth: 72 } : column.sticky === 'article' ? { width: 260, minWidth: 260 } : undefined}
                   >
-                    <div className={`flex items-center gap-1 ${column.align === 'right' ? 'justify-end' : ''}`}>
-                      <span>{column.label}</span>
-                      {column.id === 'brand' && (
-                        <div className="relative" ref={brandFilterRef}>
-                          <button
-                            type="button"
-                            onClick={event => {
-                              event.stopPropagation();
-                              setIsBrandFilterOpen(current => !current);
-                              setBrandDraftValues(brandFilterValues);
-                            }}
-                            className={`rounded p-1 transition-colors ${brandFilterValues.length > 0 ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
-                          >
-                            <FilterIcon />
-                          </button>
-                          {isBrandFilterOpen && (
-                            <div className="absolute left-0 top-full z-40 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
-                              <input
-                                value={brandSearch}
-                                onChange={e => setBrandSearch(e.target.value)}
-                                placeholder="Поиск"
-                                className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-300"
-                              />
-                              <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
-                                <label className="flex items-center gap-2 text-sm text-slate-700">
-                                  <input
-                                    type="checkbox"
-                                    checked={brandDraftValues.length === brandOptions.length}
-                                    onChange={() => setBrandDraftValues(brandDraftValues.length === brandOptions.length ? [] : brandOptions)}
-                                  />
-                                  Выбрать все
-                                </label>
-                                {filteredBrandOptions.map(option => (
-                                  <label key={option} className="flex items-center gap-2 text-sm text-slate-700">
-                                    <input
-                                      type="checkbox"
-                                      checked={brandDraftValues.includes(option)}
-                                      onChange={() =>
-                                        setBrandDraftValues(current =>
-                                          current.includes(option) ? current.filter(value => value !== option) : [...current, option]
-                                        )
-                                      }
-                                    />
-                                    {option}
-                                  </label>
-                                ))}
-                              </div>
-                              <div className="mt-3 flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setBrandFilterValues(brandDraftValues);
-                                    setIsBrandFilterOpen(false);
-                                  }}
-                                  className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white"
-                                >
-                                  Применить
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setBrandDraftValues([]);
-                                    setBrandFilterValues([]);
-                                    setBrandSearch('');
-                                  }}
-                                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600"
-                                >
-                                  Сбросить
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {(column.id === 'category' || column.id === 'group') && <FilterIcon className="text-slate-300" />}
+                    <div className={`relative flex ${column.align === 'right' ? 'justify-end' : ''}`}>
+                      <button
+                        type="button"
+                        onClick={event => {
+                          event.stopPropagation();
+                          openColumnMenu(String(column.id), event.currentTarget);
+                        }}
+                        className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white ${
+                          openColumnMenuId === String(column.id) ||
+                          sortState.columnId === String(column.id) ||
+                          (appliedColumnFilterValues[String(column.id)]?.length ?? 0) > 0 ||
+                          appliedRangeFilters[String(column.id)]?.min ||
+                          appliedRangeFilters[String(column.id)]?.max
+                            ? 'bg-white text-slate-700 shadow-sm ring-1 ring-blue-200'
+                            : 'text-slate-500'
+                        }`}
+                        aria-label={`Сортировка и фильтр колонки ${column.label}`}
+                      >
+                        <span>{column.label}</span>
+                        {sortState.columnId === String(column.id) && sortState.direction === 'asc' && <ArrowUpWideNarrow size={12} className="text-blue-600" />}
+                        {sortState.columnId === String(column.id) && sortState.direction === 'desc' && <ArrowDownWideNarrow size={12} className="text-blue-600" />}
+                        {(appliedColumnFilterValues[String(column.id)]?.length ?? 0) > 0 && <FilterIcon className="text-blue-600" />}
+                        <ChevronDown size={12} className="text-slate-400" />
+                      </button>
                     </div>
                   </th>
                 ))}
@@ -2430,10 +2570,40 @@ function AnalyticsDataSection({
           </table>
         </div>
       </div>
+      {openColumnMenuId && columnMenuPosition && (
+        <div
+          ref={columnMenuRef}
+          className="fixed z-[140]"
+          style={{ top: columnMenuPosition.top, left: columnMenuPosition.left }}
+        >
+          <AnalyticsColumnMenu
+            column={orderedColumns.find(column => String(column.id) === openColumnMenuId) ?? orderedColumns[0]}
+            rows={rows}
+            sortState={sortState}
+            search={columnMenuSearch}
+            onSearchChange={setColumnMenuSearch}
+            filterOptions={filterableValueOptions.get(openColumnMenuId) ?? []}
+            selectedValues={draftColumnFilterValues}
+            onSelectedValuesChange={setDraftColumnFilterValues}
+            rangeFilter={draftRangeFilter}
+            onRangeChange={setDraftRangeFilter}
+            onSortChange={direction => setSortState({ columnId: openColumnMenuId, direction })}
+            onApply={() => applyColumnMenu(openColumnMenuId)}
+            onReset={() => resetColumnMenu(openColumnMenuId)}
+          />
+        </div>
+      )}
 
       <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 text-sm text-slate-500">
-          <span>Страница</span>
+          <button
+            type="button"
+            onClick={() => setCurrentPage(page => Math.max(1, page - 1))}
+            disabled={safePage === 1}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronLeft size={16} />
+          </button>
           <div className="flex items-center gap-1">
             {Array.from({ length: totalPages }, (_, index) => index + 1).map(page => (
               <button
@@ -2448,6 +2618,14 @@ function AnalyticsDataSection({
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))}
+            disabled={safePage === totalPages}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronRight size={16} />
+          </button>
         </div>
         <div className="flex items-center gap-2 text-sm text-slate-500">
           <span>Размер страницы</span>
@@ -2508,30 +2686,69 @@ function AnalyticsDataSection({
                   <div
                     key={String(column.id)}
                     draggable
-                    onDragStart={() => setDraggedColumnId(String(column.id))}
+                    onDragStart={event => {
+                      setDraggedColumnId(String(column.id));
+                      event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData('text/plain', String(column.id));
+
+                      const dragPreview = event.currentTarget.cloneNode(true) as HTMLDivElement;
+                      dragPreview.style.position = 'fixed';
+                      dragPreview.style.top = '-1000px';
+                      dragPreview.style.left = '-1000px';
+                      dragPreview.style.width = `${event.currentTarget.clientWidth}px`;
+                      dragPreview.style.pointerEvents = 'none';
+                      dragPreview.style.transform = 'rotate(2deg)';
+                      dragPreview.style.boxShadow = '0 18px 40px rgba(15, 23, 42, 0.18)';
+                      dragPreview.style.borderColor = 'rgb(96 165 250)';
+                      dragPreview.style.background = 'rgba(239, 246, 255, 0.96)';
+                      document.body.appendChild(dragPreview);
+                      event.dataTransfer.setDragImage(dragPreview, 24, 24);
+                      window.setTimeout(() => {
+                        document.body.removeChild(dragPreview);
+                      }, 0);
+                    }}
                     onDragEnd={() => setDraggedColumnId(null)}
                     onDragOver={event => event.preventDefault()}
-                    onDrop={() => {
-                      if (draggedColumnId) moveDraftColumn(draggedColumnId, String(column.id));
+                    onDrop={event => {
+                      const draggedId = draggedColumnId || event.dataTransfer.getData('text/plain');
+                      if (draggedId) moveDraftColumn(draggedId, String(column.id));
                       setDraggedColumnId(null);
                     }}
-                    className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3"
+                    onClick={() =>
+                      setDraftVisibleColumnIds(current =>
+                        current.includes(String(column.id))
+                          ? current.filter(id => id !== String(column.id))
+                          : [...current, String(column.id)]
+                      )
+                    }
+                    className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition-colors hover:bg-slate-50 ${
+                      draggedColumnId === String(column.id) ? 'scale-[1.01] border-blue-300 bg-blue-50/60 opacity-70 shadow-lg' : 'border-slate-200'
+                    }`}
                   >
-                    <input
-                      type="checkbox"
-                      checked={draftVisibleColumnIds.includes(String(column.id))}
-                      onChange={() =>
+                    <button type="button" onClick={event => event.stopPropagation()} className="cursor-grab rounded-md p-1 text-slate-400">
+                      <GripVertical size={15} />
+                    </button>
+                    <div className="flex-1 text-sm text-slate-700">{column.label}</div>
+                    <button
+                      type="button"
+                      onClick={event => {
+                        event.stopPropagation();
                         setDraftVisibleColumnIds(current =>
                           current.includes(String(column.id))
                             ? current.filter(id => id !== String(column.id))
                             : [...current, String(column.id)]
-                        )
-                      }
-                    />
-                    <button type="button" className="cursor-grab rounded-md p-1 text-slate-400">
-                      <GripVertical size={15} />
+                        );
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors ${
+                        draftVisibleColumnIds.includes(String(column.id)) ? 'bg-blue-600' : 'bg-slate-200'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                          draftVisibleColumnIds.includes(String(column.id)) ? 'translate-x-5' : 'translate-x-0.5'
+                        }`}
+                      />
                     </button>
-                    <div className="text-sm text-slate-700">{column.label}</div>
                   </div>
                 ))}
               </div>
@@ -2578,7 +2795,7 @@ function AnalyticsTableRowView({
   isTotal?: boolean;
 }) {
   return (
-    <tr className={`${isTotal ? 'bg-slate-50/80' : 'hover:bg-slate-50'} transition-colors`}>
+    <tr className={`${isTotal ? 'bg-slate-50' : 'hover:bg-slate-50'} transition-colors`}>
       {columns.map(column => {
         const content = column.render ? column.render(row) : formatAnalyticsCell(row, column.id);
         return (
@@ -2586,7 +2803,7 @@ function AnalyticsTableRowView({
             key={String(column.id)}
             className={`whitespace-nowrap border-b border-slate-100 px-3 py-3 align-middle ${
               column.align === 'right' ? 'text-right' : 'text-left'
-            } ${column.sticky ? `sticky ${stickyLeft(column)} ${isTotal ? 'bg-slate-50/80' : 'bg-white'}` : ''}`}
+            } ${column.sticky ? `sticky ${stickyLeft(column)} ${isTotal ? 'bg-slate-50 shadow-[6px_0_10px_-10px_rgba(15,23,42,0.35)]' : 'bg-white shadow-[6px_0_10px_-10px_rgba(15,23,42,0.18)]'}` : ''}`}
             style={column.sticky === 'photo' ? { width: 72, minWidth: 72 } : column.sticky === 'article' ? { width: 260, minWidth: 260 } : undefined}
           >
             {isTotal && column.id === 'article' ? (
@@ -2728,7 +2945,7 @@ function SectionInfoTooltip({ text }: { text: string }) {
   return (
     <div className="group/tooltip relative flex shrink-0">
       <Info size={14} className="text-slate-400" />
-      <div className="absolute left-0 top-full z-10 mt-2 hidden w-64 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm group-hover/tooltip:block">
+      <div className="absolute left-0 top-full z-10 mt-2 hidden w-80 whitespace-pre-line rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm group-hover/tooltip:block">
         {text}
       </div>
     </div>
@@ -2754,19 +2971,54 @@ function ToolbarSelect({
   onChange: (value: string) => void;
   options: Array<{ value: string; label: string }>;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const currentOption = options.find(option => option.value === value) ?? options[0];
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [isOpen]);
+
   return (
-    <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-      <span className="font-medium">{label}</span>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="bg-transparent text-slate-800 outline-none"
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen(current => !current)}
+        className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-white"
       >
-        {options.map(option => (
-          <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </select>
-    </label>
+        <span className="font-medium">{label}</span>
+        <span className="text-slate-800">{currentOption?.label}</span>
+        <ChevronDown size={14} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && (
+        <div className="absolute left-0 top-full z-[80] mt-2 min-w-[220px] overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
+          {options.map(option => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => {
+                onChange(option.value);
+                setIsOpen(false);
+              }}
+              className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                option.value === value ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2780,9 +3032,145 @@ function FilterIcon({ className = '' }: { className?: string }) {
   );
 }
 
+function AnalyticsColumnMenu({
+  column,
+  rows,
+  sortState,
+  search,
+  onSearchChange,
+  filterOptions,
+  selectedValues,
+  onSelectedValuesChange,
+  rangeFilter,
+  onRangeChange,
+  onSortChange,
+  onApply,
+  onReset,
+}: {
+  column: AnalyticsColumnDefinition;
+  rows: AnalyticsTableRow[];
+  sortState: AnalyticsSortState;
+  search: string;
+  onSearchChange: (value: string) => void;
+  filterOptions: string[];
+  selectedValues: string[];
+  onSelectedValuesChange: (values: string[]) => void;
+  rangeFilter: AnalyticsRangeFilterState;
+  onRangeChange: (value: AnalyticsRangeFilterState) => void;
+  onSortChange: (direction: AnalyticsSortDirection) => void;
+  onApply: () => void;
+  onReset: () => void;
+}) {
+  const numericColumn = rows.some(row => typeof getAnalyticsComparableValue(row, column.id) === 'number');
+  const filteredOptions = filterOptions.filter(option => option.toLowerCase().includes(search.trim().toLowerCase()));
+  const allSelected = filteredOptions.length > 0 && filteredOptions.every(option => selectedValues.includes(option));
+  const sortActive = sortState.columnId === String(column.id) ? sortState.direction : null;
+
+  return (
+    <div className="w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
+      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{column.label}</div>
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => onSortChange('asc')}
+          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${sortActive === 'asc' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}
+        >
+          <span>Сортировать по возрастанию</span>
+          <ArrowUpWideNarrow size={14} />
+        </button>
+        <button
+          type="button"
+          onClick={() => onSortChange('desc')}
+          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${sortActive === 'desc' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}
+        >
+          <span>Сортировать по убыванию</span>
+          <ArrowDownWideNarrow size={14} />
+        </button>
+      </div>
+
+      {numericColumn ? (
+        <div className="mt-3 border-t border-slate-100 pt-3">
+          <div className="mb-2 text-xs font-medium text-slate-500">Диапазон значений</div>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              value={rangeFilter.min}
+              onChange={event => onRangeChange({ ...rangeFilter, min: event.target.value })}
+              placeholder="От"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-300"
+            />
+            <input
+              value={rangeFilter.max}
+              onChange={event => onRangeChange({ ...rangeFilter, max: event.target.value })}
+              placeholder="До"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-300"
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3 border-t border-slate-100 pt-3">
+          <input
+            value={search}
+            onChange={event => onSearchChange(event.target.value)}
+            placeholder="Поиск"
+            className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-300"
+          />
+          <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={() =>
+                  onSelectedValuesChange(allSelected ? selectedValues.filter(value => !filteredOptions.includes(value)) : [...new Set([...selectedValues, ...filteredOptions])])
+                }
+              />
+              Выбрать все
+            </label>
+            {filteredOptions.map(option => (
+              <label key={option} className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={selectedValues.includes(option)}
+                  onChange={() =>
+                    onSelectedValuesChange(
+                      selectedValues.includes(option)
+                        ? selectedValues.filter(value => value !== option)
+                        : [...selectedValues, option]
+                    )
+                  }
+                />
+                <span className="truncate">{option}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3 flex gap-2">
+        <button type="button" onClick={onApply} className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white">
+          Применить
+        </button>
+        <button type="button" onClick={onReset} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600">
+          Сбросить
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function orderAnalyticsColumns(columns: AnalyticsColumnDefinition[], orderedIds: string[]) {
   const rank = new Map(orderedIds.map((id, index) => [id, index]));
   return [...columns].sort((left, right) => (rank.get(String(left.id)) ?? 999) - (rank.get(String(right.id)) ?? 999));
+}
+
+function getAnalyticsComparableValue(row: AnalyticsTableRow, columnId: AnalyticsColumnDefinition['id'] | string) {
+  if (columnId === 'photo') return row.photoLabel;
+  if (columnId === 'article') return row.productName;
+  return row[columnId as keyof AnalyticsTableRow];
+}
+
+function getAnalyticsBarcode(row: AnalyticsTableRow) {
+  const raw = row.marketplaceArticleId.replace(/\D/g, '');
+  return raw ? `20${raw.padStart(11, '0').slice(0, 11)}` : `20${row.id.replace(/\D/g, '').padStart(11, '0').slice(0, 11)}`;
 }
 
 function buildAnalyticsRows(

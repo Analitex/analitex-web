@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { FilterProvider } from './context/FilterContext';
+import { ReportModeProvider } from './context/ReportModeContext';
 import { useProducts } from './hooks/useProducts';
 import { Layout } from './components/layout/Layout';
 import { DashboardPage } from './pages/DashboardPage';
@@ -50,7 +51,9 @@ function AppShell() {
 function App() {
   return (
     <FilterProvider>
-      <AppShell />
+      <ReportModeProvider>
+        <AppShell />
+      </ReportModeProvider>
     </FilterProvider>
   );
 }

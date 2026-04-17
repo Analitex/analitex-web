@@ -13,9 +13,19 @@ interface MultiSelectProps {
   value: string[];
   onChange: (value: string[]) => void;
   placeholder?: string;
+  className?: string;
+  fullWidth?: boolean;
 }
 
-export function MultiSelect({ label, options, value, onChange, placeholder }: MultiSelectProps) {
+export function MultiSelect({
+  label,
+  options,
+  value,
+  onChange,
+  placeholder,
+  className = '',
+  fullWidth = false,
+}: MultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -79,25 +89,27 @@ export function MultiSelect({ label, options, value, onChange, placeholder }: Mu
   const displayText = selectedCount === 0
     ? (placeholder ?? ``)
     : selectedCount === 1
-    ? '1 выбрано'
-    : `${selectedCount} выбрано`;
+    ? '1'
+    : `${selectedCount}`;
 
   return (
-    <div className="relative" ref={ref}>
+    <div className={`relative ${fullWidth ? 'w-full' : ''} ${className}`.trim()} ref={ref}>
       <button
         type="button"
         onClick={() => {
           setOpen(!open);
           if (open) setSearch('');
         }}
-        className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg border transition-colors whitespace-nowrap min-w-[120px] ${
+        className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg border transition-colors whitespace-nowrap ${
+          fullWidth ? 'w-full min-w-0' : 'min-w-[120px]'
+        } ${
           selectedCount > 0
             ? 'border-blue-400 bg-blue-50 text-blue-700'
             : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
         }`}
       >
         <span className="text-xs font-medium text-slate-400 shrink-0">{label}</span>
-        <span className="font-medium truncate max-w-[100px]">{displayText}</span>
+        <span className={`font-medium truncate ${fullWidth ? 'max-w-none flex-1 text-left' : 'max-w-[100px]'}`}>{displayText}</span>
         {selectedCount > 0 ? (
           <span
             role="button"
@@ -120,7 +132,9 @@ export function MultiSelect({ label, options, value, onChange, placeholder }: Mu
       </button>
 
       {open && normalizedOptions.length > 0 && (
-        <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 min-w-[260px] overflow-hidden">
+        <div className={`absolute top-full left-0 mt-1 z-50 bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden ${
+          fullWidth ? 'w-full min-w-0' : 'min-w-[260px]'
+        }`}>
           <div className="p-2 border-b border-slate-100 space-y-2">
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
