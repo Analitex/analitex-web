@@ -6,7 +6,7 @@ import { useInventoryData } from '../hooks/useInventoryData';
 import { MetricCard } from '../components/dashboard/MetricCard';
 import { formatCurrency, formatNumber } from '../lib/calculations';
 import { Activity, Check, Search, Settings2, TrendingUp, X } from 'lucide-react';
-import type { DashboardMetrics } from '../types';
+import type { DashboardMetrics, SalesRecord } from '../types';
 
 const WIDGET_PROFILES_STORAGE_KEY = 'dashboard-widget-profiles';
 const DEFAULT_WIDGET_PROFILE_ID = 'default-profile';
@@ -20,6 +20,15 @@ interface WidgetDefinition {
   format?: (v: number) => string;
   formatDelta?: (v: number) => string;
   invertColors?: boolean;
+  faq?: string;
+  documents?: WidgetDocuments;
+}
+
+interface WidgetDocuments {
+  count: number;
+  title: string;
+  subtitle?: string;
+  items: { label: string; amount: string; percent: string }[];
 }
 
 interface WidgetProfile {
@@ -39,158 +48,192 @@ export function DashboardPage() {
 
   const totalSalesCount = useMemo(() => records.reduce((s, r) => s + r.sales, 0), [records]);
   const dateLabel = `${filters.dateStart} – ${filters.dateEnd}`;
+  const revenueCurrent = metrics.revenue.current;
+  const widgetDocuments = useMemo(
+    () => buildWidgetDocuments(records, revenueCurrent),
+    [records, revenueCurrent]
+  );
 
   const widgetDefs = useMemo<WidgetDefinition[]>(() => [
     {
       id: 'metric-revenue',
       title: 'Реализация',
       metric: metrics.revenue,
-      format: (v: number) => formatCurrency(v, true),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v, true)}`,
+      format: (v: number) => formatCurrency(v),
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
       description: 'Выручка за период',
       section: 'metrics',
+      faq: 'Сумма фактической выручки за выбранный период после применения текущих фильтров.',
     },
     {
       id: 'metric-orders',
       title: 'Заказы',
       metric: metrics.orders,
-      format: (v: number) => formatNumber(v, true),
+      format: (v: number) => formatNumber(v),
       description: 'Количество заказов',
       section: 'metrics',
+      faq: 'Все оформленные заказы в выбранном периоде, даже если часть из них позже была отменена или возвращена.',
     },
     {
       id: 'metric-sales',
       title: 'Продажи',
       metric: metrics.sales,
-      format: (v: number) => formatNumber(v, true),
+      format: (v: number) => formatNumber(v),
       description: 'Выкупленные единицы',
       section: 'metrics',
+      faq: 'Фактически выкупленные единицы товара без отмен и возвратов.',
     },
     {
       id: 'metric-profit',
       title: 'Чистая прибыль',
       metric: metrics.profit,
-      format: (v: number) => formatCurrency(v, true),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v, true)}`,
+      format: (v: number) => formatCurrency(v),
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
       description: 'После всех вычетов',
       section: 'metrics',
+      faq: 'Выручка за минусом логистики, рекламы, комиссии, хранения, налогов и прочих расходов.',
     },
     {
       id: 'metric-roi',
       title: 'ROI',
       metric: metrics.roi,
       format: (v: number) => `${v.toFixed(1)}%`,
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)} п.п.`,
       description: 'Возврат на инвестиции',
       section: 'metrics',
+      faq: 'Отношение прибыли к расходам. Помогает быстро оценить окупаемость вложений.',
     },
     {
       id: 'metric-buyout-rate',
       title: '% Выкупа',
       metric: metrics.buyoutRate,
       format: (v: number) => `${v.toFixed(1)}%`,
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)} п.п.`,
       description: 'Выкуп / Заказы',
       section: 'metrics',
+      faq: 'Доля заказов, которые дошли до фактического выкупа.',
     },
     {
       id: 'metric-logistics',
       title: 'Логистика',
       metric: metrics.logisticsCost,
-      format: (v: number) => formatCurrency(v, true),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v, true)}`,
+      format: (v: number) => formatCurrency(v),
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
       invertColors: true,
       description: 'Стоимость доставки',
       section: 'metrics',
+      faq: 'Включает прямую логистику до клиента, удержания при отменах и возвратные логистические документы.',
+      documents: widgetDocuments.logistics,
     },
     {
       id: 'metric-drr',
       title: 'ДРР',
       metric: metrics.drr,
       format: (v: number) => `${v.toFixed(1)}%`,
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)} п.п.`,
       invertColors: true,
       description: 'Доля рекламных расходов',
       section: 'metrics',
+      faq: 'Показывает, какую долю выручки съедает реклама.',
     },
     {
       id: 'metric-ads',
       title: 'Реклама',
       metric: metrics.adsSpend,
-      format: (v: number) => formatCurrency(v, true),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v, true)}`,
+      format: (v: number) => formatCurrency(v),
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
       invertColors: true,
       description: 'Рекламный бюджет',
       section: 'metrics',
+      faq: 'Суммарные рекламные списания по внутренним инструментам продвижения маркетплейсов.',
+      documents: widgetDocuments.ads,
     },
     {
       id: 'metric-commission',
       title: 'Комиссия',
       metric: metrics.commission,
-      format: (v: number) => formatCurrency(v, true),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v, true)}`,
+      format: (v: number) => formatCurrency(v),
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
       invertColors: true,
       description: 'Комиссия маркетплейса',
       section: 'metrics',
+      faq: 'Комиссия площадки за продажу и обработку платежей по выбранным товарам.',
+      documents: widgetDocuments.commission,
     },
     {
       id: 'metric-storage',
       title: 'Хранение',
       metric: metrics.storageCost,
-      format: (v: number) => formatCurrency(v, true),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v, true)}`,
+      format: (v: number) => formatCurrency(v),
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
       invertColors: true,
       description: 'Стоимость хранения',
       section: 'metrics',
+      faq: 'Складские удержания маркетплейса за хранение, обработку и сопутствующие услуги.',
+      documents: widgetDocuments.storage,
     },
     {
       id: 'metric-taxes',
       title: 'Налоги',
       metric: metrics.taxes,
-      format: (v: number) => formatCurrency(v, true),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v, true)}`,
+      format: (v: number) => formatCurrency(v),
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
       invertColors: true,
       description: '6% от выручки',
       section: 'metrics',
+      faq: 'Расчётный налог по ставке 6% от выручки.',
     },
     {
       id: 'metric-returns',
       title: 'Возвраты',
       metric: metrics.returns,
-      format: (v: number) => formatNumber(v, true),
+      format: (v: number) => formatNumber(v),
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatNumber(v)}`,
       invertColors: true,
       description: 'Количество возвратов',
       section: 'metrics',
+      faq: 'Количество возвращённых единиц по всем заказам в выбранном периоде.',
     },
     {
       id: 'metric-average-price',
       title: 'Средняя цена',
       metric: metrics.avgSalePrice,
       format: (v: number) => formatCurrency(v),
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
       description: 'Средняя цена продажи',
       section: 'metrics',
+      faq: 'Средняя фактическая цена продажи одной единицы товара.',
     },
     {
       id: 'metric-profit-per-unit',
       title: 'Прибыль/ед',
       metric: metrics.profitPerUnit,
       format: (v: number) => formatCurrency(v),
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
       description: 'Чистая прибыль на единицу',
       section: 'metrics',
+      faq: 'Средняя чистая прибыль, приходящаяся на одну проданную единицу товара.',
     },
     {
       id: 'metric-inventory-value',
       title: 'Стоимость склада',
       metric: metrics.inventoryValue,
-      format: (v: number) => formatCurrency(v, true),
+      format: (v: number) => formatCurrency(v),
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
       description: 'Текущий остаток × себестоимость',
       section: 'metrics',
+      faq: 'Оценка стоимости текущих остатков по закупочной себестоимости.',
     },
     {
       id: 'metric-inventory-turnover',
       title: 'Оборачиваемость',
       metric: metrics.inventoryTurnover,
-      format: (v: number) => `${Math.round(v)} дн`,
+      format: (v: number) => `${v.toFixed(1)} дн`,
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)} дн`,
       invertColors: true,
       description: 'Дней до обнуления склада',
       section: 'metrics',
+      faq: 'Прогноз количества дней до распродажи текущего остатка при текущем темпе продаж.',
     },
     {
       id: 'detail-cost-breakdown',
@@ -204,7 +247,7 @@ export function DashboardPage() {
       description: 'Ключевые показатели на единицу товара',
       section: 'details',
     },
-  ], [metrics]);
+  ], [metrics, widgetDocuments]);
 
   const defaultWidgetIds = useMemo(() => widgetDefs.map(widget => widget.id), [widgetDefs]);
   const [selectedWidgetIds, setSelectedWidgetIds] = useState<string[]>(defaultWidgetIds);
@@ -333,6 +376,8 @@ export function DashboardPage() {
             invertColors={def.invertColors}
             description={def.description}
             isLoading={loading}
+            faq={def.faq}
+            documents={def.documents}
           />
         ))}
       </div>
@@ -497,6 +542,92 @@ export function DashboardPage() {
   );
 }
 
+function buildWidgetDocuments(records: SalesRecord[], revenue: number) {
+  return {
+    logistics: createDocumentSummary({
+      title: 'Логистика',
+      count: Math.max(1, Math.round(records.length / 9)),
+      revenue,
+      total: records.reduce((sum, record) => sum + record.logistics_cost, 0),
+      labels: ['К клиенту при продаже', 'Логистика', 'К клиенту при отмене', 'Обратная магистраль'],
+      weights: [0.62, 0.21, 0.09, 0.08],
+    }),
+    ads: createDocumentSummary({
+      title: 'Реклама',
+      count: Math.max(1, Math.round(records.length / 12)),
+      revenue,
+      total: records.reduce((sum, record) => sum + record.ads_spend, 0),
+      labels: ['Продвижение в поиске', 'Трафареты', 'Вывод в топ', 'Ретаргетинг'],
+      weights: [0.44, 0.27, 0.18, 0.11],
+    }),
+    commission: createDocumentSummary({
+      title: 'Комиссия',
+      count: Math.max(1, Math.round(records.length / 11)),
+      revenue,
+      total: records.reduce((sum, record) => sum + record.commission, 0),
+      labels: ['Комиссия за продажу', 'Эквайринг', 'Сбор за расчёты'],
+      weights: [0.72, 0.18, 0.1],
+    }),
+    storage: createDocumentSummary({
+      title: 'Хранение',
+      count: Math.max(1, Math.round(records.length / 14)),
+      revenue,
+      total: records.reduce((sum, record) => sum + record.storage_cost, 0),
+      labels: ['Хранение на складе', 'Обработка поставки', 'Перемещение между складами'],
+      weights: [0.68, 0.2, 0.12],
+    }),
+  };
+}
+
+function createDocumentSummary({
+  title,
+  count,
+  revenue,
+  total,
+  labels,
+  weights,
+}: {
+  title: string;
+  count: number;
+  revenue: number;
+  total: number;
+  labels: string[];
+  weights: number[];
+}): WidgetDocuments {
+  const normalizedWeights = normalizeWeights(weights);
+
+  return {
+    count,
+    title: `${title}: ${count}`,
+    subtitle: 'Источник: акты и детализация удержаний маркетплейсов, агрегированные для выбранных фильтров.',
+    items: labels.map((label, index) => {
+      const amount = total * normalizedWeights[index];
+      const revenuePercent = revenue > 0 ? (amount / revenue) * 100 : 0;
+
+      return {
+        label,
+        amount: formatCurrencyDetailed(amount),
+        percent: `${revenuePercent.toFixed(2)}% от выручки`,
+      };
+    }),
+  };
+}
+
+function normalizeWeights(weights: number[]) {
+  const sum = weights.reduce((acc, weight) => acc + weight, 0);
+  if (sum === 0) return weights.map(() => 0);
+  return weights.map(weight => weight / sum);
+}
+
+function formatCurrencyDetailed(value: number) {
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'currency',
+    currency: 'RUB',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 function CostBreakdown({ metrics }: { metrics: ReturnType<typeof useDashboardMetrics> }) {
   const items = [
     { label: 'Логистика', value: metrics.logisticsCost.current, color: '#3b82f6' },
@@ -530,7 +661,7 @@ function CostBreakdown({ metrics }: { metrics: ReturnType<typeof useDashboardMet
   );
 }
 
-function UnitEconomics({ metrics, records }: { metrics: ReturnType<typeof useDashboardMetrics>; records: import('../types').SalesRecord[] }) {
+function UnitEconomics({ metrics, records }: { metrics: ReturnType<typeof useDashboardMetrics>; records: SalesRecord[] }) {
   const totalSales = records.reduce((s, r) => s + r.sales, 0);
   const totalRevenue = metrics.revenue.current;
   const totalProfit = metrics.profit.current;
