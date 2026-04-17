@@ -4,9 +4,10 @@ interface SparklineProps {
   height?: number;
   width?: number;
   fill?: boolean;
+  className?: string;
 }
 
-export function Sparkline({ data, color, height = 36, width = 80, fill = true }: SparklineProps) {
+export function Sparkline({ data, color, height = 36, width = 80, fill = true, className = '' }: SparklineProps) {
   if (!data || data.length < 2) return null;
 
   const max = Math.max(...data);
@@ -26,10 +27,11 @@ export function Sparkline({ data, color, height = 36, width = 80, fill = true }:
 
   return (
     <svg
-      width={width}
-      height={height}
+      width="100%"
+      height="100%"
       viewBox={`0 0 ${width} ${height}`}
-      className="overflow-visible"
+      className={`overflow-visible ${className}`.trim()}
+      preserveAspectRatio="none"
       style={{ display: 'block' }}
     >
       {fill && (

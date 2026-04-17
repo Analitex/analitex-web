@@ -2,17 +2,33 @@ import { useState, useMemo } from 'react';
 import { useFilters } from '../context/FilterContext';
 import { useSalesData } from '../hooks/useSalesData';
 import { SummaryTable } from '../components/table/SummaryTable';
-import { sumRecords, groupByWeek, getWeekLabel, calcProfit } from '../lib/calculations';
+import { sumRecords, calcProfit } from '../lib/calculations';
 import type { SummaryRow, GroupBy } from '../types';
 import type { SalesRecord } from '../types';
 
 const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
-  { value: 'week', label: 'По неделям' },
   { value: 'day', label: 'По дням' },
+  { value: 'week', label: 'По неделям' },
+  { value: 'month', label: 'По месяцам' },
   { value: 'sku', label: 'По SKU' },
   { value: 'brand', label: 'По бренду' },
   { value: 'category', label: 'По категории' },
 ];
+
+function getDetailedWeekLabel(dateStr: string) {
+  const start = new Date(dateStr);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+
+  const startOfYear = new Date(start.getFullYear(), 0, 1);
+  const days = Math.floor((start.getTime() - startOfYear.getTime()) / 86400000);
+  const weekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7);
+
+  const format = (date: Date) =>
+    `${`${date.getDate()}`.padStart(2, '0')}.${`${date.getMonth() + 1}`.padStart(2, '0')}.${date.getFullYear()}`;
+
+  return `${weekNumber} неделя (${format(start)} - ${format(end)})`;
+}
 
 function buildRows(
   records: SalesRecord[],
@@ -27,6 +43,10 @@ function buildRows(
         const diff = d.getDate() - day + (day === 0 ? -6 : 1);
         const monday = new Date(d.setDate(diff));
         return monday.toISOString().split('T')[0];
+      }
+      case 'month': {
+        const d = new Date(r.date);
+        return `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}`;
       }
       case 'day': return r.date;
       case 'sku': return r.product_id;
@@ -48,7 +68,11 @@ function buildRows(
     const payouts = agg.revenue - agg.commission - agg.logistics_cost;
 
     let periodLabel = key;
-    if (groupBy === 'week') periodLabel = getWeekLabel(key);
+    if (groupBy === 'week') periodLabel = getDetailedWeekLabel(key);
+    else if (groupBy === 'month') {
+      const [year, month] = key.split('-').map(Number);
+      periodLabel = new Date(year, month - 1, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+    }
     else if (groupBy === 'day') {
       const d = new Date(key);
       periodLabel = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', weekday: 'short' });
@@ -109,7 +133,7 @@ export function SummaryPage() {
         </div>
       </div>
 
-      <SummaryTable rows={rows} loading={loading} />
+      <SummaryTable title="SummaryReport" rows={rows} loading={loading} />
     </div>
   );
 }

@@ -139,4 +139,4 @@ export interface PlanFactRow {
 
 export type Page = 'dashboard' | 'summary' | 'finance' | 'inventory' | 'planfact' | 'ai';
 
-export type GroupBy = 'week' | 'day' | 'sku' | 'brand' | 'category';
+export type GroupBy = 'week' | 'day' | 'month' | 'sku' | 'brand' | 'category';

@@ -1,7 +1,16 @@
 import { useState } from 'react';
 import {
-  LayoutDashboard, Table2, LineChart, Package,
-  BarChart3, Sparkles, ChevronRight, TrendingUp, PanelLeftClose, PanelLeftOpen
+  BarChart3,
+  ChevronRight,
+  LineChart,
+  LayoutDashboard,
+  Package,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Sparkles,
+  Table2,
+  TrendingUp,
+  X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Page } from '../../types';
@@ -25,17 +34,139 @@ const navItems: NavItem[] = [
 interface SidebarProps {
   currentPage: Page;
   onNavigate: (page: Page) => void;
+  isMobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
-export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
+export function Sidebar({ currentPage, onNavigate, isMobileOpen = false, onMobileClose }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
+  const handleNavigate = (page: Page) => {
+    onNavigate(page);
+    onMobileClose?.();
+  };
+
   return (
-    <aside
-      className={`sticky top-0 flex h-screen flex-shrink-0 flex-col bg-slate-900 text-white transition-all duration-200 ${
-        isCollapsed ? 'w-14' : 'w-64'
-      }`}
-    >
+    <>
+      <aside
+        className={`sticky top-0 hidden h-screen flex-shrink-0 flex-col bg-slate-900 text-white transition-all duration-200 md:flex ${
+          isCollapsed ? 'w-14' : 'w-64'
+        }`}
+      >
+        <SidebarInner
+          currentPage={currentPage}
+          onNavigate={handleNavigate}
+          isCollapsed={isCollapsed}
+          onCollapse={() => setIsCollapsed(true)}
+          onExpand={() => setIsCollapsed(false)}
+        />
+      </aside>
+
+      <div className={`fixed inset-0 z-[150] md:hidden ${isMobileOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+        <button
+          type="button"
+          onClick={onMobileClose}
+          className={`absolute inset-0 bg-slate-950/50 transition-opacity duration-300 ${
+            isMobileOpen ? 'opacity-100' : 'opacity-0'
+          }`}
+          aria-label="Закрыть навигацию"
+        />
+        <div
+          className={`absolute inset-0 flex h-full w-full flex-col bg-slate-900 text-white transition-transform duration-300 ease-out ${
+            isMobileOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
+          <div className="flex items-center justify-between border-b border-slate-700/50 px-5 py-5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-blue-500">
+                <TrendingUp size={18} className="text-white" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-bold leading-tight text-white">AnalyticsPro</div>
+                <div className="text-xs text-slate-400">Marketplace Analytics</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onMobileClose}
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+              aria-label="Закрыть меню"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <nav className="flex-1 overflow-y-auto px-4 py-5">
+            <div className="mb-3 px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Аналитика
+            </div>
+            <ul className="space-y-1.5">
+              {navItems.map(item => {
+                const Icon = item.icon;
+                const active = currentPage === item.id;
+
+                return (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => handleNavigate(item.id)}
+                      className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm transition-all duration-150 ${
+                        active
+                          ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30'
+                          : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                      }`}
+                    >
+                      <Icon
+                        size={18}
+                        className={`flex-shrink-0 ${
+                          active ? 'text-blue-200' : 'text-slate-500'
+                        }`}
+                      />
+                      <span className="flex-1 text-left font-medium">{item.label}</span>
+                      {item.badge && (
+                        <span className="rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                          {item.badge}
+                        </span>
+                      )}
+                      {active && <ChevronRight size={16} className="text-blue-300" />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+
+          <div className="border-t border-slate-700/50 px-4 py-4">
+            <div className="rounded-xl bg-slate-800 p-4">
+              <div className="mb-1 text-xs text-slate-400">Тариф</div>
+              <div className="text-sm font-semibold text-white">Professional</div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-700">
+                <div className="h-full w-2/3 rounded-full bg-blue-500" />
+              </div>
+              <div className="mt-1 text-xs text-slate-500">60 из 90 дней</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SidebarInner({
+  currentPage,
+  onNavigate,
+  isCollapsed,
+  onCollapse,
+  onExpand,
+}: {
+  currentPage: Page;
+  onNavigate: (page: Page) => void;
+  isCollapsed: boolean;
+  onCollapse: () => void;
+  onExpand: () => void;
+}) {
+  return (
+    <>
       <div className={`border-b border-slate-700/50 ${isCollapsed ? 'px-3 py-5' : 'px-6 py-5'}`}>
         <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between gap-3'}`}>
           <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'min-w-0 gap-2.5'}`}>
@@ -53,7 +184,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
           {!isCollapsed && (
             <button
               type="button"
-              onClick={() => setIsCollapsed(true)}
+              onClick={onCollapse}
               className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
               aria-label="Свернуть боковое меню"
             >
@@ -65,7 +196,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
         {isCollapsed && (
           <button
             type="button"
-            onClick={() => setIsCollapsed(false)}
+            onClick={onExpand}
             className="mt-4 flex h-9 w-full items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
             aria-label="Развернуть боковое меню"
           >
@@ -147,6 +278,6 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
           </div>
         )}
       </div>
-    </aside>
+    </>
   );
 }

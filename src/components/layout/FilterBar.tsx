@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Info, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
+import { ChevronDown, Info, Menu, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
 import { useFilters } from '../../context/FilterContext';
 import { useReportMode } from '../../context/ReportModeContext';
 import { MultiSelect } from '../filters/MultiSelect';
@@ -13,6 +13,7 @@ interface FilterBarProps {
   marketplaces: string[];
   stores: string[];
   skus: { id: string; sku: string; name: string }[];
+  onOpenMobileNav?: () => void;
 }
 
 const REPORT_MODE_HELP = 'Управленческий режим показывает привычные рабочие метрики сервиса.\n\nФинансовый режим нужен для бухгалтерской точности и суммы к фактическому перечислению от маркетплейса.';
@@ -25,7 +26,15 @@ function getSkuOptions(skus: { id: string; sku: string; name: string }[]) {
   }));
 }
 
-export function FilterBar({ currentPage, brands, categories, marketplaces, stores, skus }: FilterBarProps) {
+export function FilterBar({
+  currentPage,
+  brands,
+  categories,
+  marketplaces,
+  stores,
+  skus,
+  onOpenMobileNav,
+}: FilterBarProps) {
   const { filters, setFilters, resetFilters } = useFilters();
   const { reportMode, setReportMode } = useReportMode();
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
@@ -193,30 +202,41 @@ export function FilterBar({ currentPage, brands, categories, marketplaces, store
         </div>
 
         <div className="md:hidden">
-          <button
-            type="button"
-            onClick={() => setIsMobileSheetOpen(true)}
-            className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left shadow-sm transition-colors hover:border-slate-300 hover:bg-white"
-          >
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
-                <SlidersHorizontal size={18} />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-slate-800">Фильтры</div>
-                <div className="truncate text-xs text-slate-500">
-                  {activeFilterCount > 0 ? `Активно: ${activeFilterCount}` : 'Период, магазины, бренды и товары'}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onOpenMobileNav}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-white"
+              aria-label="Открыть навигацию"
+            >
+              <Menu size={18} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsMobileSheetOpen(true)}
+              className="flex min-w-0 flex-1 items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left shadow-sm transition-colors hover:border-slate-300 hover:bg-white"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
+                  <SlidersHorizontal size={17} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-slate-800">Фильтры</div>
+                  <div className="truncate text-xs text-slate-500">
+                    {activeFilterCount > 0 ? `Активно: ${activeFilterCount}` : 'Период, магазины, бренды и товары'}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div
-              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                activeFilterCount > 0 ? 'bg-blue-100 text-blue-700' : 'bg-white text-slate-500'
-              }`}
-            >
-              {activeFilterCount > 0 ? `${activeFilterCount}` : 'Все'}
-            </div>
-          </button>
+              <div
+                className={`ml-2 shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  activeFilterCount > 0 ? 'bg-blue-100 text-blue-700' : 'bg-white text-slate-500'
+                }`}
+              >
+                {activeFilterCount > 0 ? `${activeFilterCount}` : 'Все'}
+              </div>
+            </button>
+          </div>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { TrendingUp, TrendingDown, Minus, Info, Files } from 'lucide-react';
+import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
+import { Files, Info, Minus, Pencil, TrendingDown, TrendingUp, X } from 'lucide-react';
 import type { MetricValue } from '../../types';
 import { Sparkline } from '../charts/Sparkline';
 
@@ -27,21 +27,64 @@ interface MetricCardProps {
   isLoading?: boolean;
   faq?: string;
   documents?: MetricDocuments;
+  onEdit?: () => void;
 }
 
 function SkeletonCard() {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 animate-pulse">
-      <div className="h-4 bg-slate-100 rounded w-2/3 mb-4" />
-      <div className="h-7 bg-slate-100 rounded w-3/4 mb-2" />
-      <div className="h-3 bg-slate-100 rounded w-1/2" />
+    <div className="animate-pulse rounded-xl border border-slate-200 bg-white p-2.5">
+      <div className="mb-2.5 h-3.5 w-2/3 rounded bg-slate-100" />
+      <div className="mb-1.5 h-6 w-3/4 rounded bg-slate-100" />
+      <div className="mb-3 h-3 w-1/2 rounded bg-slate-100" />
+      <div className="h-10 rounded-lg bg-slate-100" />
     </div>
   );
 }
 
 export function MetricCard({
-  title, metric, format, formatDelta, invertColors = false, unit, description, isLoading = false, faq, documents
+  title,
+  metric,
+  format,
+  formatDelta,
+  invertColors = false,
+  unit,
+  description,
+  isLoading = false,
+  faq,
+  documents,
+  onEdit,
 }: MetricCardProps) {
+  const [isDocsOpen, setIsDocsOpen] = useState(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const docsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isDocsOpen && !isDetailsOpen) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsDocsOpen(false);
+        setIsDetailsOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isDetailsOpen, isDocsOpen]);
+
+  useEffect(() => {
+    if (!isDocsOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!docsRef.current?.contains(event.target as Node)) {
+        setIsDocsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [isDocsOpen]);
+
   if (isLoading) return <SkeletonCard />;
 
   const isPositive = metric.trend === 'up';
@@ -51,95 +94,205 @@ export function MetricCard({
   const goodTrend = invertColors ? isNegative : isPositive;
   const badTrend = invertColors ? isPositive : isNegative;
 
-  const trendColor = goodTrend
-    ? 'text-emerald-600'
-    : badTrend
-    ? 'text-red-500'
-    : 'text-slate-400';
-
-  const sparkColor = goodTrend
-    ? '#10b981'
-    : badTrend
-    ? '#ef4444'
-    : '#94a3b8';
-
+  const trendColor = goodTrend ? 'text-emerald-600' : badTrend ? 'text-red-500' : 'text-slate-400';
+  const sparkColor = goodTrend ? '#10b981' : badTrend ? '#ef4444' : '#94a3b8';
   const bgColor = goodTrend
     ? 'bg-emerald-50 border-emerald-100'
     : badTrend
     ? 'bg-red-50 border-red-100'
     : 'bg-slate-50 border-slate-100';
 
+  const deltaValue = metric.delta ?? 0;
+  const deltaPercentValue = metric.deltaPercent ?? 0;
   const deltaStr = formatDelta
-    ? formatDelta(metric.delta)
-    : `${metric.delta >= 0 ? '+' : ''}${metric.delta.toFixed(1)}`;
-
-  const pctStr = `${metric.deltaPercent >= 0 ? '+' : ''}${metric.deltaPercent.toFixed(2)}%`;
+    ? formatDelta(deltaValue)
+    : `${deltaValue >= 0 ? '+' : ''}${deltaValue.toFixed(1)}`;
+  const pctStr = `${deltaPercentValue >= 0 ? '+' : ''}${deltaPercentValue.toFixed(2)}%`;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md transition-all duration-200 group">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{title}</div>
-            {faq && (
-              <HoverIcon label="FAQ" panelClassName="-left-2">
-                <Info size={14} />
-                <div className="max-w-xs text-sm leading-5 text-slate-600">{faq}</div>
-              </HoverIcon>
-            )}
-            {documents && (
-              <HoverIcon label="Документы" panelClassName="right-0">
-                <div className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
-                  <Files size={12} />
-                  {documents.count}
-                </div>
-                <div className="w-72 space-y-3">
-                  <div>
-                    <div className="text-sm font-semibold text-slate-800">{documents.title}</div>
-                    {documents.subtitle && <div className="mt-1 text-xs text-slate-500">{documents.subtitle}</div>}
+    <>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setIsDetailsOpen(true)}
+        onKeyDown={event => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setIsDetailsOpen(true);
+          }
+        }}
+        className="relative w-full rounded-xl border border-slate-200 bg-white p-2.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+      >
+        {metric.sparkline.length > 1 && (
+          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl opacity-[0.16] transition-opacity">
+            <div className="absolute inset-0 bg-gradient-to-b from-white via-white/60 to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 h-16">
+              <Sparkline data={metric.sparkline} color={sparkColor} width={320} height={84} className="h-full w-full" />
+            </div>
+          </div>
+        )}
+
+        <div className="relative mb-2 flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <div className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{title}</div>
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={event => {
+                    event.stopPropagation();
+                    onEdit();
+                  }}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                  aria-label="Редактировать метрику"
+                  title="Редактировать метрику"
+                >
+                  <Pencil size={12} />
+                </button>
+              )}
+              {faq && (
+                <PassiveFloat label="FAQ" panelClassName="-left-2">
+                  <Info size={14} />
+                  <div className="min-w-[240px] max-w-[280px] text-sm leading-5 text-slate-600">{faq}</div>
+                </PassiveFloat>
+              )}
+              {documents && (
+                <ClickFloat
+                  anchorRef={docsRef}
+                  isOpen={isDocsOpen}
+                  onToggle={() => setIsDocsOpen(current => !current)}
+                  onClose={() => setIsDocsOpen(false)}
+                  label="Документы"
+                  panelClassName="right-0"
+                  trigger={(
+                    <div className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                      <Files size={11} />
+                      {documents.count}
+                    </div>
+                  )}
+                >
+                  <div className="min-w-[260px] max-w-[340px]">
+                    <div className="mb-3">
+                      <div className="text-sm font-semibold text-slate-800">{documents.title}</div>
+                      {documents.subtitle && <div className="mt-1 text-xs text-slate-500">{documents.subtitle}</div>}
+                    </div>
+                    <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                      {documents.items.map(item => (
+                        <div key={item.label} className="rounded-lg bg-slate-50 px-3 py-2">
+                          <div className="text-xs font-medium text-slate-700">{item.label}</div>
+                          <div className="mt-1 text-sm font-semibold text-slate-900">
+                            {item.amount} / {item.percent}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="space-y-2">
+                </ClickFloat>
+              )}
+            </div>
+            {description && <div className="sr-only">{description}</div>}
+          </div>
+        </div>
+
+        <div className="relative mb-1.5">
+          <span className="text-lg font-bold tracking-tight text-slate-900 sm:text-xl">{format(metric.current)}</span>
+          {unit && <span className="ml-1 text-xs text-slate-400 sm:text-sm">{unit}</span>}
+        </div>
+
+        <div className="relative flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="truncate text-xs font-semibold text-slate-600 sm:text-sm">{format(metric.previous)}</div>
+          </div>
+          <div className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px] ${bgColor} ${trendColor}`}>
+            {isNeutral ? <Minus size={11} /> : isPositive ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
+            <span>{deltaStr}</span>
+            <span className="text-slate-300">/</span>
+            <span>{pctStr}</span>
+          </div>
+        </div>
+      </div>
+
+      {isDetailsOpen && (
+        <div
+          className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/45 p-4"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget) setIsDetailsOpen(false);
+          }}
+        >
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{title}</div>
+                <div className="mt-1 text-lg font-semibold text-slate-900">{format(metric.current)}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDetailsOpen(false)}
+                className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                aria-label="Закрыть"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-5">
+              {metric.sparkline.length > 1 && (
+                <div className="h-36 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                  <Sparkline data={metric.sparkline} color={sparkColor} width={420} height={144} className="h-full w-full" />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Текущее значение</div>
+                  <div className="mt-2 text-base font-semibold text-slate-900">{format(metric.current)}</div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Предыдущее значение</div>
+                  <div className="mt-2 text-base font-semibold text-slate-900">{format(metric.previous)}</div>
+                </div>
+              </div>
+
+              <div className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${bgColor} ${trendColor}`}>
+                {isNeutral ? <Minus size={12} /> : isPositive ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                <span>{deltaStr}</span>
+                <span className="text-slate-300">/</span>
+                <span>{pctStr}</span>
+              </div>
+
+              {faq && (
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="mb-2 text-sm font-semibold text-slate-900">Описание</div>
+                  <div className="text-sm leading-6 text-slate-600">{faq}</div>
+                </div>
+              )}
+
+              {documents && (
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Files size={14} className="text-slate-400" />
+                    <div className="text-sm font-semibold text-slate-900">{documents.title}</div>
+                  </div>
+                  {documents.subtitle && <div className="mb-3 text-xs text-slate-500">{documents.subtitle}</div>}
+                  <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
                     {documents.items.map(item => (
                       <div key={item.label} className="rounded-lg bg-slate-50 px-3 py-2">
                         <div className="text-xs font-medium text-slate-700">{item.label}</div>
-                        <div className="mt-1 text-sm font-semibold text-slate-900">{item.amount}</div>
-                        <div className="text-xs text-slate-500">{item.percent}</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-900">{item.amount} / {item.percent}</div>
                       </div>
                     ))}
                   </div>
                 </div>
-              </HoverIcon>
-            )}
+              )}
+            </div>
           </div>
-          {description && <div className="text-xs text-slate-400 mt-0.5">{description}</div>}
         </div>
-        {metric.sparkline.length > 1 && (
-          <div className="opacity-70 group-hover:opacity-100 transition-opacity shrink-0">
-            <Sparkline data={metric.sparkline} color={sparkColor} width={64} height={28} />
-          </div>
-        )}
-      </div>
-
-      <div className="mb-3">
-        <span className="text-2xl font-bold text-slate-900 tracking-tight">
-          {format(metric.current)}
-        </span>
-        {unit && <span className="text-sm text-slate-400 ml-1">{unit}</span>}
-      </div>
-
-      <div className="flex items-end justify-between gap-3">
-        <div className="min-w-0">
-          <div className="mt-1 truncate text-sm text-slate-500">{format(metric.previous)}</div>
-        </div>
-        <div className={`inline-flex shrink-0 items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${bgColor} ${trendColor}`}>
-          <span>{deltaStr}({pctStr})</span>
-        </div>
-      </div>
-    </div>
+      )}
+    </>
   );
 }
 
-function HoverIcon({
+function PassiveFloat({
   children,
   label,
   panelClassName,
@@ -151,17 +304,70 @@ function HoverIcon({
   const [icon, content] = children;
 
   return (
-    <div className="relative group/tooltip">
+    <div className="group/tooltip relative z-20 flex shrink-0">
       <div
         className="cursor-help text-slate-400 transition-colors hover:text-slate-600"
         aria-label={label}
         title={label}
+        onClick={event => event.stopPropagation()}
       >
         {icon}
       </div>
-      <div className={`pointer-events-none absolute top-full z-20 mt-2 hidden rounded-xl border border-slate-200 bg-white p-3 shadow-xl group-hover/tooltip:block ${panelClassName}`}>
+      <div className={`absolute top-full z-30 mt-2 hidden rounded-xl border border-slate-200 bg-white p-3 shadow-xl group-hover/tooltip:block ${panelClassName}`}>
         {content}
       </div>
     </div>
   );
 }
+
+const ClickFloat = ({
+  isOpen,
+  onToggle,
+  onClose,
+  label,
+  panelClassName,
+  trigger,
+  children,
+  anchorRef,
+}: {
+  isOpen: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  label: string;
+  panelClassName: string;
+  trigger: ReactNode;
+  children: ReactNode;
+  anchorRef: MutableRefObject<HTMLDivElement | null>;
+}) => (
+  <div ref={anchorRef} className="relative z-20 flex shrink-0">
+    <button
+      type="button"
+      onClick={event => {
+        event.stopPropagation();
+        onToggle();
+      }}
+      className="text-left"
+      aria-label={label}
+      aria-expanded={isOpen}
+    >
+      {trigger}
+    </button>
+    {isOpen && (
+      <div className={`absolute top-full z-30 mt-2 rounded-xl border border-slate-200 bg-white p-3 shadow-xl ${panelClassName}`}>
+        <div className="mb-2 flex justify-end">
+          <button
+            type="button"
+            onClick={event => {
+              event.stopPropagation();
+              onClose();
+            }}
+            className="text-xs font-medium text-slate-400 transition-colors hover:text-slate-600"
+          >
+            Закрыть
+          </button>
+        </div>
+        {children}
+      </div>
+    )}
+  </div>
+);
