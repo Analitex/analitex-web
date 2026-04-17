@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFilters } from '../context/FilterContext';
 import { useSalesData } from '../hooks/useSalesData';
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics';
@@ -122,6 +122,176 @@ interface RevenueStructureRow {
 }
 
 const TOP_MARGIN_OPTIONS = [10, 50, 100] as const;
+const ANALYTICS_TABLE_SETTINGS_KEY = 'dashboard-analytics-table-settings';
+
+const ANALYTICS_GROUP_OPTIONS = [
+  { value: 'product', label: 'По товару' },
+  { value: 'brand', label: 'По бренду' },
+  { value: 'store', label: 'По магазину' },
+  { value: 'category', label: 'По категории' },
+  { value: 'group', label: 'По группе' },
+] as const;
+
+type AnalyticsGroupBy = (typeof ANALYTICS_GROUP_OPTIONS)[number]['value'];
+
+interface AnalyticsTableRow {
+  id: string;
+  photoLabel: string;
+  articleLabel: string;
+  productName: string;
+  marketplace: string;
+  store: string;
+  brand: string;
+  category: string;
+  group: string;
+  marketplaceArticleId: string;
+  avgCost: number;
+  operationalExpense: number;
+  otherDeduction: number;
+  avgPriceBeforeDiscount: number;
+  avgSalePrice: number;
+  revenue: number;
+  turnoverSales: number;
+  turnoverOrders: number;
+  sales: number;
+  toTransfer: number;
+  returns: number;
+  costOfSales: number;
+  fines: number;
+  ordersCount: number;
+  ordersAmount: number;
+  commission: number;
+  wbFinalReward: number;
+  compensation: number;
+  averageLogisticsCost: number;
+  capitalizationByCost: number;
+  capitalizationByRetail: number;
+  capitalizationOwnWarehouse: number;
+  gmroi: number;
+  gmroiYear: number;
+  logisticsCost: number;
+  storage: number;
+  rejectionsAndReturns: number;
+  totalSales: number;
+  buyoutRate: number;
+  averageProfitPerPiece: number;
+  taxes: number;
+  taxBase: number;
+  profit: number;
+  profitWithoutExpense: number;
+  roi: number;
+  shareOfRevenue: number;
+  marginality: number;
+  marginalityWithoutExpense: number;
+  advertisingExpense: number;
+  drrSales: number;
+  advertisingExpenseBonus: number;
+  drrBonus: number;
+  advertisingExpenseTotal: number;
+  drrTotal: number;
+  drrOrders: number;
+  acceptanceSum: number;
+  abcProfit: string;
+  abcRevenue: string;
+  stockBalanceMP: number;
+  stockBalanceOwn: number;
+  stockBalanceToClient: number;
+  stockBalanceFromClient: number;
+  salesUnits: number;
+}
+
+interface AnalyticsColumnDefinition {
+  id: keyof AnalyticsTableRow | 'photo' | 'article';
+  label: string;
+  align?: 'left' | 'right';
+  sticky?: 'photo' | 'article';
+  render?: (row: AnalyticsTableRow) => ReactNode;
+  exportValue?: (row: AnalyticsTableRow) => string | number;
+}
+
+const ANALYTICS_COLUMNS: AnalyticsColumnDefinition[] = [
+  { id: 'photo', label: 'Фото', sticky: 'photo', render: row => <MetricLegendThumb label={row.photoLabel} color={getMarketplaceColor(row.marketplace)} /> },
+  {
+    id: 'article',
+    label: 'Артикул',
+    sticky: 'article',
+    render: row => (
+      <div className="min-w-[220px]">
+        <a href={`#${row.id}`} className="font-medium text-slate-800 underline-offset-2 hover:text-blue-600 hover:underline">{row.productName}</a>
+        <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
+          <span className="rounded-full px-1.5 py-0.5" style={{ backgroundColor: `${getMarketplaceColor(row.marketplace)}22`, color: getMarketplaceColor(row.marketplace) }}>
+            {getMarketplaceShort(row.marketplace)}
+          </span>
+          <span>{row.articleLabel}</span>
+        </div>
+      </div>
+    ),
+    exportValue: row => row.productName,
+  },
+  { id: 'store', label: 'Магазин' },
+  { id: 'brand', label: 'Бренд' },
+  { id: 'category', label: 'Категория' },
+  { id: 'group', label: 'Группа' },
+  {
+    id: 'marketplaceArticleId',
+    label: 'Артикул маркетплейса',
+    render: row => <a href={`#mp-${row.marketplaceArticleId}`} className="text-blue-600 hover:underline">{row.marketplaceArticleId}</a>,
+    exportValue: row => row.marketplaceArticleId,
+  },
+  { id: 'avgCost', label: 'Средняя себестоимость', align: 'right' },
+  { id: 'operationalExpense', label: 'Операционные расходы', align: 'right' },
+  { id: 'otherDeduction', label: 'Прочие удержания', align: 'right' },
+  { id: 'avgPriceBeforeDiscount', label: 'Средн. цена до скидок МП', align: 'right' },
+  { id: 'avgSalePrice', label: 'Средн. цена продажи', align: 'right' },
+  { id: 'revenue', label: 'Реализация (сумма продаж до СПП)', align: 'right' },
+  { id: 'turnoverSales', label: 'Оборачиваемость по прод.', align: 'right' },
+  { id: 'turnoverOrders', label: 'Оборачиваемость по зак.', align: 'right' },
+  { id: 'sales', label: 'Продажи', align: 'right' },
+  { id: 'toTransfer', label: 'К перечислению', align: 'right' },
+  { id: 'returns', label: 'Возвраты', align: 'right' },
+  { id: 'costOfSales', label: 'Себестоимость продаж', align: 'right' },
+  { id: 'fines', label: 'Штрафы', align: 'right' },
+  { id: 'ordersCount', label: 'Заказы шт.', align: 'right' },
+  { id: 'ordersAmount', label: 'Заказы ₽', align: 'right' },
+  { id: 'commission', label: 'Комиссия', align: 'right' },
+  { id: 'wbFinalReward', label: 'Итоговое вознаграждение ВБ', align: 'right' },
+  { id: 'compensation', label: 'Компенсация', align: 'right' },
+  { id: 'averageLogisticsCost', label: 'Ср. стоимость логистики', align: 'right' },
+  { id: 'capitalizationByCost', label: 'Капитализация по себеc.', align: 'right' },
+  { id: 'capitalizationByRetail', label: 'Капитализация по розн.', align: 'right' },
+  { id: 'capitalizationOwnWarehouse', label: 'Капитализ. на моих складах', align: 'right' },
+  { id: 'gmroi', label: 'GMROI', align: 'right' },
+  { id: 'gmroiYear', label: 'Годовой GMROI', align: 'right' },
+  { id: 'logisticsCost', label: 'Стоимость логистики', align: 'right' },
+  { id: 'storage', label: 'Хранение', align: 'right' },
+  { id: 'rejectionsAndReturns', label: 'Количество отказов + возвраты', align: 'right' },
+  { id: 'totalSales', label: 'Всего продаж', align: 'right' },
+  { id: 'buyoutRate', label: 'Процент выкупа', align: 'right' },
+  { id: 'averageProfitPerPiece', label: 'Средняя прибыль на 1 шт', align: 'right' },
+  { id: 'taxes', label: 'Налоги', align: 'right' },
+  { id: 'taxBase', label: 'Налоговая база', align: 'right' },
+  { id: 'profit', label: 'Прибыль', align: 'right' },
+  { id: 'profitWithoutExpense', label: 'Прибыль без опер. расх.', align: 'right' },
+  { id: 'roi', label: 'ROI', align: 'right' },
+  { id: 'shareOfRevenue', label: 'Доля в общей выручке', align: 'right' },
+  { id: 'marginality', label: 'Маржинальность', align: 'right' },
+  { id: 'marginalityWithoutExpense', label: 'Маржинальность без опер. расх.', align: 'right' },
+  { id: 'advertisingExpense', label: 'Расходы на рекламу', align: 'right' },
+  { id: 'drrSales', label: 'ДРР по продажам, %', align: 'right' },
+  { id: 'advertisingExpenseBonus', label: 'Расходы на рекламу с бонусов', align: 'right' },
+  { id: 'drrBonus', label: 'ДРР бонусов', align: 'right' },
+  { id: 'advertisingExpenseTotal', label: 'Общие расходы на рекламу', align: 'right' },
+  { id: 'drrTotal', label: 'Общая ДРР', align: 'right' },
+  { id: 'drrOrders', label: 'ДРР по заказам, %', align: 'right' },
+  { id: 'acceptanceSum', label: 'Платная приемка', align: 'right' },
+  { id: 'abcProfit', label: 'ABC-анализ по чистой прибыли' },
+  { id: 'abcRevenue', label: 'ABC-анализ по выручке' },
+  { id: 'stockBalanceMP', label: 'Остатки на складах МП, шт', align: 'right' },
+  { id: 'stockBalanceOwn', label: 'Остатки на моих складах, шт', align: 'right' },
+  { id: 'stockBalanceToClient', label: 'Остатки в пути к клиенту, шт', align: 'right' },
+  { id: 'stockBalanceFromClient', label: 'Остатки в пути от клиента, шт', align: 'right' },
+  { id: 'salesUnits', label: 'Продажи в штуках', align: 'right' },
+];
 
 export function DashboardPage() {
   const { filters } = useFilters();
@@ -628,8 +798,9 @@ export function DashboardPage() {
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div>
+          <div className="flex items-center gap-2">
             <div className="text-sm font-semibold text-slate-900">Общие показатели</div>
+            <SectionAlias alias="general-metrics" />
           </div>
           <button
             type="button"
@@ -677,6 +848,7 @@ export function DashboardPage() {
         <div className="mt-6 grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
           <MarginLeaderboardCard
             title="Топ маржинальных артикулов"
+            alias="top-margin-articles"
             subtitle="Список товаров с наилучшей маржинальностью в выбранном периоде."
             items={visibleTopMarginArticles}
             limit={articleMarginLimit}
@@ -685,6 +857,7 @@ export function DashboardPage() {
           />
           <MarginLeaderboardCard
             title="Топ маржинальных категорий"
+            alias="top-margin-categories"
             subtitle="Категории товаров, которые дают лучший процент маржи."
             items={visibleTopMarginCategories}
             limit={categoryMarginLimit}
@@ -697,6 +870,12 @@ export function DashboardPage() {
       {!loading && records.length > 0 && (
         <div className="mt-6">
           <RevenueStructureAccordion items={revenueStructureItems} />
+        </div>
+      )}
+
+      {!loading && records.length > 0 && (
+        <div className="mt-6">
+          <AnalyticsDataSection records={records} products={products} />
         </div>
       )}
 
@@ -1652,6 +1831,7 @@ function buildTopMarginCategories(records: SalesRecord[], products: Map<string, 
 
 function MarginLeaderboardCard({
   title,
+  alias,
   subtitle,
   items,
   limit,
@@ -1659,6 +1839,7 @@ function MarginLeaderboardCard({
   emptyMessage,
 }: {
   title: string;
+  alias: string;
   subtitle: string;
   items: MarginLeaderboardRow[];
   limit: number | 'all';
@@ -1668,6 +1849,32 @@ function MarginLeaderboardCard({
   const [isExpanded, setIsExpanded] = useState(true);
   const [viewMode, setViewMode] = useState<'circle' | 'list'>('circle');
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
+  const [isOptionsOpen, setIsOptionsOpen] = useState(false);
+  const optionsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isOptionsOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!optionsRef.current?.contains(event.target as Node)) {
+        setIsOptionsOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOptionsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOptionsOpen]);
 
   return (
     <div className="self-start rounded-xl border border-slate-200 bg-white p-5">
@@ -1678,6 +1885,7 @@ function MarginLeaderboardCard({
       >
         <div className="flex items-center gap-2">
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{title}</div>
+          <SectionAlias alias={alias} />
           <SectionInfoTooltip text={subtitle} />
         </div>
         <div className="flex items-center gap-3">
@@ -1692,49 +1900,80 @@ function MarginLeaderboardCard({
       {isExpanded && (
         <div className="mt-4">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="inline-flex rounded-full bg-slate-100 p-1">
-              <button
-                type="button"
-                onClick={() => setViewMode('circle')}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                  viewMode === 'circle' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                Круги
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('list')}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                  viewMode === 'list' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                Список
-              </button>
+            <div className="text-xs text-slate-400">
+              {viewMode === 'circle' ? 'Круги' : 'Список'} · {limit === 'all' ? 'Все' : `Топ ${limit}`}
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="relative" ref={optionsRef}>
               <button
                 type="button"
-                onClick={() => onLimitChange('all')}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                  limit === 'all' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
+                onClick={() => setIsOptionsOpen(current => !current)}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
               >
-                Все
+                Параметры
+                <ChevronDown size={14} className={`transition-transform ${isOptionsOpen ? 'rotate-180' : ''}`} />
               </button>
-              {TOP_MARGIN_OPTIONS.map(option => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => onLimitChange(option)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                    limit === option ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  Топ {option}
-                </button>
-              ))}
+              {isOptionsOpen && (
+                <div className="absolute right-0 top-full z-20 mt-2 w-52 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+                  <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Вид
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewMode('circle');
+                      setIsOptionsOpen(false);
+                    }}
+                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                      viewMode === 'circle' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Круги
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewMode('list');
+                      setIsOptionsOpen(false);
+                    }}
+                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                      viewMode === 'list' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Список
+                  </button>
+                  <div className="mt-2 px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Диапазон
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onLimitChange('all');
+                      setIsOptionsOpen(false);
+                    }}
+                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                      limit === 'all' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Все
+                  </button>
+                  {TOP_MARGIN_OPTIONS.map(option => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => {
+                        onLimitChange(option);
+                        setIsOptionsOpen(false);
+                      }}
+                      className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                        limit === option ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      Топ {option}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1743,13 +1982,13 @@ function MarginLeaderboardCard({
               {emptyMessage}
             </div>
           ) : viewMode === 'circle' ? (
-            <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-center">
+            <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start">
               <MarginPieChart
                 items={items}
                 hoveredItemId={hoveredItemId}
                 onHoverChange={setHoveredItemId}
               />
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 lg:pt-0.5">
                 {items.map((item, index) => {
                   const tone = getMarginChartColor(index);
                   const isActive = hoveredItemId === item.id;
@@ -1888,6 +2127,478 @@ function MarginPieChart({
   );
 }
 
+function AnalyticsDataSection({
+  records,
+  products,
+}: {
+  records: SalesRecord[];
+  products: Map<string, Product>;
+}) {
+  const [groupBy, setGroupBy] = useState<AnalyticsGroupBy>('product');
+  const [sourceTable, setSourceTable] = useState('Исходная таблица');
+  const [pageSize, setPageSize] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isBrandFilterOpen, setIsBrandFilterOpen] = useState(false);
+  const [brandSearch, setBrandSearch] = useState('');
+  const [brandDraftValues, setBrandDraftValues] = useState<string[]>([]);
+  const [brandFilterValues, setBrandFilterValues] = useState<string[]>([]);
+  const [isColumnSettingsOpen, setIsColumnSettingsOpen] = useState(false);
+  const [columnSearch, setColumnSearch] = useState('');
+  const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
+  const brandFilterRef = useRef<HTMLDivElement | null>(null);
+
+  const initialSettings = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return {
+        order: ANALYTICS_COLUMNS.map(column => String(column.id)),
+        visible: ANALYTICS_COLUMNS.map(column => String(column.id)),
+      };
+    }
+
+    try {
+      const raw = window.localStorage.getItem(ANALYTICS_TABLE_SETTINGS_KEY);
+      if (!raw) {
+        return {
+          order: ANALYTICS_COLUMNS.map(column => String(column.id)),
+          visible: ANALYTICS_COLUMNS.map(column => String(column.id)),
+        };
+      }
+
+      const parsed = JSON.parse(raw) as { order?: string[]; visible?: string[] };
+      return {
+        order: parsed.order?.length ? parsed.order : ANALYTICS_COLUMNS.map(column => String(column.id)),
+        visible: parsed.visible?.length ? parsed.visible : ANALYTICS_COLUMNS.map(column => String(column.id)),
+      };
+    } catch {
+      return {
+        order: ANALYTICS_COLUMNS.map(column => String(column.id)),
+        visible: ANALYTICS_COLUMNS.map(column => String(column.id)),
+      };
+    }
+  }, []);
+
+  const [columnOrder, setColumnOrder] = useState<string[]>(initialSettings.order);
+  const [visibleColumnIds, setVisibleColumnIds] = useState<string[]>(initialSettings.visible);
+  const [draftColumnOrder, setDraftColumnOrder] = useState<string[]>(initialSettings.order);
+  const [draftVisibleColumnIds, setDraftVisibleColumnIds] = useState<string[]>(initialSettings.visible);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(
+      ANALYTICS_TABLE_SETTINGS_KEY,
+      JSON.stringify({ order: columnOrder, visible: visibleColumnIds })
+    );
+  }, [columnOrder, visibleColumnIds]);
+
+  useEffect(() => {
+    if (!isBrandFilterOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!brandFilterRef.current?.contains(event.target as Node)) {
+        setIsBrandFilterOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [isBrandFilterOpen]);
+
+  const rows = useMemo(() => buildAnalyticsRows(records, products, groupBy), [records, products, groupBy]);
+  const brandOptions = useMemo(
+    () => Array.from(new Set(rows.map(row => row.brand || 'Нет бренда'))).sort((a, b) => a.localeCompare(b, 'ru')),
+    [rows]
+  );
+
+  useEffect(() => {
+    setBrandDraftValues(brandFilterValues);
+  }, [brandFilterValues]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [groupBy, pageSize, brandFilterValues]);
+
+  const filteredBrandOptions = brandOptions.filter(option =>
+    option.toLowerCase().includes(brandSearch.trim().toLowerCase())
+  );
+
+  const filteredRows = rows.filter(row => {
+    if (brandFilterValues.length === 0) return true;
+    const brand = row.brand || 'Нет бренда';
+    return brandFilterValues.includes(brand);
+  });
+
+  const orderedColumns = orderAnalyticsColumns(ANALYTICS_COLUMNS, columnOrder).filter(column =>
+    visibleColumnIds.includes(String(column.id))
+  );
+
+  const totalRow = useMemo(() => buildAnalyticsTotalRow(filteredRows), [filteredRows]);
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageRows = filteredRows.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  const exportTable = () => {
+    const headers = orderedColumns.map(column => column.label).join(',');
+    const allRows = [totalRow, ...filteredRows]
+      .map(row =>
+        orderedColumns
+          .map(column => {
+            const value = column.exportValue ? column.exportValue(row) : getAnalyticsExportValue(row, column.id);
+            return `"${String(value).replace(/"/g, '""')}"`;
+          })
+          .join(',')
+      )
+      .join('\n');
+    const blob = new Blob([`\uFEFF${headers}\n${allRows}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `analytics-table-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const columnSettingsColumns = orderAnalyticsColumns(ANALYTICS_COLUMNS, draftColumnOrder).filter(column =>
+    column.label.toLowerCase().includes(columnSearch.trim().toLowerCase())
+  );
+
+  const moveDraftColumn = (draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return;
+    setDraftColumnOrder(current => {
+      const next = [...current];
+      const from = next.indexOf(draggedId);
+      const to = next.indexOf(targetId);
+      if (from === -1 || to === -1) return current;
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  };
+
+  const openColumnSettings = () => {
+    setDraftColumnOrder(columnOrder);
+    setDraftVisibleColumnIds(visibleColumnIds);
+    setColumnSearch('');
+    setIsColumnSettingsOpen(true);
+  };
+
+  const stickyLeft = (column: AnalyticsColumnDefinition) => {
+    if (column.sticky === 'photo') return 'left-0 z-20';
+    if (column.sticky === 'article') return 'left-[72px] z-20';
+    return '';
+  };
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <div className="text-sm font-semibold text-slate-900">Аналитическая таблица</div>
+          <SectionAlias alias="analytics-table" />
+        </div>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            <ToolbarSelect
+              label="Группировка"
+              value={groupBy}
+              onChange={value => setGroupBy(value as AnalyticsGroupBy)}
+              options={ANALYTICS_GROUP_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+            />
+            <ToolbarSelect
+              label="Исходная таблица"
+              value={sourceTable}
+              onChange={setSourceTable}
+              options={[{ value: 'Исходная таблица', label: 'Исходная таблица' }]}
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={exportTable}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Экспорт
+            </button>
+            <button
+              type="button"
+              onClick={openColumnSettings}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Настройки колонок
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="overflow-hidden">
+        <div className="max-h-[720px] overflow-auto">
+          <table className="min-w-[2200px] w-full text-sm">
+            <thead className="sticky top-0 z-30 bg-white">
+              <tr className="border-b border-slate-200 bg-slate-50/95 backdrop-blur">
+                {orderedColumns.map(column => (
+                  <th
+                    key={String(column.id)}
+                    className={`whitespace-nowrap border-b border-slate-200 px-3 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 ${
+                      column.align === 'right' ? 'text-right' : 'text-left'
+                    } ${column.sticky ? `sticky ${stickyLeft(column)} bg-slate-50/95` : ''}`}
+                    style={column.sticky === 'photo' ? { width: 72, minWidth: 72 } : column.sticky === 'article' ? { width: 260, minWidth: 260 } : undefined}
+                  >
+                    <div className={`flex items-center gap-1 ${column.align === 'right' ? 'justify-end' : ''}`}>
+                      <span>{column.label}</span>
+                      {column.id === 'brand' && (
+                        <div className="relative" ref={brandFilterRef}>
+                          <button
+                            type="button"
+                            onClick={event => {
+                              event.stopPropagation();
+                              setIsBrandFilterOpen(current => !current);
+                              setBrandDraftValues(brandFilterValues);
+                            }}
+                            className={`rounded p-1 transition-colors ${brandFilterValues.length > 0 ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+                          >
+                            <FilterIcon />
+                          </button>
+                          {isBrandFilterOpen && (
+                            <div className="absolute left-0 top-full z-40 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+                              <input
+                                value={brandSearch}
+                                onChange={e => setBrandSearch(e.target.value)}
+                                placeholder="Поиск"
+                                className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-300"
+                              />
+                              <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                                <label className="flex items-center gap-2 text-sm text-slate-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={brandDraftValues.length === brandOptions.length}
+                                    onChange={() => setBrandDraftValues(brandDraftValues.length === brandOptions.length ? [] : brandOptions)}
+                                  />
+                                  Выбрать все
+                                </label>
+                                {filteredBrandOptions.map(option => (
+                                  <label key={option} className="flex items-center gap-2 text-sm text-slate-700">
+                                    <input
+                                      type="checkbox"
+                                      checked={brandDraftValues.includes(option)}
+                                      onChange={() =>
+                                        setBrandDraftValues(current =>
+                                          current.includes(option) ? current.filter(value => value !== option) : [...current, option]
+                                        )
+                                      }
+                                    />
+                                    {option}
+                                  </label>
+                                ))}
+                              </div>
+                              <div className="mt-3 flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setBrandFilterValues(brandDraftValues);
+                                    setIsBrandFilterOpen(false);
+                                  }}
+                                  className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white"
+                                >
+                                  Применить
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setBrandDraftValues([]);
+                                    setBrandFilterValues([]);
+                                    setBrandSearch('');
+                                  }}
+                                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600"
+                                >
+                                  Сбросить
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {(column.id === 'category' || column.id === 'group') && <FilterIcon className="text-slate-300" />}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              <AnalyticsTableRowView row={totalRow} columns={orderedColumns} stickyLeft={stickyLeft} isTotal />
+              {pageRows.map(row => (
+                <AnalyticsTableRowView key={row.id} row={row} columns={orderedColumns} stickyLeft={stickyLeft} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <span>Страница</span>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalPages }, (_, index) => index + 1).map(page => (
+              <button
+                key={page}
+                type="button"
+                onClick={() => setCurrentPage(page)}
+                className={`h-8 min-w-8 rounded-lg px-2 text-sm transition-colors ${
+                  safePage === page ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <span>Размер страницы</span>
+          <select
+            value={pageSize}
+            onChange={e => setPageSize(Number(e.target.value))}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none"
+          >
+            {[10, 25, 50, 100].map(size => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {isColumnSettingsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onMouseDown={e => e.target === e.currentTarget && setIsColumnSettingsOpen(false)}>
+          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Настройки колонок (Исходная таблица)</h2>
+                <p className="mt-1 text-sm text-slate-500">Выбрано: {draftVisibleColumnIds.length} из {ANALYTICS_COLUMNS.length}</p>
+              </div>
+              <button type="button" onClick={() => setIsColumnSettingsOpen(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="space-y-4 px-6 py-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDraftVisibleColumnIds(ANALYTICS_COLUMNS.map(column => String(column.id)))}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600"
+                  >
+                    Выбрать все
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraftVisibleColumnIds(ANALYTICS_COLUMNS.map(column => String(column.id)));
+                      setDraftColumnOrder(ANALYTICS_COLUMNS.map(column => String(column.id)));
+                    }}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600"
+                  >
+                    Сбросить
+                  </button>
+                </div>
+                <input
+                  value={columnSearch}
+                  onChange={e => setColumnSearch(e.target.value)}
+                  placeholder="Поиск колонок..."
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none sm:max-w-xs"
+                />
+              </div>
+              <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                {columnSettingsColumns.map(column => (
+                  <div
+                    key={String(column.id)}
+                    draggable
+                    onDragStart={() => setDraggedColumnId(String(column.id))}
+                    onDragEnd={() => setDraggedColumnId(null)}
+                    onDragOver={event => event.preventDefault()}
+                    onDrop={() => {
+                      if (draggedColumnId) moveDraftColumn(draggedColumnId, String(column.id));
+                      setDraggedColumnId(null);
+                    }}
+                    className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={draftVisibleColumnIds.includes(String(column.id))}
+                      onChange={() =>
+                        setDraftVisibleColumnIds(current =>
+                          current.includes(String(column.id))
+                            ? current.filter(id => id !== String(column.id))
+                            : [...current, String(column.id)]
+                        )
+                      }
+                    />
+                    <button type="button" className="cursor-grab rounded-md p-1 text-slate-400">
+                      <GripVertical size={15} />
+                    </button>
+                    <div className="text-sm text-slate-700">{column.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setColumnOrder(draftColumnOrder);
+                  setVisibleColumnIds(draftVisibleColumnIds);
+                }}
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600"
+              >
+                Сохранить настройки
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setColumnOrder(draftColumnOrder);
+                  setVisibleColumnIds(draftVisibleColumnIds);
+                  setIsColumnSettingsOpen(false);
+                }}
+                className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white"
+              >
+                Применить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AnalyticsTableRowView({
+  row,
+  columns,
+  stickyLeft,
+  isTotal = false,
+}: {
+  row: AnalyticsTableRow;
+  columns: AnalyticsColumnDefinition[];
+  stickyLeft: (column: AnalyticsColumnDefinition) => string;
+  isTotal?: boolean;
+}) {
+  return (
+    <tr className={`${isTotal ? 'bg-slate-50/80' : 'hover:bg-slate-50'} transition-colors`}>
+      {columns.map(column => {
+        const content = column.render ? column.render(row) : formatAnalyticsCell(row, column.id);
+        return (
+          <td
+            key={String(column.id)}
+            className={`whitespace-nowrap border-b border-slate-100 px-3 py-3 align-middle ${
+              column.align === 'right' ? 'text-right' : 'text-left'
+            } ${column.sticky ? `sticky ${stickyLeft(column)} ${isTotal ? 'bg-slate-50/80' : 'bg-white'}` : ''}`}
+            style={column.sticky === 'photo' ? { width: 72, minWidth: 72 } : column.sticky === 'article' ? { width: 260, minWidth: 260 } : undefined}
+          >
+            {isTotal && column.id === 'article' ? (
+              <div className="font-semibold text-slate-900">Итого за период</div>
+            ) : column.id === 'photo' && isTotal ? null : content}
+          </td>
+        );
+      })}
+    </tr>
+  );
+}
+
 function MetricLegendThumb({ label, color }: { label: string; color: string }) {
   const initials = label
     .split(/\s+/)
@@ -1912,7 +2623,9 @@ function MetricLegendThumb({ label, color }: { label: string; color: string }) {
 
 function RevenueStructureAccordion({ items }: { items: RevenueStructureRow[] }) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const maxValue = Math.max(...items.map(item => Math.abs(item.percent)), 1);
+  const maxValue = Math.max(...items.map(item => Math.abs(item.percent)), 5);
+  const axisMax = Math.ceil(maxValue / 5) * 5;
+  const axisMarks = Array.from({ length: axisMax * 2 / 5 + 1 }, (_, index) => -axisMax + index * 5);
 
   return (
     <div className="h-fit divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
@@ -1924,6 +2637,7 @@ function RevenueStructureAccordion({ items }: { items: RevenueStructureRow[] }) 
         >
           <div className="flex items-center gap-2">
             <span>Структура выручки</span>
+            <SectionAlias alias="revenue-structure" />
             <SectionInfoTooltip text="Рассчитывается в процентах от выручки и показывает, какие статьи формируют итоговую экономику." />
           </div>
           <div className="flex items-center gap-3">
@@ -1938,17 +2652,29 @@ function RevenueStructureAccordion({ items }: { items: RevenueStructureRow[] }) 
       {isExpanded && (
         <div className="bg-white p-5">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_96px]">
-            <div className="space-y-3">
+            <div className="space-y-1">
               {items.map(item => {
-                const width = `${(Math.abs(item.percent) / maxValue) * 50}%`;
+                const width = `${(Math.abs(item.percent) / axisMax) * 50}%`;
 
                 return (
                   <div key={item.label} className="grid grid-cols-[110px_minmax(0,1fr)] items-center gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
                     <div className="truncate text-xs sm:text-sm text-slate-600">{item.label}</div>
-                    <div className="relative h-8 overflow-hidden rounded-md">
-                      <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-slate-200" />
+                    <div className="relative h-7 overflow-hidden bg-slate-50/70 first:rounded-t-md last:rounded-b-md">
+                      {axisMarks.map(mark => {
+                        const position = ((mark + axisMax) / (axisMax * 2)) * 100;
+                        return (
+                          <div
+                            key={mark}
+                            className={`absolute inset-y-0 w-px -translate-x-1/2 ${
+                              mark === 0 ? 'bg-slate-300' : 'bg-slate-200/80'
+                            }`}
+                            style={{ left: `${position}%` }}
+                          />
+                        );
+                      })}
+                      <div className="absolute inset-x-0 bottom-0 h-px bg-slate-200/70" />
                       <div
-                        className="absolute top-1/2 h-6 -translate-y-1/2 rounded-md opacity-90"
+                        className="absolute top-1/2 h-5 -translate-y-1/2 rounded-md opacity-90"
                         style={{
                           width,
                           backgroundColor: item.color,
@@ -1963,22 +2689,33 @@ function RevenueStructureAccordion({ items }: { items: RevenueStructureRow[] }) 
               })}
             </div>
 
-            <div className="my-1 flex flex-col justify-between gap-3 text-right text-xs sm:text-sm text-slate-500">
+            <div className="my-0.5 flex flex-col justify-between gap-1 text-right text-xs sm:text-sm text-slate-500">
               {items.map(item => (
-                <div key={item.label} style={{ color: item.color }}>
+                <div key={item.label} className="h-7 leading-7" style={{ color: item.color }}>
                   {formatCurrencyDetailed(item.value)}
                 </div>
               ))}
             </div>
           </div>
-          <div className="mt-4 grid grid-cols-[110px_minmax(0,1fr)] items-center gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
+          <div className="mt-0 grid grid-cols-[110px_minmax(0,1fr)] items-center gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
             <div />
-            <div className="grid grid-cols-5 text-[11px] text-slate-400">
-              <div className="text-left">-100%</div>
-              <div className="text-left">-50%</div>
-              <div className="text-center">0%</div>
-              <div className="text-right">50%</div>
-              <div className="text-right">100%</div>
+            <div className="border-t border-slate-200 pt-1">
+              <div className="grid text-[10px] text-slate-400" style={{ gridTemplateColumns: `repeat(${axisMarks.length}, minmax(0, 1fr))` }}>
+                {axisMarks.map(mark => (
+                  <div
+                    key={mark}
+                    className={
+                      mark === -axisMax
+                        ? 'text-left'
+                        : mark === axisMax
+                        ? 'text-right'
+                        : 'text-center'
+                    }
+                  >
+                    {mark}%
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -1996,6 +2733,320 @@ function SectionInfoTooltip({ text }: { text: string }) {
       </div>
     </div>
   );
+}
+
+function SectionAlias({ alias }: { alias: string }) {
+  return (
+    <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
+      {alias}
+    </span>
+  );
+}
+
+function ToolbarSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+      <span className="font-medium">{label}</span>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="bg-transparent text-slate-800 outline-none"
+      >
+        {options.map(option => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function FilterIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 6h16" />
+      <path d="M7 12h10" />
+      <path d="M10 18h4" />
+    </svg>
+  );
+}
+
+function orderAnalyticsColumns(columns: AnalyticsColumnDefinition[], orderedIds: string[]) {
+  const rank = new Map(orderedIds.map((id, index) => [id, index]));
+  return [...columns].sort((left, right) => (rank.get(String(left.id)) ?? 999) - (rank.get(String(right.id)) ?? 999));
+}
+
+function buildAnalyticsRows(
+  records: SalesRecord[],
+  products: Map<string, Product>,
+  groupBy: AnalyticsGroupBy
+) {
+  const groups = new Map<string, { rows: SalesRecord[]; products: Product[] }>();
+  const revenueTotal = records.reduce((sum, record) => sum + record.revenue, 0) || 1;
+
+  records.forEach(record => {
+    const product = products.get(record.product_id);
+    if (!product) return;
+    const key = getAnalyticsGroupKey(product, groupBy);
+    if (!groups.has(key)) {
+      groups.set(key, { rows: [], products: [] });
+    }
+    groups.get(key)!.rows.push(record);
+    if (!groups.get(key)!.products.some(item => item.id === product.id)) {
+      groups.get(key)!.products.push(product);
+    }
+  });
+
+  const rows = Array.from(groups.entries()).map(([key, value]) => {
+    const summary = sumRecords(value.rows);
+    const primaryProduct = value.products[0];
+    const costOfSales = value.rows.reduce((sum, record) => sum + (products.get(record.product_id)?.cost_price ?? 0) * record.sales, 0);
+    const operationalExpense = summary.logistics_cost + summary.ads_spend + summary.commission + summary.storage_cost + summary.taxes + summary.other_costs;
+    const profitWithoutExpense = summary.revenue - costOfSales;
+    const capitalizationByCost = value.products.reduce((sum, product) => sum + product.cost_price * 100, 0);
+    const capitalizationByRetail = summary.count > 0 ? summary.avgSalePrice * Math.max(summary.sales, 1) : summary.revenue;
+    const shareOfRevenue = (summary.revenue / revenueTotal) * 100;
+    const compensation = Math.max(0, summary.returns * summary.avgSalePrice * 0.18);
+
+    return {
+      id: key,
+      photoLabel: primaryProduct?.name ?? key,
+      articleLabel: groupBy === 'product' ? primaryProduct?.sku ?? key : key,
+      productName: groupBy === 'product' ? primaryProduct?.name ?? key : key,
+      marketplace: primaryProduct?.marketplace ?? 'Mixed',
+      store: groupBy === 'store' ? key : primaryProduct?.store ?? '—',
+      brand: groupBy === 'brand' ? key : primaryProduct?.brand ?? 'Нет бренда',
+      category: groupBy === 'category' ? key : primaryProduct?.category ?? '—',
+      group: groupBy === 'group' ? key : deriveProductGroup(primaryProduct),
+      marketplaceArticleId: String(buildMarketplaceArticleId(primaryProduct?.id ?? key)),
+      avgCost: costOfSales / Math.max(summary.sales, 1),
+      operationalExpense,
+      otherDeduction: summary.other_costs,
+      avgPriceBeforeDiscount: summary.avgPrice,
+      avgSalePrice: summary.avgSalePrice,
+      revenue: summary.revenue,
+      turnoverSales: Math.max(1, 30 / Math.max(summary.sales, 1)),
+      turnoverOrders: Math.max(1, 30 / Math.max(summary.orders, 1)),
+      sales: summary.sales,
+      toTransfer: summary.revenue - summary.commission - summary.logistics_cost,
+      returns: summary.returns,
+      costOfSales,
+      fines: 0,
+      ordersCount: summary.orders,
+      ordersAmount: summary.orders * summary.avgPrice,
+      commission: summary.commission,
+      wbFinalReward: summary.revenue - summary.commission,
+      compensation,
+      averageLogisticsCost: summary.logistics_cost / Math.max(summary.sales, 1),
+      capitalizationByCost,
+      capitalizationByRetail,
+      capitalizationOwnWarehouse: capitalizationByCost * 0.42,
+      gmroi: costOfSales > 0 ? (summary.profit / costOfSales) * 100 : 0,
+      gmroiYear: costOfSales > 0 ? ((summary.profit / costOfSales) * 100) * 12 : 0,
+      logisticsCost: summary.logistics_cost,
+      storage: summary.storage_cost,
+      rejectionsAndReturns: summary.returns,
+      totalSales: summary.sales,
+      buyoutRate: summary.buyoutRate,
+      averageProfitPerPiece: summary.profitPerUnit,
+      taxes: summary.taxes,
+      taxBase: summary.revenue - summary.commission,
+      profit: summary.profit,
+      profitWithoutExpense,
+      roi: summary.roi,
+      shareOfRevenue,
+      marginality: summary.margin,
+      marginalityWithoutExpense: summary.revenue > 0 ? (profitWithoutExpense / summary.revenue) * 100 : 0,
+      advertisingExpense: summary.ads_spend,
+      drrSales: summary.drr,
+      advertisingExpenseBonus: summary.ads_spend * 0.18,
+      drrBonus: summary.revenue > 0 ? ((summary.ads_spend * 0.18) / summary.revenue) * 100 : 0,
+      advertisingExpenseTotal: summary.ads_spend * 1.18,
+      drrTotal: summary.revenue > 0 ? ((summary.ads_spend * 1.18) / summary.revenue) * 100 : 0,
+      drrOrders: summary.orders > 0 ? ((summary.ads_spend * 1.18) / (summary.orders * summary.avgSalePrice)) * 100 : 0,
+      acceptanceSum: summary.revenue * 0.012,
+      abcProfit: getAbcBucket(summary.profit, 'profit'),
+      abcRevenue: getAbcBucket(summary.revenue, 'revenue'),
+      stockBalanceMP: value.products.length * 120,
+      stockBalanceOwn: value.products.length * 45,
+      stockBalanceToClient: Math.round(summary.orders * 0.12),
+      stockBalanceFromClient: Math.round(summary.returns * 0.35),
+      salesUnits: summary.sales,
+    } satisfies AnalyticsTableRow;
+  });
+
+  return rows.sort((left, right) => right.revenue - left.revenue);
+}
+
+function buildAnalyticsTotalRow(rows: AnalyticsTableRow[]): AnalyticsTableRow;
+function buildAnalyticsTotalRow(rows: AnalyticsTableRow[]) {
+  const base = rows.reduce(
+    (acc, row) => {
+      Object.keys(row).forEach(key => {
+        if (typeof row[key as keyof AnalyticsTableRow] === 'number') {
+          acc[key as keyof AnalyticsTableRow] = ((acc[key as keyof AnalyticsTableRow] as number) || 0) + (row[key as keyof AnalyticsTableRow] as number);
+        }
+      });
+      return acc;
+    },
+    {} as Partial<Record<keyof AnalyticsTableRow, number>>
+  );
+
+  return {
+    id: 'total-period',
+    photoLabel: '',
+    articleLabel: 'Итого за период',
+    productName: 'Итого за период',
+    marketplace: '—',
+    store: '—',
+    brand: '—',
+    category: '—',
+    group: '—',
+    marketplaceArticleId: '—',
+    avgCost: (base.avgCost ?? 0) / Math.max(rows.length, 1),
+    operationalExpense: base.operationalExpense ?? 0,
+    otherDeduction: base.otherDeduction ?? 0,
+    avgPriceBeforeDiscount: (base.avgPriceBeforeDiscount ?? 0) / Math.max(rows.length, 1),
+    avgSalePrice: (base.avgSalePrice ?? 0) / Math.max(rows.length, 1),
+    revenue: base.revenue ?? 0,
+    turnoverSales: (base.turnoverSales ?? 0) / Math.max(rows.length, 1),
+    turnoverOrders: (base.turnoverOrders ?? 0) / Math.max(rows.length, 1),
+    sales: base.sales ?? 0,
+    toTransfer: base.toTransfer ?? 0,
+    returns: base.returns ?? 0,
+    costOfSales: base.costOfSales ?? 0,
+    fines: base.fines ?? 0,
+    ordersCount: base.ordersCount ?? 0,
+    ordersAmount: base.ordersAmount ?? 0,
+    commission: base.commission ?? 0,
+    wbFinalReward: base.wbFinalReward ?? 0,
+    compensation: base.compensation ?? 0,
+    averageLogisticsCost: (base.averageLogisticsCost ?? 0) / Math.max(rows.length, 1),
+    capitalizationByCost: base.capitalizationByCost ?? 0,
+    capitalizationByRetail: base.capitalizationByRetail ?? 0,
+    capitalizationOwnWarehouse: base.capitalizationOwnWarehouse ?? 0,
+    gmroi: (base.gmroi ?? 0) / Math.max(rows.length, 1),
+    gmroiYear: (base.gmroiYear ?? 0) / Math.max(rows.length, 1),
+    logisticsCost: base.logisticsCost ?? 0,
+    storage: base.storage ?? 0,
+    rejectionsAndReturns: base.rejectionsAndReturns ?? 0,
+    totalSales: base.totalSales ?? 0,
+    buyoutRate: (base.buyoutRate ?? 0) / Math.max(rows.length, 1),
+    averageProfitPerPiece: (base.averageProfitPerPiece ?? 0) / Math.max(rows.length, 1),
+    taxes: base.taxes ?? 0,
+    taxBase: base.taxBase ?? 0,
+    profit: base.profit ?? 0,
+    profitWithoutExpense: base.profitWithoutExpense ?? 0,
+    roi: (base.roi ?? 0) / Math.max(rows.length, 1),
+    shareOfRevenue: 100,
+    marginality: (base.marginality ?? 0) / Math.max(rows.length, 1),
+    marginalityWithoutExpense: (base.marginalityWithoutExpense ?? 0) / Math.max(rows.length, 1),
+    advertisingExpense: base.advertisingExpense ?? 0,
+    drrSales: (base.drrSales ?? 0) / Math.max(rows.length, 1),
+    advertisingExpenseBonus: base.advertisingExpenseBonus ?? 0,
+    drrBonus: (base.drrBonus ?? 0) / Math.max(rows.length, 1),
+    advertisingExpenseTotal: base.advertisingExpenseTotal ?? 0,
+    drrTotal: (base.drrTotal ?? 0) / Math.max(rows.length, 1),
+    drrOrders: (base.drrOrders ?? 0) / Math.max(rows.length, 1),
+    acceptanceSum: base.acceptanceSum ?? 0,
+    abcProfit: '—',
+    abcRevenue: '—',
+    stockBalanceMP: base.stockBalanceMP ?? 0,
+    stockBalanceOwn: base.stockBalanceOwn ?? 0,
+    stockBalanceToClient: base.stockBalanceToClient ?? 0,
+    stockBalanceFromClient: base.stockBalanceFromClient ?? 0,
+    salesUnits: base.salesUnits ?? 0,
+  } satisfies AnalyticsTableRow;
+}
+
+function formatAnalyticsCell(row: AnalyticsTableRow, columnId: AnalyticsColumnDefinition['id']): ReactNode {
+  const value = row[columnId as keyof AnalyticsTableRow];
+  if (typeof value === 'number') {
+    if (String(columnId).includes('Rate') || String(columnId).includes('roi') || String(columnId).includes('drr') || String(columnId).includes('margin') || columnId === 'shareOfRevenue' || columnId === 'buyoutRate' || columnId === 'gmroi' || columnId === 'gmroiYear' || columnId === 'marginality' || columnId === 'marginalityWithoutExpense') {
+      return `${value.toFixed(1)}%`;
+    }
+    if (
+      ['sales', 'returns', 'ordersCount', 'stockBalanceMP', 'stockBalanceOwn', 'stockBalanceToClient', 'stockBalanceFromClient', 'salesUnits', 'rejectionsAndReturns', 'totalSales'].includes(String(columnId))
+    ) {
+      return formatNumber(value);
+    }
+    return formatCurrency(value);
+  }
+  return value ?? '—';
+}
+
+function getAnalyticsExportValue(row: AnalyticsTableRow, columnId: AnalyticsColumnDefinition['id']) {
+  if (columnId === 'photo') return '';
+  if (columnId === 'article') return row.productName;
+  const value = row[columnId as keyof AnalyticsTableRow];
+  return typeof value === 'number' ? value : value ?? '';
+}
+
+function getAnalyticsGroupKey(product: Product, groupBy: AnalyticsGroupBy) {
+  switch (groupBy) {
+    case 'brand':
+      return product.brand || 'Нет бренда';
+    case 'store':
+      return product.store;
+    case 'category':
+      return product.category;
+    case 'group':
+      return deriveProductGroup(product);
+    case 'product':
+    default:
+      return product.id;
+  }
+}
+
+function deriveProductGroup(product?: Product) {
+  if (!product) return 'Без группы';
+  if (product.category === 'Термопосуда') return 'Kitchen';
+  if (product.category === 'Спорт') return 'Sport';
+  if (product.category === 'Освещение' || product.category === 'Хранение') return 'Home';
+  return 'Other';
+}
+
+function buildMarketplaceArticleId(seed: string) {
+  return Math.abs(
+    Array.from(seed).reduce((sum, char) => sum * 31 + char.charCodeAt(0), 17)
+  )
+    .toString()
+    .slice(0, 9);
+}
+
+function getMarketplaceShort(marketplace: string) {
+  if (marketplace.includes('Wildberries')) return 'WB';
+  if (marketplace.includes('Ozon')) return 'OZ';
+  if (marketplace.includes('Яндекс')) return 'YM';
+  return 'MP';
+}
+
+function getMarketplaceColor(marketplace: string) {
+  if (marketplace.includes('Wildberries')) return '#7c3aed';
+  if (marketplace.includes('Ozon')) return '#2563eb';
+  if (marketplace.includes('Яндекс')) return '#f59e0b';
+  return '#0f766e';
+}
+
+function getAbcBucket(value: number, mode: 'profit' | 'revenue') {
+  const absValue = Math.abs(value);
+  if (mode === 'profit') {
+    if (absValue > 150000) return 'A';
+    if (absValue > 60000) return 'B';
+    return 'C';
+  }
+  if (absValue > 500000) return 'A';
+  if (absValue > 200000) return 'B';
+  return 'C';
 }
 
 function describePieSlice(cx: number, cy: number, radius: number, startAngle: number, endAngle: number) {
