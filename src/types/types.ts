@@ -137,6 +137,6 @@ export interface PlanFactRow {
   actualOrders: number;
 }
 
-export type Page = 'dashboard' | 'summary' | 'finance' | 'inventory' | 'planfact' | 'ai';
+export type Page = 'dashboard' | 'summary' | 'finance' | 'inventory' | 'planfact' | 'ai' | 'settings';
 
 export type GroupBy = 'week' | 'day' | 'month' | 'sku' | 'brand' | 'category';

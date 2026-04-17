@@ -8,6 +8,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Sparkles,
+  Settings,
   Table2,
   TrendingUp,
   X,
@@ -29,6 +30,7 @@ const navItems: NavItem[] = [
   { id: 'inventory', label: 'Склад', icon: Package },
   { id: 'planfact', label: 'План / Факт', icon: BarChart3 },
   { id: 'ai', label: 'AI Инсайты', icon: Sparkles, badge: 'NEW' },
+  { id: 'settings', label: 'Настройки', icon: Settings },
 ];
 
 interface SidebarProps {

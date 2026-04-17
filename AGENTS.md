@@ -86,6 +86,7 @@ Do not create new top-level folders without strong reason.
 - Memoize where beneficial
 - Prefer simple solutions over micro-optimizations
 - Do not build
+- Do not run typecheck
 
 ---
 

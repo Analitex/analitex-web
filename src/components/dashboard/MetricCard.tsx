@@ -214,12 +214,12 @@ export function MetricCard({
 
       {isDetailsOpen && (
         <div
-          className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/45 p-4"
+          className="fixed inset-0 z-[160] flex items-end justify-center bg-slate-950/45 p-3 sm:items-center sm:p-4"
           onMouseDown={event => {
             if (event.target === event.currentTarget) setIsDetailsOpen(false);
           }}
         >
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+          <div className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]">
             <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{title}</div>
@@ -235,7 +235,7 @@ export function MetricCard({
               </button>
             </div>
 
-            <div className="space-y-4 px-5 py-5">
+            <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
               {metric.sparkline.length > 1 && (
                 <div className="h-36 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/80 p-3">
                   <Sparkline data={metric.sparkline} color={sparkColor} width={420} height={144} className="h-full w-full" />
