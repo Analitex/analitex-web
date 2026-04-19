@@ -1,48 +1,56 @@
 import { useState } from 'react';
 import {
-  BarChart3,
+  BookOpen,
+  Building2,
   ChevronRight,
-  LineChart,
+  Database,
+  History,
   LayoutDashboard,
-  Package,
+  Link2,
+  LockKeyhole,
   PanelLeftClose,
   PanelLeftOpen,
-  Sparkles,
-  Settings,
-  Table2,
-  TrendingUp,
+  ShieldCheck,
   X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import type { Page } from '../../types';
+
+type DevPage = 'home' | 'auth' | 'organizations' | 'connections' | 'analytics' | 'docs' | 'history';
 
 interface NavItem {
-  id: Page;
+  id: DevPage;
   label: string;
   icon: LucideIcon;
 }
 
 const navItems: NavItem[] = [
-  { id: 'dashboard', label: 'Оцифровка', icon: LayoutDashboard },
-  { id: 'summary', label: 'Сводный отчет', icon: Table2 },
-  { id: 'finance', label: 'Финансы', icon: LineChart },
-  { id: 'inventory', label: 'Склад', icon: Package },
-  { id: 'planfact', label: 'План / Факт', icon: BarChart3 },
-  { id: 'ai', label: 'AI Инсайты', icon: Sparkles },
-  { id: 'settings', label: 'Настройки', icon: Settings },
+  { id: 'home', label: 'Главная', icon: LayoutDashboard },
+  { id: 'auth', label: 'Авторизация', icon: LockKeyhole },
+  { id: 'organizations', label: 'Организации', icon: Building2 },
+  { id: 'connections', label: 'Подключения', icon: Link2 },
+  { id: 'analytics', label: 'Аналитика', icon: Database },
+  { id: 'docs', label: 'Документация', icon: BookOpen },
+  { id: 'history', label: 'История', icon: History },
 ];
 
-interface SidebarProps {
-  currentPage: Page;
-  onNavigate: (page: Page) => void;
+interface DevSidebarProps {
+  currentPage: DevPage;
+  onNavigate: (page: DevPage) => void;
+  onBack: () => void;
   isMobileOpen?: boolean;
   onMobileClose?: () => void;
 }
 
-export function Sidebar({ currentPage, onNavigate, isMobileOpen = false, onMobileClose }: SidebarProps) {
+export function DevSidebar({
+  currentPage,
+  onNavigate,
+  onBack,
+  isMobileOpen = false,
+  onMobileClose,
+}: DevSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  const handleNavigate = (page: Page) => {
+  const handleNavigate = (page: DevPage) => {
     onNavigate(page);
     onMobileClose?.();
   };
@@ -57,6 +65,7 @@ export function Sidebar({ currentPage, onNavigate, isMobileOpen = false, onMobil
         <SidebarInner
           currentPage={currentPage}
           onNavigate={handleNavigate}
+          onBack={onBack}
           isCollapsed={isCollapsed}
           onCollapse={() => setIsCollapsed(true)}
           onExpand={() => setIsCollapsed(false)}
@@ -80,11 +89,11 @@ export function Sidebar({ currentPage, onNavigate, isMobileOpen = false, onMobil
           <div className="flex items-center justify-between border-b border-slate-700/50 px-5 py-5">
             <div className="flex min-w-0 items-center gap-2.5">
               <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-blue-500">
-                <TrendingUp size={18} className="text-white" />
+                <ShieldCheck size={18} className="text-white" />
               </div>
               <div className="min-w-0">
-                <div className="text-sm font-bold leading-tight text-white">AnalyticsPro</div>
-                <div className="text-xs text-slate-400">Marketplace Analytics</div>
+                <div className="text-sm font-bold leading-tight text-white">AnalyticsPro Dev</div>
+                <div className="text-xs text-slate-400">Скрытое UI-пространство</div>
               </div>
             </div>
             <button
@@ -98,7 +107,7 @@ export function Sidebar({ currentPage, onNavigate, isMobileOpen = false, onMobil
           </div>
 
           <nav className="flex-1 overflow-y-auto px-4 py-5">
-            <div className="mb-3 px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Аналитика</div>
+            <div className="mb-3 px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Рабочее пространство разработчика</div>
             <ul className="space-y-1.5">
               {navItems.map(item => {
                 const Icon = item.icon;
@@ -126,14 +135,13 @@ export function Sidebar({ currentPage, onNavigate, isMobileOpen = false, onMobil
           </nav>
 
           <div className="border-t border-slate-700/50 px-4 py-4">
-            <div className="rounded-xl bg-slate-800 p-4">
-              <div className="mb-1 text-xs text-slate-400">Тариф</div>
-              <div className="text-sm font-semibold text-white">Professional</div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-700">
-                <div className="h-full w-2/3 rounded-full bg-blue-500" />
-              </div>
-              <div className="mt-1 text-xs text-slate-500">60 из 90 дней</div>
-            </div>
+            <button
+              type="button"
+              onClick={onBack}
+              className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-700"
+            >
+              Вернуться в основное приложение
+            </button>
           </div>
         </div>
       </div>
@@ -144,12 +152,14 @@ export function Sidebar({ currentPage, onNavigate, isMobileOpen = false, onMobil
 function SidebarInner({
   currentPage,
   onNavigate,
+  onBack,
   isCollapsed,
   onCollapse,
   onExpand,
 }: {
-  currentPage: Page;
-  onNavigate: (page: Page) => void;
+  currentPage: DevPage;
+  onNavigate: (page: DevPage) => void;
+  onBack: () => void;
   isCollapsed: boolean;
   onCollapse: () => void;
   onExpand: () => void;
@@ -160,12 +170,12 @@ function SidebarInner({
         <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between gap-3'}`}>
           <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'min-w-0 gap-2.5'}`}>
             <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-500">
-              <TrendingUp size={16} className="text-white" />
+              <ShieldCheck size={16} className="text-white" />
             </div>
             {!isCollapsed && (
               <div className="min-w-0">
-                <div className="text-sm font-bold leading-tight text-white">AnalyticsPro</div>
-                <div className="text-xs text-slate-400">Marketplace Analytics</div>
+                <div className="text-sm font-bold leading-tight text-white">AnalyticsPro Dev</div>
+                <div className="text-xs text-slate-400">Скрытое UI-пространство</div>
               </div>
             )}
           </div>
@@ -195,7 +205,7 @@ function SidebarInner({
       </div>
 
       <nav className={`flex-1 overflow-y-auto ${isCollapsed ? 'px-2 py-4' : 'px-3 py-4'}`}>
-        {!isCollapsed && <div className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Аналитика</div>}
+        {!isCollapsed && <div className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Developer workspace</div>}
 
         <ul className="space-y-0.5">
           {navItems.map(item => {
@@ -234,16 +244,23 @@ function SidebarInner({
       <div className={`border-t border-slate-700/50 ${isCollapsed ? 'px-2 py-4' : 'px-4 py-4'}`}>
         {isCollapsed ? (
           <div className="flex justify-center rounded-lg bg-slate-800 p-3">
-            <div className="h-3 w-3 rounded-full bg-blue-500" aria-label="Тариф Professional" title="Тариф Professional" />
+            <div className="h-3 w-3 rounded-full bg-blue-500" aria-label="Developer workspace" title="Developer workspace" />
           </div>
         ) : (
           <div className="rounded-lg bg-slate-800 p-3">
-            <div className="mb-1 text-xs text-slate-400">Тариф</div>
-            <div className="text-sm font-semibold text-white">Professional</div>
+            <div className="mb-1 text-xs text-slate-400">Developer mode</div>
+            <div className="text-sm font-semibold text-white">Hidden UI pages</div>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-700">
-              <div className="h-full w-2/3 rounded-full bg-blue-500" />
+              <div className="h-full w-4/5 rounded-full bg-blue-500" />
             </div>
-            <div className="mt-1 text-xs text-slate-500">60 из 90 дней</div>
+            <div className="mt-1 text-xs text-slate-500">Авторизация, организации, документация и синхронизация</div>
+            <button
+              type="button"
+              onClick={onBack}
+              className="mt-3 w-full rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-700"
+            >
+              Вернуться в основное приложение
+            </button>
           </div>
         )}
       </div>

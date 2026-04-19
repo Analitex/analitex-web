@@ -137,6 +137,22 @@ export interface PlanFactRow {
   actualOrders: number;
 }
 
-export type Page = 'dashboard' | 'summary' | 'finance' | 'inventory' | 'planfact' | 'ai' | 'settings';
+export type Page =
+  | 'home'
+  | 'auth'
+  | 'organizations'
+  | 'connections'
+  | 'analytics'
+  | 'docs'
+  | 'history'
+  | 'settings'
+  | 'accept-invite'
+  | 'reset-password'
+  | 'dashboard'
+  | 'summary'
+  | 'finance'
+  | 'inventory'
+  | 'planfact'
+  | 'ai';
 
 export type GroupBy = 'week' | 'day' | 'month' | 'sku' | 'brand' | 'category';

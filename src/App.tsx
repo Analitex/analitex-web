@@ -1,25 +1,530 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { PlatformProvider, usePlatform } from './context/PlatformContext';
 import { FilterProvider } from './context/FilterContext';
 import { ReportModeProvider } from './context/ReportModeContext';
-import { useProducts } from './hooks/useProducts';
+import { useAnalyticsWorkspaceData } from './hooks/useAnalyticsWorkspaceData';
 import { Layout } from './components/layout/Layout';
+import { DevSidebar } from './components/layout/DevSidebar';
 import { DashboardPage } from './pages/DashboardPage';
 import { SummaryPage } from './pages/SummaryPage';
 import { FinancePage } from './pages/FinancePage';
 import { InventoryPage } from './pages/InventoryPage';
 import { PlanFactPage } from './pages/PlanFactPage';
 import { AIInsightsPage } from './pages/AllInsightPage';
+import { PublicAuthPage } from './pages/PublicAuthPage';
+import { PublicInviteAcceptPage } from './pages/PublicInviteAcceptPage';
+import { PublicResetPasswordPage } from './pages/PublicResetPasswordPage';
+import { OrganizationSetupPage } from './pages/OrganizationSetupPage';
+import {
+  ActionHistoryPage,
+  AnalyticsWorkbenchPage,
+  AuthPage,
+  ConnectionsPage,
+  DocsPage,
+  OrganizationsPage,
+  PlatformHomePage,
+} from './pages/PlatformPages';
 import { SettingsPage } from './pages/SettingsPage';
-import type { SettingsTabId } from './pages/settingsConfig';
+import { CheckCircle2, AlertTriangle, Info, Loader2, X } from 'lucide-react';
 import type { Page } from './types';
+import type { SettingsTabId } from './pages/settingsConfig';
 
-function AppShell() {
-  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
-  const [settingsTab, setSettingsTab] = useState<SettingsTabId>('profile');
-  const { brands, categories, marketplaces, stores, skus } = useProducts();
+type MainPage =
+  | 'dashboard'
+  | 'summary'
+  | 'finance'
+  | 'inventory'
+  | 'planfact'
+  | 'ai'
+  | 'settings'
+  | 'accept-invite'
+  | 'login'
+  | 'register'
+  | 'reset-password'
+  | 'setup';
+type DevPage = 'home' | 'auth' | 'organizations' | 'connections' | 'analytics' | 'docs' | 'history';
 
-  const page = (() => {
-    switch (currentPage) {
+type RouteState =
+  | { mode: 'main'; page: MainPage; settingsTab: SettingsTabId }
+  | { mode: 'dev'; page: DevPage; settingsTab: SettingsTabId };
+
+const DEFAULT_SETTINGS_TAB: SettingsTabId = 'profile';
+const SETTINGS_TAB_PATTERN = /^\/settings(?:\/([^/?#]+))?\/?$/;
+const AUTH_ROUTE_PATTERN = /^\/(login|register)\/?$/;
+const PUBLIC_FLOW_ROUTE_PATTERN = /^\/(reset-password|accept-invite)\/?$/;
+const DEV_ROUTE_PATTERN = /^\/dev(?:\/platform)?(?:\/([^/?#]+))?\/?$/;
+const DEV_PAGES = new Set<DevPage>(['home', 'auth', 'organizations', 'connections', 'analytics', 'docs', 'history']);
+
+function normalizeSettingsTab(value: string | undefined): SettingsTabId {
+  if (value === 'shops' || value === 'users' || value === 'taxes' || value === 'metrics') {
+    return value;
+  }
+  return DEFAULT_SETTINGS_TAB;
+}
+
+function normalizeMainPage(pathname: string): MainPage {
+  switch (pathname) {
+    case '/':
+    case '/dashboard':
+      return 'dashboard';
+    case '/login':
+      return 'login';
+    case '/register':
+      return 'register';
+    case '/reset-password':
+      return 'reset-password';
+    case '/accept-invite':
+      return 'accept-invite';
+    case '/summary':
+      return 'summary';
+    case '/finance':
+      return 'finance';
+    case '/inventory':
+      return 'inventory';
+    case '/planfact':
+      return 'planfact';
+    case '/ai':
+      return 'ai';
+    case '/setup':
+      return 'setup';
+    case '/settings':
+      return 'settings';
+    default:
+      return 'dashboard';
+  }
+}
+
+function parseRoute(pathname: string): RouteState {
+  const devMatch = pathname.match(DEV_ROUTE_PATTERN);
+  if (devMatch) {
+    const page = DEV_PAGES.has(devMatch[1] as DevPage) ? (devMatch[1] as DevPage) : 'home';
+    return { mode: 'dev', page, settingsTab: DEFAULT_SETTINGS_TAB };
+  }
+
+  const authMatch = pathname.match(AUTH_ROUTE_PATTERN);
+  if (authMatch) {
+    return { mode: 'main', page: authMatch[1] as 'login' | 'register', settingsTab: DEFAULT_SETTINGS_TAB };
+  }
+
+  const publicFlowMatch = pathname.match(PUBLIC_FLOW_ROUTE_PATTERN);
+  if (publicFlowMatch) {
+    return {
+      mode: 'main',
+      page: publicFlowMatch[1] as 'reset-password' | 'accept-invite',
+      settingsTab: DEFAULT_SETTINGS_TAB,
+    };
+  }
+
+  const settingsMatch = pathname.match(SETTINGS_TAB_PATTERN);
+  if (settingsMatch) {
+    return { mode: 'main', page: 'settings', settingsTab: normalizeSettingsTab(settingsMatch[1]) };
+  }
+
+  return { mode: 'main', page: normalizeMainPage(pathname), settingsTab: DEFAULT_SETTINGS_TAB };
+}
+
+function pathForRoute(route: RouteState) {
+  if (route.mode === 'dev') {
+    return route.page === 'home' ? '/dev' : `/dev/${route.page}`;
+  }
+
+  switch (route.page) {
+    case 'summary':
+      return '/summary';
+    case 'finance':
+      return '/finance';
+    case 'inventory':
+      return '/inventory';
+    case 'planfact':
+      return '/planfact';
+    case 'ai':
+      return '/ai';
+    case 'setup':
+      return '/setup';
+    case 'login':
+      return '/login';
+    case 'register':
+      return '/register';
+    case 'reset-password':
+      return '/reset-password';
+    case 'accept-invite':
+      return '/accept-invite';
+    case 'settings':
+      return route.settingsTab === DEFAULT_SETTINGS_TAB ? '/settings' : `/settings/${route.settingsTab}`;
+    case 'dashboard':
+    default:
+      return '/';
+  }
+}
+
+function isDevPage(page: Page): page is DevPage {
+  return DEV_PAGES.has(page as DevPage);
+}
+
+function isMainPage(page: Page): page is Exclude<MainPage, 'login' | 'register'> {
+  return (
+    page === 'dashboard' ||
+    page === 'summary' ||
+    page === 'finance' ||
+    page === 'inventory' ||
+    page === 'planfact' ||
+    page === 'ai' ||
+    page === 'settings' ||
+    page === 'accept-invite' ||
+    page === 'reset-password'
+  );
+}
+
+function DevShell({
+  currentPage,
+  children,
+  onNavigate,
+  onBack,
+}: {
+  currentPage: DevPage;
+  children: ReactNode;
+  onNavigate: (page: DevPage) => void;
+  onBack: () => void;
+}) {
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-slate-50">
+      <DevSidebar
+        currentPage={currentPage}
+        onNavigate={onNavigate}
+        onBack={onBack}
+        isMobileOpen={isMobileNavOpen}
+        onMobileClose={() => setIsMobileNavOpen(false)}
+      />
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <main className="flex-1 overflow-y-auto">{children}</main>
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceLoader() {
+  return (
+    <div className="flex h-screen items-center justify-center bg-slate-50">
+      <div className="flex items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+        <Loader2 size={18} className="animate-spin text-blue-600" />
+        <div>
+          <div className="text-sm font-semibold text-slate-900">Loading workspace</div>
+          <div className="text-xs text-slate-500">Waiting for the backend response...</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NotificationStack() {
+  const { notifications, dismissNotification } = usePlatform();
+
+  if (notifications.length === 0) return null;
+
+  return (
+    <div className="pointer-events-none fixed right-4 top-4 z-[200] flex w-full max-w-sm flex-col gap-3 px-2 sm:px-0">
+      {notifications.map(notification => (
+        <NotificationToast
+          key={notification.id}
+          notification={notification}
+          onDismiss={() => dismissNotification(notification.id)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function NotificationToast({
+  notification,
+  onDismiss,
+}: {
+  notification: { tone: 'success' | 'error' | 'info' | 'warning'; title: string; message: string };
+  onDismiss: () => void;
+}) {
+  useEffect(() => {
+    const timer = window.setTimeout(onDismiss, 4000);
+    return () => window.clearTimeout(timer);
+  }, [onDismiss]);
+
+  const toneStyles = {
+    success: {
+      border: 'border-emerald-200',
+      background: 'bg-emerald-50',
+      title: 'text-emerald-900',
+      message: 'text-emerald-800',
+      icon: <CheckCircle2 size={16} />,
+      iconBg: 'bg-emerald-100 text-emerald-700',
+    },
+    error: {
+      border: 'border-rose-200',
+      background: 'bg-rose-50',
+      title: 'text-rose-900',
+      message: 'text-rose-800',
+      icon: <AlertTriangle size={16} />,
+      iconBg: 'bg-rose-100 text-rose-700',
+    },
+    info: {
+      border: 'border-sky-200',
+      background: 'bg-sky-50',
+      title: 'text-sky-900',
+      message: 'text-sky-800',
+      icon: <Info size={16} />,
+      iconBg: 'bg-sky-100 text-sky-700',
+    },
+    warning: {
+      border: 'border-amber-200',
+      background: 'bg-amber-50',
+      title: 'text-amber-900',
+      message: 'text-amber-800',
+      icon: <AlertTriangle size={16} />,
+      iconBg: 'bg-amber-100 text-amber-700',
+    },
+  }[notification.tone];
+
+  return (
+    <div className={`pointer-events-auto rounded-3xl border ${toneStyles.border} ${toneStyles.background} p-4 shadow-xl`}>
+      <div className="flex items-start gap-3">
+        <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl ${toneStyles.iconBg}`}>
+          {toneStyles.icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className={`text-sm font-semibold ${toneStyles.title}`}>{notification.title}</div>
+          <div className={`mt-1 text-sm leading-6 ${toneStyles.message}`}>{notification.message}</div>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="rounded-full p-1 text-slate-500 transition-colors hover:bg-white/70 hover:text-slate-800"
+          aria-label="Закрыть уведомление"
+        >
+          <X size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AppRouter() {
+  const { recordAction, session, organizations, isWorkspaceHydrated } = usePlatform();
+  const [route, setRoute] = useState<RouteState>(() => {
+    if (typeof window === 'undefined') return { mode: 'main', page: 'dashboard', settingsTab: DEFAULT_SETTINGS_TAB };
+    return parseRoute(window.location.pathname);
+  });
+  const shouldLoadAnalyticsShell =
+    route.mode === 'main' &&
+    (route.page === 'dashboard' ||
+      route.page === 'summary' ||
+      route.page === 'finance' ||
+      route.page === 'inventory' ||
+      route.page === 'planfact' ||
+      route.page === 'ai');
+  const analyticsWorkspace = useAnalyticsWorkspaceData({
+    enabled: shouldLoadAnalyticsShell,
+    includeWorkspaceMetrics: false,
+  });
+  const filterOptions = useMemo(() => {
+    const unique = (values: string[]) => Array.from(new Set(values)).sort((a, b) => a.localeCompare(b, 'ru'));
+    const apiOptions = analyticsWorkspace.filterOptions;
+    const apiAccounts = apiOptions?.accounts ?? [];
+    const apiProducts = apiOptions?.products ?? [];
+    const apiBrands = apiOptions?.brands ?? [];
+    const apiCategories = apiOptions?.categories ?? [];
+
+    return {
+      brands: unique(apiBrands.map(item => item.label ?? item.id).filter(Boolean)),
+      categories: unique(apiCategories.map(item => item.label ?? item.id).filter(Boolean)),
+      marketplaces: unique(apiAccounts.map(item => item.marketplace ?? '').filter(Boolean)),
+      stores: unique(apiAccounts.map(item => item.label ?? '').filter(Boolean)),
+      skus: apiProducts
+        .map(item => ({
+          id: String(item.id),
+          sku: item.label ?? String(item.id),
+          name: item.label ?? String(item.id),
+        }))
+        .filter(item => Boolean(item.id)),
+    };
+  }, [analyticsWorkspace.filterOptions]);
+
+  useEffect(() => {
+    const handlePopState = () => setRoute(parseRoute(window.location.pathname));
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigate = (page: Page, settingsTab: SettingsTabId = DEFAULT_SETTINGS_TAB) => {
+    const nextRoute: RouteState = page === 'settings'
+      ? { mode: 'main', page, settingsTab }
+      : isDevPage(page)
+        ? { mode: 'dev', page, settingsTab: DEFAULT_SETTINGS_TAB }
+        : isMainPage(page)
+          ? { mode: 'main', page, settingsTab: DEFAULT_SETTINGS_TAB }
+          : { mode: 'main', page: 'dashboard', settingsTab: DEFAULT_SETTINGS_TAB };
+
+    const nextPath = pathForRoute(nextRoute);
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState(null, '', nextPath);
+    }
+
+    setRoute(nextRoute);
+    if (nextRoute.mode === 'dev') {
+      recordAction({
+        kind: 'navigation',
+        title: 'Navigated to dev page',
+        description: `Opened /dev/${nextRoute.page}.`,
+      });
+    }
+  };
+
+  const goToAuth = (mode: 'login' | 'register', replace = false) => {
+    const nextRoute: RouteState = { mode: 'main', page: mode, settingsTab: DEFAULT_SETTINGS_TAB };
+    const nextPath = pathForRoute(nextRoute);
+    if (replace) {
+      window.history.replaceState(null, '', nextPath);
+    } else if (window.location.pathname !== nextPath) {
+      window.history.pushState(null, '', nextPath);
+    }
+    setRoute(nextRoute);
+  };
+
+  useEffect(() => {
+    if (route.mode !== 'main') return;
+    if (!isWorkspaceHydrated) return;
+
+    if (!session && route.page !== 'login' && route.page !== 'register' && route.page !== 'reset-password' && route.page !== 'accept-invite') {
+      const nextRoute: RouteState = { mode: 'main', page: 'login', settingsTab: DEFAULT_SETTINGS_TAB };
+      const nextPath = pathForRoute(nextRoute);
+      if (window.location.pathname !== nextPath) {
+        window.history.replaceState(null, '', nextPath);
+      }
+      setRoute(nextRoute);
+      return;
+    }
+
+    if (session && (route.page === 'login' || route.page === 'register')) {
+      const nextRoute: RouteState =
+        organizations.length === 0
+          ? { mode: 'main', page: 'setup', settingsTab: DEFAULT_SETTINGS_TAB }
+          : { mode: 'main', page: 'dashboard', settingsTab: DEFAULT_SETTINGS_TAB };
+      const nextPath = pathForRoute(nextRoute);
+      if (window.location.pathname !== nextPath) {
+        window.history.replaceState(null, '', nextPath);
+      }
+      setRoute(nextRoute);
+      return;
+    }
+
+    if (session && organizations.length === 0 && route.page !== 'setup' && route.page !== 'accept-invite') {
+      const nextRoute: RouteState = { mode: 'main', page: 'setup', settingsTab: DEFAULT_SETTINGS_TAB };
+      const nextPath = pathForRoute(nextRoute);
+      if (window.location.pathname !== nextPath) {
+        window.history.replaceState(null, '', nextPath);
+      }
+      setRoute(nextRoute);
+      return;
+    }
+
+    if (session && organizations.length > 0 && route.page === 'setup') {
+      const nextRoute: RouteState = { mode: 'main', page: 'dashboard', settingsTab: DEFAULT_SETTINGS_TAB };
+      const nextPath = pathForRoute(nextRoute);
+      if (window.location.pathname !== nextPath) {
+        window.history.replaceState(null, '', nextPath);
+      }
+      setRoute(nextRoute);
+    }
+  }, [isWorkspaceHydrated, organizations.length, route.mode, route.page, session]);
+
+  if (route.mode === 'dev') {
+    const devPage = (() => {
+      switch (route.page) {
+        case 'auth':
+          return <AuthPage />;
+        case 'organizations':
+          return <OrganizationsPage />;
+        case 'connections':
+          return <ConnectionsPage />;
+        case 'analytics':
+          return <AnalyticsWorkbenchPage />;
+        case 'docs':
+          return <DocsPage />;
+        case 'history':
+          return <ActionHistoryPage />;
+        case 'home':
+        default:
+          return <PlatformHomePage onNavigate={page => navigate(page)} />;
+      }
+    })();
+
+    return (
+      <>
+        <DevShell
+          currentPage={route.page}
+          onNavigate={page => navigate(page)}
+          onBack={() => navigate('dashboard')}
+        >
+          {devPage}
+        </DevShell>
+        <NotificationStack />
+      </>
+    );
+  }
+
+  if (route.page === 'login' || route.page === 'register') {
+    return (
+      <>
+        <PublicAuthPage
+          mode={route.page}
+          onModeChange={mode => goToAuth(mode)}
+          onResetPassword={() => navigate('reset-password')}
+          onAcceptInvite={() => navigate('accept-invite')}
+        />
+        <NotificationStack />
+      </>
+    );
+  }
+
+  if (route.page === 'reset-password') {
+    return (
+      <>
+        <PublicResetPasswordPage onSuccess={() => goToAuth('login', true)} />
+        <NotificationStack />
+      </>
+    );
+  }
+
+  if (route.page === 'accept-invite') {
+    return (
+      <>
+        <PublicInviteAcceptPage
+          onSuccess={() => (session ? navigate('dashboard') : goToAuth('login', true))}
+          onGoToLogin={() => goToAuth('login', true)}
+        />
+        <NotificationStack />
+      </>
+    );
+  }
+
+  if (session && !isWorkspaceHydrated && route.page !== 'login' && route.page !== 'register') {
+    return (
+      <>
+        <WorkspaceLoader />
+        <NotificationStack />
+      </>
+    );
+  }
+
+  if (route.page === 'setup') {
+    return (
+      <>
+        <OrganizationSetupPage onContinue={() => navigate('dashboard')} />
+        <NotificationStack />
+      </>
+    );
+  }
+
+  const mainPage = (() => {
+    switch (route.page) {
       case 'summary':
         return <SummaryPage />;
       case 'finance':
@@ -31,7 +536,7 @@ function AppShell() {
       case 'ai':
         return <AIInsightsPage />;
       case 'settings':
-        return <SettingsPage activeTab={settingsTab} onTabChange={setSettingsTab} />;
+        return <SettingsPage activeTab={route.settingsTab} onTabChange={tab => navigate('settings', tab)} />;
       case 'dashboard':
       default:
         return <DashboardPage />;
@@ -39,29 +544,32 @@ function AppShell() {
   })();
 
   return (
-    <Layout
-      currentPage={currentPage}
-      onNavigate={setCurrentPage}
-      brands={brands}
-      categories={categories}
-      marketplaces={marketplaces}
-      stores={stores}
-      skus={skus}
-      settingsTab={settingsTab}
-      onSettingsTabChange={setSettingsTab}
-    >
-      {page}
-    </Layout>
+    <>
+      <Layout
+        currentPage={route.page}
+        onNavigate={page => navigate(page)}
+        brands={filterOptions.brands}
+        categories={filterOptions.categories}
+        marketplaces={filterOptions.marketplaces}
+        stores={filterOptions.stores}
+        skus={filterOptions.skus}
+      >
+        {mainPage}
+      </Layout>
+      <NotificationStack />
+    </>
   );
 }
 
 function App() {
   return (
-    <FilterProvider>
-      <ReportModeProvider>
-        <AppShell />
-      </ReportModeProvider>
-    </FilterProvider>
+    <PlatformProvider>
+      <FilterProvider>
+        <ReportModeProvider>
+          <AppRouter />
+        </ReportModeProvider>
+      </FilterProvider>
+    </PlatformProvider>
   );
 }
 

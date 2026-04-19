@@ -1,0 +1,1241 @@
+/* eslint-disable react-refresh/only-export-components */
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { CONNECTOR_CATALOG } from '../lib/platformCatalog';
+import { ApiError, apiRequest } from '../lib/api';
+
+export interface PlatformUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  status: 'Active' | 'Invited' | 'Inactive';
+}
+
+export interface AuthSession {
+  accessToken: string;
+  tokenType: 'Bearer';
+  expiresAt: string;
+  user: PlatformUser;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  ownerUserId: string;
+  createdAt: string;
+}
+
+export interface OrganizationMember extends PlatformUser {
+  role: 'Owner' | 'Admin' | 'Manager';
+}
+
+export interface Invitation {
+  id: string;
+  email: string;
+  role: 'Owner' | 'Admin' | 'Manager';
+  status: 'Pending' | 'Accepted' | 'Revoked';
+}
+
+export interface MarketplaceConnection {
+  id: string;
+  organizationId: string;
+  marketplace: 'Wildberries' | 'Ozon';
+  displayName: string;
+  credentialSummary: string;
+  validationState: 'Validated' | 'Needs attention';
+  latestSyncRunId?: string;
+}
+
+export interface SyncRun {
+  id: string;
+  connectionId: string;
+  status: 'Queued' | 'Running' | 'Cancelled' | 'Succeeded' | 'Failed';
+  dateFrom: string;
+  dateTo: string;
+  syncKinds: string[];
+  progressPercent: number;
+  progressMessage: string;
+  error?: string;
+  canRetry: boolean;
+  canCancel: boolean;
+  attemptCount: number;
+  maxAttempts: number;
+  nextAttemptAt?: string;
+  enqueuedAt: string;
+}
+
+export interface CustomMetric {
+  id: string;
+  name: string;
+  formula: string;
+  unitLabel: string;
+  active: boolean;
+}
+
+export interface MarketplaceConnectorDefinition {
+  marketplace: 'Wildberries' | 'Ozon';
+  label: string;
+  supportedSyncKinds: string[];
+  credentialFields: { key: string; label: string; secret: boolean }[];
+}
+
+export interface ActionRecord {
+  id: string;
+  kind: 'navigation' | 'auth' | 'organization' | 'invitation' | 'connection' | 'sync' | 'metric';
+  title: string;
+  description: string;
+  timestamp: string;
+}
+
+export interface NotificationItem {
+  id: string;
+  tone: 'success' | 'error' | 'info' | 'warning';
+  title: string;
+  message: string;
+  timestamp: string;
+}
+
+interface PlatformContextValue {
+  session: AuthSession | null;
+  isWorkspaceHydrated: boolean;
+  users: PlatformUser[];
+  organizations: Organization[];
+  selectedOrganizationId: string;
+  members: OrganizationMember[];
+  invitations: Invitation[];
+  connectors: MarketplaceConnectorDefinition[];
+  connections: MarketplaceConnection[];
+  syncRuns: SyncRun[];
+  customMetrics: CustomMetric[];
+  actionHistory: ActionRecord[];
+  notifications: NotificationItem[];
+  apiError: string | null;
+  register: (input: { firstName: string; lastName: string; email: string; phone: string; password: string }) => Promise<AuthSession>;
+  login: (input: { email: string; password: string }) => Promise<AuthSession>;
+  logout: () => void;
+  createOrganization: (name: string) => Organization;
+  renameOrganization: (organizationId: string, name: string) => Promise<Organization>;
+  selectOrganization: (organizationId: string) => void;
+  inviteMember: (input: { email: string; role: OrganizationMember['role'] }) => Invitation;
+  acceptInvitation: (token: string) => Promise<void>;
+  updateMemberRole: (input: { memberId: string; role: OrganizationMember['role'] }) => Promise<void>;
+  removeMember: (memberId: string) => Promise<void>;
+  transferOrganizationOwnership: (newOwnerUserId: string) => Promise<void>;
+  revokeInvitation: (invitationId: string) => Promise<void>;
+  connectShop: (input: {
+    marketplace: 'Wildberries' | 'Ozon';
+    displayName: string;
+    credentials: Record<string, string>;
+    startInitialSync: boolean;
+    initialSyncDays: number;
+    initialSyncKinds: string[];
+  }) => MarketplaceConnection;
+  validateConnection: (connectionId: string) => Promise<MarketplaceConnection>;
+  enqueueSync: (input: { connectionId: string; dateFrom: string; dateTo: string; syncKinds: string[] }) => SyncRun | null;
+  retrySync: (syncRunId: string) => SyncRun | null;
+  cancelSync: (syncRunId: string) => SyncRun | null;
+  addCustomMetric: (metric: CustomMetric) => void;
+  updateCustomMetric: (metric: CustomMetric) => void;
+  updateProfile: (input: { firstName: string; lastName: string; email: string; phone: string }) => Promise<PlatformUser>;
+  changePassword: (input: { currentPassword: string; newPassword: string }) => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  resetPassword: (input: { token: string; newPassword: string }) => Promise<void>;
+  deleteCurrentUser: () => Promise<void>;
+  loadSettingsTabData: (tab: 'shops' | 'users' | 'metrics') => Promise<void>;
+  recordAction: (action: Omit<ActionRecord, 'id' | 'timestamp'>) => void;
+  dismissNotification: (id: string) => void;
+  enqueueNotification: (notification: Omit<NotificationItem, 'id' | 'timestamp'>) => void;
+}
+
+const STORAGE_KEY = 'aistats-platform-state';
+const ACTION_HISTORY_STORAGE_KEY = 'aistats-platform-action-history';
+const NOTIFICATION_LIMIT = 4;
+
+const demoUser: PlatformUser = {
+  id: 'user-demo',
+  firstName: 'Anna',
+  lastName: 'Ivanova',
+  email: 'owner@company.com',
+  phone: '+79990000000',
+  status: 'Active',
+};
+
+const initialActionHistory: ActionRecord[] = [
+  {
+    id: 'action-welcome',
+    kind: 'navigation',
+    title: 'Opened workspace',
+    description: 'Loaded the API-first workspace shell.',
+    timestamp: '2026-04-18T09:00:00Z',
+  },
+];
+
+const initialNotifications: NotificationItem[] = [];
+
+const defaultSession: AuthSession | null = null;
+
+const PlatformContext = createContext<PlatformContextValue | null>(null);
+
+function loadStoredSession() {
+  if (typeof window === 'undefined') return defaultSession;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return defaultSession;
+    const parsed = JSON.parse(raw) as Partial<Pick<PlatformContextValue, 'session'>>;
+    return parsed.session ?? defaultSession;
+  } catch {
+    return defaultSession;
+  }
+}
+
+function saveStoredSession(session: AuthSession | null) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ session }));
+}
+
+function loadStoredActionHistory() {
+  if (typeof window === 'undefined') return initialActionHistory;
+  try {
+    const raw = window.localStorage.getItem(ACTION_HISTORY_STORAGE_KEY);
+    if (!raw) return initialActionHistory;
+    const parsed = JSON.parse(raw) as ActionRecord[];
+    return parsed.length > 0 ? parsed : initialActionHistory;
+  } catch {
+    return initialActionHistory;
+  }
+}
+
+function saveStoredActionHistory(actionHistory: ActionRecord[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(ACTION_HISTORY_STORAGE_KEY, JSON.stringify(actionHistory));
+}
+
+function createToken(email: string) {
+  const slug = email.split('@')[0].replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+  return `jwt-${slug || 'token'}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createIsoHoursFromNow(hours: number) {
+  return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+}
+
+function createId(prefix: string) {
+  return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+type ApiUser = {
+  id: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  status?: string | number;
+};
+
+type ApiOrganization = {
+  id: string;
+  name?: string | null;
+  ownerUserId?: string;
+  createdAt?: string;
+};
+
+type ApiMember = {
+  id?: string;
+  userId?: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  status?: string | number;
+  role?: string | number;
+};
+
+type ApiInvitation = {
+  id: string;
+  email?: string | null;
+  role?: string | number;
+  status?: string | number;
+};
+
+type ApiConnector = {
+  marketplace?: string | number;
+  label?: string | null;
+  supportedSyncKinds?: string[] | null;
+  credentialFields?: { key?: string | null; label?: string | null; secret?: boolean }[] | null;
+};
+
+type ApiConnection = {
+  id: string;
+  organizationId?: string;
+  marketplace?: string | number;
+  displayName?: string | null;
+  externalAccountId?: string | null;
+  status?: string | number;
+  latestSyncRun?: ApiSyncRun | null;
+};
+
+type ApiSyncRun = {
+  id: string;
+  marketplaceConnectionId?: string;
+  syncKind?: string | null;
+  dateFrom?: string;
+  dateTo?: string;
+  requestedAt?: string;
+  status?: string | number;
+  error?: string | null;
+  attemptCount?: number;
+  maxAttempts?: number;
+  nextAttemptAt?: string | null;
+  progressPercent?: number;
+  progressMessage?: string | null;
+  startedAt?: string;
+  finishedAt?: string | null;
+  canRetry?: boolean;
+  canCancel?: boolean;
+};
+
+type ApiCustomMetric = {
+  id: number;
+  name?: string | null;
+  formula?: string | null;
+  unitLabel?: string | null;
+  active?: boolean;
+};
+
+type ApiProfileResponse = ApiUser;
+
+function mapUserStatus(value: unknown): PlatformUser['status'] {
+  if (typeof value === 'string') {
+    if (value === 'Active' || value === 'Invited' || value === 'Inactive') return value;
+  }
+
+  switch (value) {
+    case 0:
+      return 'Active';
+    case 1:
+      return 'Invited';
+    default:
+      return 'Inactive';
+  }
+}
+
+function mapRole(value: unknown): OrganizationMember['role'] {
+  if (typeof value === 'string') {
+    if (value === 'Owner' || value === 'Admin' || value === 'Manager') return value;
+  }
+
+  switch (value) {
+    case 0:
+      return 'Owner';
+    case 1:
+      return 'Admin';
+    case 2:
+    default:
+      return 'Manager';
+  }
+}
+
+function mapMarketplace(value: unknown): 'Wildberries' | 'Ozon' {
+  if (value === 'Wildberries' || value === 'Ozon') return value;
+  return value === 1 ? 'Ozon' : 'Wildberries';
+}
+
+function mapConnectionStatus(value: unknown): 'Validated' | 'Needs attention' {
+  if (typeof value === 'string') {
+    if (value === 'Validated') return 'Validated';
+    return 'Needs attention';
+  }
+
+  return value === 1 ? 'Validated' : 'Needs attention';
+}
+
+function mapSyncStatus(value: unknown): SyncRun['status'] {
+  if (typeof value === 'string') {
+    if (value === 'Queued' || value === 'Running' || value === 'Cancelled' || value === 'Succeeded' || value === 'Failed') {
+      return value;
+    }
+  }
+
+  switch (value) {
+    case 0:
+      return 'Queued';
+    case 1:
+      return 'Running';
+    case 2:
+      return 'Cancelled';
+    case 3:
+      return 'Succeeded';
+    default:
+      return 'Failed';
+  }
+}
+
+function mapAuthUser(user: ApiUser): PlatformUser {
+  return {
+    id: String(user.id),
+    firstName: user.firstName ?? '',
+    lastName: user.lastName ?? '',
+    email: user.email ?? '',
+    phone: user.phone ?? '',
+    status: mapUserStatus(user.status),
+  };
+}
+
+function mapOrganization(org: ApiOrganization): Organization {
+  return {
+    id: String(org.id),
+    name: org.name ?? '',
+    ownerUserId: String(org.ownerUserId ?? ''),
+    createdAt: org.createdAt ?? new Date().toISOString(),
+  };
+}
+
+function mapMember(member: ApiMember): OrganizationMember {
+  return {
+    id: String(member.userId ?? member.id ?? createId('member')),
+    firstName: member.firstName ?? '',
+    lastName: member.lastName ?? '',
+    email: member.email ?? '',
+    phone: member.phone ?? '',
+    status: mapUserStatus(member.status),
+    role: mapRole(member.role),
+  };
+}
+
+function mapInvitation(invitation: ApiInvitation): Invitation {
+  return {
+    id: String(invitation.id),
+    email: invitation.email ?? '',
+    role: mapRole(invitation.role),
+    status:
+      typeof invitation.status === 'string'
+        ? (invitation.status as Invitation['status'])
+        : invitation.status === 1
+          ? 'Accepted'
+          : invitation.status === 2
+            ? 'Revoked'
+            : invitation.status === 3
+              ? 'Revoked'
+              : 'Pending',
+  };
+}
+
+function mapConnection(connection: ApiConnection): MarketplaceConnection {
+  return {
+    id: String(connection.id),
+    organizationId: String(connection.organizationId),
+    marketplace: mapMarketplace(connection.marketplace),
+    displayName: connection.displayName ?? '',
+    credentialSummary: connection.externalAccountId ?? 'connected',
+    validationState: mapConnectionStatus(connection.status),
+    latestSyncRunId: connection.latestSyncRun?.id ? String(connection.latestSyncRun.id) : undefined,
+  };
+}
+
+function mapSyncRun(syncRun: ApiSyncRun): SyncRun {
+  return {
+    id: String(syncRun.id),
+    connectionId: String(syncRun.marketplaceConnectionId),
+    status: mapSyncStatus(syncRun.status),
+    dateFrom: syncRun.dateFrom ?? '',
+    dateTo: syncRun.dateTo ?? '',
+    syncKinds: syncRun.syncKind ? [String(syncRun.syncKind)] : [],
+    progressPercent: Number(syncRun.progressPercent ?? 0),
+    progressMessage: syncRun.progressMessage ?? '',
+    error: syncRun.error ?? undefined,
+    canRetry: Boolean(syncRun.canRetry),
+    canCancel: Boolean(syncRun.canCancel),
+    attemptCount: Number(syncRun.attemptCount ?? 0),
+    maxAttempts: Number(syncRun.maxAttempts ?? 0),
+    nextAttemptAt: syncRun.nextAttemptAt ?? undefined,
+    enqueuedAt: syncRun.requestedAt ?? new Date().toISOString(),
+  };
+}
+
+function mapCustomMetric(metric: ApiCustomMetric): CustomMetric {
+  return {
+    id: String(metric.id),
+    name: metric.name ?? '',
+    formula: metric.formula ?? '',
+    unitLabel: metric.unitLabel ?? '',
+    active: Boolean(metric.active),
+  };
+}
+
+export function PlatformProvider({ children }: { children: ReactNode }) {
+  const [session, setSession] = useState<AuthSession | null>(() => loadStoredSession());
+  const [isWorkspaceHydrated, setIsWorkspaceHydrated] = useState(() => loadStoredSession() === null);
+  const [users, setUsers] = useState<PlatformUser[]>([demoUser]);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState('');
+  const [members, setMembers] = useState<OrganizationMember[]>([]);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [connections, setConnections] = useState<MarketplaceConnection[]>([]);
+  const [syncRuns, setSyncRuns] = useState<SyncRun[]>([]);
+  const [customMetrics, setCustomMetrics] = useState<CustomMetric[]>([]);
+  const [actionHistory, setActionHistory] = useState<ActionRecord[]>(() => loadStoredActionHistory());
+  const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [connectors, setConnectors] = useState<MarketplaceConnectorDefinition[]>(CONNECTOR_CATALOG as MarketplaceConnectorDefinition[]);
+
+  const refreshConnectionSyncRuns = useCallback(
+    async (connectionId: string) => {
+      if (!session?.accessToken) return [] as SyncRun[];
+
+      const response = await apiRequest<ApiSyncRun[]>(`/marketplace-connections/${connectionId}/sync-runs`, {
+        token: session.accessToken,
+      });
+      const nextRuns = (response ?? []).map(mapSyncRun);
+
+      setSyncRuns(current => {
+        const remaining = current.filter(run => run.connectionId !== connectionId);
+        return [...nextRuns, ...remaining].sort((left, right) => Date.parse(right.enqueuedAt) - Date.parse(left.enqueuedAt));
+      });
+
+      setConnections(current =>
+        current.map(connection =>
+          connection.id === connectionId
+            ? { ...connection, latestSyncRunId: nextRuns[0]?.id ?? connection.latestSyncRunId }
+            : connection
+        )
+      );
+
+      return nextRuns;
+    },
+    [session?.accessToken]
+  );
+
+  useEffect(() => {
+    saveStoredSession(session);
+  }, [session]);
+
+  useEffect(() => {
+    saveStoredActionHistory(actionHistory);
+  }, [actionHistory]);
+
+  useEffect(() => {
+    if (!session?.accessToken) return;
+
+    let cancelled = false;
+    setIsWorkspaceHydrated(false);
+
+    const bootstrap = async () => {
+      try {
+        const [me, orgs] = await Promise.all([
+          apiRequest<ApiUser>('/auth/me', { token: session.accessToken }),
+          apiRequest<ApiOrganization[]>('/users/me/organizations', { token: session.accessToken }),
+        ]);
+
+        if (cancelled) return;
+
+        setSession(current =>
+          current
+            ? {
+                ...current,
+                user: mapAuthUser(me),
+              }
+            : current
+        );
+
+        const nextOrganizations = (orgs ?? []).map(mapOrganization);
+        setOrganizations(nextOrganizations);
+        setSelectedOrganizationId(nextOrganizations[0]?.id ?? '');
+
+        setApiError(null);
+        setIsWorkspaceHydrated(true);
+      } catch (error) {
+        if (cancelled) return;
+        if (error instanceof ApiError && error.status === 401) {
+          setSession(null);
+          setApiError('Your session expired. Please sign in again.');
+          setIsWorkspaceHydrated(true);
+          return;
+        }
+        setSession(null);
+        setApiError(null);
+        setIsWorkspaceHydrated(true);
+      }
+    };
+
+    void bootstrap();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.accessToken]);
+
+  const recordAction: PlatformContextValue['recordAction'] = action => {
+    const nextAction: ActionRecord = {
+      id: createId('action'),
+      timestamp: new Date().toISOString(),
+      ...action,
+    };
+    setActionHistory(current => [nextAction, ...current].slice(0, 100));
+  };
+
+  const dismissNotification: PlatformContextValue['dismissNotification'] = id => {
+    setNotifications(current => current.filter(notification => notification.id !== id));
+  };
+
+  const enqueueNotification: PlatformContextValue['enqueueNotification'] = notification => {
+    const nextNotification: NotificationItem = {
+      id: createId('note'),
+      timestamp: new Date().toISOString(),
+      ...notification,
+    };
+    setNotifications(current => [nextNotification, ...current].slice(0, NOTIFICATION_LIMIT));
+  };
+
+  const register: PlatformContextValue['register'] = async input => {
+    const optimisticUser: PlatformUser = {
+      id: createId('user'),
+      firstName: input.firstName,
+      lastName: input.lastName,
+      email: input.email,
+      phone: input.phone,
+      status: 'Active',
+    };
+    const optimisticSession: AuthSession = {
+      accessToken: createToken(input.email),
+      tokenType: 'Bearer',
+      expiresAt: createIsoHoursFromNow(6),
+      user: optimisticUser,
+    };
+    setOrganizations([]);
+    setSelectedOrganizationId('');
+    setMembers([]);
+    setInvitations([]);
+    setConnections([]);
+    setSyncRuns([]);
+    setCustomMetrics([]);
+    setConnectors(CONNECTOR_CATALOG as MarketplaceConnectorDefinition[]);
+    setIsWorkspaceHydrated(false);
+    try {
+      const response = await apiRequest<{ accessToken?: string; tokenType?: string; expiresAt?: string; user?: ApiUser }>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      const nextSession: AuthSession = {
+        accessToken: response.accessToken ?? optimisticSession.accessToken,
+        tokenType: response.tokenType ?? 'Bearer',
+        expiresAt: response.expiresAt ?? optimisticSession.expiresAt,
+        user: mapAuthUser(response.user ?? optimisticUser),
+      };
+      setUsers(current => [...current.filter(item => item.email !== nextSession.user.email), nextSession.user]);
+      setSession(nextSession);
+      setIsWorkspaceHydrated(false);
+      enqueueNotification({
+        tone: 'success',
+        title: 'Регистрация завершена',
+        message: `${nextSession.user.email} успешно зарегистрирован.`,
+      });
+      recordAction({
+        kind: 'auth',
+        title: 'Registered account',
+        description: `${nextSession.user.email} registered through the backend API.`,
+      });
+      return nextSession;
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : 'Failed to register.');
+      setIsWorkspaceHydrated(true);
+      throw error;
+    }
+  };
+
+  const login: PlatformContextValue['login'] = async input => {
+    const optimisticUser = users.find(item => item.email.toLowerCase() === input.email.toLowerCase()) ?? demoUser;
+    const optimisticSession: AuthSession = {
+      accessToken: createToken(input.email),
+      tokenType: 'Bearer',
+      expiresAt: createIsoHoursFromNow(6),
+      user: optimisticUser,
+    };
+    setOrganizations([]);
+    setSelectedOrganizationId('');
+    setMembers([]);
+    setInvitations([]);
+    setConnections([]);
+    setSyncRuns([]);
+    setCustomMetrics([]);
+    setConnectors(CONNECTOR_CATALOG as MarketplaceConnectorDefinition[]);
+    setIsWorkspaceHydrated(false);
+    try {
+      const response = await apiRequest<{ accessToken?: string; tokenType?: string; expiresAt?: string; user?: ApiUser }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      const nextSession: AuthSession = {
+        accessToken: response.accessToken ?? optimisticSession.accessToken,
+        tokenType: response.tokenType ?? 'Bearer',
+        expiresAt: response.expiresAt ?? optimisticSession.expiresAt,
+        user: mapAuthUser(response.user ?? optimisticUser),
+      };
+      setSession(nextSession);
+      setIsWorkspaceHydrated(false);
+      enqueueNotification({
+        tone: 'success',
+        title: 'Вход выполнен',
+        message: `${nextSession.user.email} успешно вошел в систему.`,
+      });
+      recordAction({
+        kind: 'auth',
+        title: 'Logged in',
+        description: `${nextSession.user.email} signed in successfully via the backend API.`,
+      });
+      return nextSession;
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : 'Failed to login.');
+      setIsWorkspaceHydrated(true);
+      throw error;
+    }
+  };
+
+  const logout = () => {
+    setSession(null);
+    setIsWorkspaceHydrated(true);
+    setOrganizations([]);
+    setSelectedOrganizationId('');
+    setMembers([]);
+    setInvitations([]);
+    setConnections([]);
+    setSyncRuns([]);
+    setCustomMetrics([]);
+    setConnectors(CONNECTOR_CATALOG as MarketplaceConnectorDefinition[]);
+    enqueueNotification({
+      tone: 'info',
+      title: 'Сессия завершена',
+      message: 'Вы вышли из аккаунта.',
+    });
+    recordAction({
+      kind: 'auth',
+      title: 'Logged out',
+      description: 'Current session was cleared.',
+    });
+  };
+
+  const createOrganization: PlatformContextValue['createOrganization'] = name => {
+    const optimistic: Organization = {
+      id: createId('org'),
+      name,
+      ownerUserId: session?.user.id ?? demoUser.id,
+      createdAt: new Date().toISOString(),
+    };
+    setOrganizations(current => [...current, optimistic]);
+    setSelectedOrganizationId(optimistic.id);
+    void apiRequest<ApiOrganization>('/organizations', {
+      method: 'POST',
+      token: session?.accessToken,
+      body: JSON.stringify({ name }),
+    })
+      .then(response => {
+        const next = mapOrganization(response);
+        setOrganizations(current => [next, ...current.filter(item => item.id !== optimistic.id)]);
+        setSelectedOrganizationId(next.id);
+        enqueueNotification({
+          tone: 'success',
+          title: 'Организация создана',
+          message: `${next.name} добавлена в рабочее пространство.`,
+        });
+        recordAction({
+          kind: 'organization',
+          title: 'Created organization',
+          description: `${next.name} was created through the backend API.`,
+        });
+      })
+      .catch(error => {
+        const message = error instanceof Error ? error.message : 'Failed to create organization.';
+        setApiError(message);
+        enqueueNotification({ tone: 'error', title: 'Не удалось создать организацию', message });
+      });
+    return optimistic;
+  };
+
+  const renameOrganization: PlatformContextValue['renameOrganization'] = async (organizationId, name) => {
+    const response = await apiRequest<ApiOrganization>(`/organizations/${organizationId}`, {
+      method: 'PATCH',
+      token: session?.accessToken,
+      body: JSON.stringify({ name }),
+    });
+    const next = mapOrganization(response);
+    setOrganizations(current => current.map(org => (org.id === organizationId ? next : org)));
+    enqueueNotification({
+      tone: 'success',
+      title: 'Организация сохранена',
+      message: `${next.name} переименована.`,
+    });
+    recordAction({
+      kind: 'organization',
+      title: 'Renamed organization',
+      description: `${next.name} was saved through the backend API.`,
+    });
+    return next;
+  };
+
+  const selectOrganization = (organizationId: string) => {
+    setSelectedOrganizationId(organizationId);
+    const organization = organizations.find(item => item.id === organizationId);
+    recordAction({
+      kind: 'organization',
+      title: 'Selected organization',
+      description: organization ? `Switched to ${organization.name}.` : `Switched to organization ${organizationId}.`,
+    });
+  };
+
+  const inviteMember: PlatformContextValue['inviteMember'] = input => {
+    const optimistic: Invitation = {
+      id: createId('inv'),
+      email: input.email,
+      role: input.role,
+      status: 'Pending',
+    };
+    setInvitations(current => [optimistic, ...current]);
+    void apiRequest<ApiInvitation>(`/organizations/${selectedOrganizationId}/invitations`, {
+      method: 'POST',
+      token: session?.accessToken,
+      body: JSON.stringify(input),
+    })
+      .then(response => {
+        const next = mapInvitation(response);
+        setInvitations(current => [next, ...current.filter(item => item.id !== optimistic.id)]);
+        enqueueNotification({
+          tone: 'success',
+          title: 'Приглашение отправлено',
+          message: `${next.email} приглашен(а) с ролью ${next.role}.`,
+        });
+        recordAction({
+          kind: 'invitation',
+          title: 'Invited member',
+          description: `${next.email} invited with ${next.role} role through the backend API.`,
+        });
+      })
+      .catch(error => {
+        const message = error instanceof Error ? error.message : 'Failed to invite member.';
+        setApiError(message);
+        enqueueNotification({ tone: 'error', title: 'Не удалось отправить приглашение', message });
+      });
+    return optimistic;
+  };
+
+  const acceptInvitation: PlatformContextValue['acceptInvitation'] = async token => {
+    await apiRequest<void>('/invitations/accept', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+    enqueueNotification({
+      tone: 'success',
+      title: 'Приглашение принято',
+      message: 'Вы вошли в организацию по токену приглашения.',
+    });
+    recordAction({
+      kind: 'invitation',
+      title: 'Accepted invitation',
+      description: `Invitation token ${token} was accepted through the backend API.`,
+    });
+  };
+
+  const updateMemberRole: PlatformContextValue['updateMemberRole'] = async input => {
+    await apiRequest<void>(`/organizations/${selectedOrganizationId}/members/${input.memberId}/role`, {
+      method: 'PATCH',
+      token: session?.accessToken,
+      body: JSON.stringify({ role: input.role }),
+    });
+    setMembers(current =>
+      current.map(member => (member.id === input.memberId ? { ...member, role: input.role } : member))
+    );
+    enqueueNotification({
+      tone: 'success',
+      title: 'Роль обновлена',
+      message: `Участнику ${input.memberId} назначена роль ${input.role}.`,
+    });
+    recordAction({
+      kind: 'organization',
+      title: 'Updated member role',
+      description: `Member ${input.memberId} now has ${input.role} role.`,
+    });
+  };
+
+  const removeMember: PlatformContextValue['removeMember'] = async memberId => {
+    await apiRequest<void>(`/organizations/${selectedOrganizationId}/members/${memberId}`, {
+      method: 'DELETE',
+      token: session?.accessToken,
+    });
+    setMembers(current => current.filter(member => member.id !== memberId));
+    enqueueNotification({
+      tone: 'success',
+      title: 'Участник удален',
+      message: `Участник ${memberId} удален из организации.`,
+    });
+    recordAction({
+      kind: 'organization',
+      title: 'Removed member',
+      description: `Member ${memberId} was removed from the organization.`,
+    });
+  };
+
+  const transferOrganizationOwnership: PlatformContextValue['transferOrganizationOwnership'] = async newOwnerUserId => {
+    await apiRequest<void>(`/organizations/${selectedOrganizationId}/transfer-ownership`, {
+      method: 'POST',
+      token: session?.accessToken,
+      body: JSON.stringify({ newOwnerUserId }),
+    });
+    setOrganizations(current =>
+      current.map(org =>
+        org.id === selectedOrganizationId ? { ...org, ownerUserId: newOwnerUserId } : org
+      )
+    );
+    setMembers(current =>
+      current.map(member =>
+        member.id === newOwnerUserId
+          ? { ...member, role: 'Owner' }
+          : member.role === 'Owner'
+            ? { ...member, role: 'Admin' }
+            : member
+      )
+    );
+    enqueueNotification({
+      tone: 'success',
+      title: 'Владение передано',
+      message: `Новый владелец: ${newOwnerUserId}.`,
+    });
+    recordAction({
+      kind: 'organization',
+      title: 'Transferred ownership',
+      description: `Organization ownership moved to ${newOwnerUserId}.`,
+    });
+  };
+
+  const revokeInvitation: PlatformContextValue['revokeInvitation'] = async invitationId => {
+    await apiRequest<void>(`/invitations/${invitationId}/revoke`, {
+      method: 'POST',
+      token: session?.accessToken,
+    });
+    setInvitations(current => current.filter(invitation => invitation.id !== invitationId));
+    enqueueNotification({
+      tone: 'info',
+      title: 'Приглашение отозвано',
+      message: `Приглашение ${invitationId} отозвано.`,
+    });
+    recordAction({
+      kind: 'invitation',
+      title: 'Revoked invitation',
+      description: `Invitation ${invitationId} was revoked through the backend API.`,
+    });
+  };
+
+  const connectShop: PlatformContextValue['connectShop'] = input => {
+    const optimisticConnection: MarketplaceConnection = {
+      id: createId('conn'),
+      organizationId: selectedOrganizationId,
+      marketplace: input.marketplace,
+      displayName: input.displayName,
+      credentialSummary: Object.keys(input.credentials).join(', '),
+      validationState: 'Validated',
+    };
+    setConnections(current => [optimisticConnection, ...current]);
+    void apiRequest<{ connection: ApiConnection; validation: unknown; initialSync?: { syncRunIds?: string[]; enqueuedAt: string } }>('/marketplace-connections/connect-shop', {
+      method: 'POST',
+      token: session?.accessToken,
+      body: JSON.stringify({
+        organizationId: selectedOrganizationId,
+        marketplace: input.marketplace,
+        displayName: input.displayName,
+        credentials: input.credentials,
+        startInitialSync: input.startInitialSync,
+        initialSyncDays: input.initialSyncDays,
+        initialSyncKinds: input.initialSyncKinds,
+      }),
+    })
+      .then(response => {
+        const nextConnection = mapConnection(response.connection);
+        setConnections(current => [nextConnection, ...current.filter(item => item.id !== optimisticConnection.id)]);
+        void refreshConnectionSyncRuns(nextConnection.id).catch(() => {});
+        recordAction({
+          kind: 'connection',
+          title: 'Connected marketplace shop',
+          description: `${nextConnection.marketplace} shop ${nextConnection.displayName} was connected through the backend API.`,
+        });
+      })
+      .catch(error => setApiError(error instanceof Error ? error.message : 'Failed to connect shop.'));
+    return optimisticConnection;
+  };
+
+  const validateConnection = async (connectionId: string) => {
+    const response = await apiRequest<ApiConnection>(`/marketplace-connections/${connectionId}/validate`, {
+      method: 'POST',
+      token: session?.accessToken,
+    });
+    const nextConnection = mapConnection(response);
+    setConnections(current => current.map(connection => (connection.id === nextConnection.id ? nextConnection : connection)));
+    recordAction({
+      kind: 'connection',
+      title: 'Validated connection',
+      description: `${nextConnection.displayName} validation was refreshed through the backend API.`,
+    });
+    return nextConnection;
+  };
+
+  const enqueueSync: PlatformContextValue['enqueueSync'] = input => {
+    void apiRequest<{ syncRunIds?: string[]; enqueuedAt?: string }>(`/marketplace-connections/${input.connectionId}/sync`, {
+      method: 'POST',
+      token: session?.accessToken,
+      body: JSON.stringify(input),
+    })
+      .then(() => {
+        void refreshConnectionSyncRuns(input.connectionId).catch(() => {});
+        recordAction({
+          kind: 'sync',
+          title: 'Enqueued sync',
+          description: `${input.syncKinds.join(', ')} sync queued for ${input.dateFrom} → ${input.dateTo} through the backend API.`,
+        });
+      })
+      .catch(error => setApiError(error instanceof Error ? error.message : 'Failed to enqueue sync.'));
+    return null;
+  };
+
+  const retrySync: PlatformContextValue['retrySync'] = syncRunId => {
+    const source = syncRuns.find(run => run.id === syncRunId);
+    if (!source) return null;
+    void apiRequest<{ syncRunIds?: string[]; enqueuedAt?: string }>(`/marketplace-sync-runs/${syncRunId}/retry`, {
+      method: 'POST',
+      token: session?.accessToken,
+    })
+      .then(() => {
+        void refreshConnectionSyncRuns(source.connectionId).catch(() => {});
+        recordAction({
+          kind: 'sync',
+          title: 'Retried sync',
+          description: `Sync ${syncRunId} was retried through the backend API.`,
+        });
+      })
+      .catch(error => setApiError(error instanceof Error ? error.message : 'Failed to retry sync.'));
+    return source;
+  };
+
+  const cancelSync: PlatformContextValue['cancelSync'] = syncRunId => {
+    const source = syncRuns.find(run => run.id === syncRunId);
+    void apiRequest<ApiSyncRun>(`/marketplace-sync-runs/${syncRunId}/cancel`, {
+      method: 'POST',
+      token: session?.accessToken,
+    })
+      .then(() => {
+        if (source) {
+          void refreshConnectionSyncRuns(source.connectionId).catch(() => {});
+        }
+        recordAction({
+          kind: 'sync',
+          title: 'Cancelled sync',
+          description: `Sync ${syncRunId} was cancelled through the backend API.`,
+        });
+      })
+      .catch(error => setApiError(error instanceof Error ? error.message : 'Failed to cancel sync.'));
+    return source ?? null;
+  };
+
+  const addCustomMetric = (metric: CustomMetric) => {
+    setCustomMetrics(current => [metric, ...current.filter(item => item.id !== metric.id)]);
+    void apiRequest<ApiCustomMetric>('/config/custom-metrics', {
+      method: 'POST',
+      token: session?.accessToken,
+      body: JSON.stringify({
+        name: metric.name,
+        formula: metric.formula,
+        unit: 0,
+        unitLabel: metric.unitLabel,
+        active: metric.active,
+      }),
+    }).catch(error => setApiError(error instanceof Error ? error.message : 'Failed to save custom metric.'));
+  };
+
+  const updateCustomMetric = addCustomMetric;
+
+  const updateProfile: PlatformContextValue['updateProfile'] = async input => {
+    const response = await apiRequest<ApiProfileResponse>('/users/me', {
+      method: 'PUT',
+      token: session?.accessToken,
+      body: JSON.stringify(input),
+    });
+    const nextUser = mapAuthUser(response);
+    setSession(current =>
+      current
+        ? {
+            ...current,
+            user: nextUser,
+          }
+        : current
+    );
+    setUsers(current => [nextUser, ...current.filter(item => item.id !== nextUser.id && item.email !== nextUser.email)]);
+    recordAction({
+      kind: 'auth',
+      title: 'Updated profile',
+      description: `${nextUser.email} profile updated through the backend API.`,
+    });
+    return nextUser;
+  };
+
+  const changePassword: PlatformContextValue['changePassword'] = async input => {
+    await apiRequest<void>('/users/me/change-password', {
+      method: 'POST',
+      token: session?.accessToken,
+      body: JSON.stringify(input),
+    });
+    recordAction({
+      kind: 'auth',
+      title: 'Changed password',
+      description: 'Current account password was updated through the backend API.',
+    });
+  };
+
+  const requestPasswordReset: PlatformContextValue['requestPasswordReset'] = async email => {
+    await apiRequest<void>('/users/request-password-reset', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+    recordAction({
+      kind: 'auth',
+      title: 'Requested password reset',
+      description: `Password reset requested for ${email}.`,
+    });
+  };
+
+  const resetPassword: PlatformContextValue['resetPassword'] = async input => {
+    await apiRequest<void>('/users/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    recordAction({
+      kind: 'auth',
+      title: 'Reset password',
+      description: 'Password was reset using a recovery token.',
+    });
+  };
+
+  const loadSettingsTabData = useCallback<PlatformContextValue['loadSettingsTabData']>(async tab => {
+    if (!session?.accessToken || !selectedOrganizationId) return;
+
+    try {
+      if (tab === 'shops') {
+        const [connectionsResponse, connectorCatalog] = await Promise.all([
+          apiRequest<ApiConnection[]>(`/organizations/${selectedOrganizationId}/marketplace-connections`, { token: session.accessToken }),
+          apiRequest<ApiConnector[]>('/marketplaces/connectors', { token: session.accessToken }),
+        ]);
+
+        const mappedConnections = (connectionsResponse ?? []).map(mapConnection);
+        setConnections(mappedConnections);
+        setConnectors(
+          (connectorCatalog ?? []).map((connector: ApiConnector) => ({
+            marketplace: mapMarketplace(connector.marketplace),
+            label: connector.label ?? mapMarketplace(connector.marketplace),
+            supportedSyncKinds: connector.supportedSyncKinds ?? [],
+            credentialFields: (connector.credentialFields ?? []).map(field => ({
+              key: String(field.key),
+              label: field.label ?? String(field.key),
+              secret: Boolean(field.secret),
+            })),
+          }))
+        );
+
+        const nextSyncRuns = await Promise.all(
+          mappedConnections.map(connection => refreshConnectionSyncRuns(connection.id).catch(() => [] as SyncRun[]))
+        );
+        setSyncRuns(nextSyncRuns.flat());
+      }
+
+      if (tab === 'users') {
+        const [membersResponse, invitationsResponse] = await Promise.all([
+          apiRequest<ApiMember[]>(`/organizations/${selectedOrganizationId}/members`, { token: session.accessToken }),
+          apiRequest<ApiInvitation[]>(`/organizations/${selectedOrganizationId}/invitations`, { token: session.accessToken }),
+        ]);
+
+        setMembers((membersResponse ?? []).map(mapMember));
+        setInvitations((invitationsResponse ?? []).map(mapInvitation));
+      }
+
+      if (tab === 'metrics') {
+        const metricCatalog = await apiRequest<ApiCustomMetric[]>('/config/custom-metrics', { token: session.accessToken });
+        setCustomMetrics((metricCatalog ?? []).map(mapCustomMetric));
+      }
+
+      setApiError(null);
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : 'Failed to load requested settings data.');
+      throw error;
+    }
+  }, [session?.accessToken, selectedOrganizationId, refreshConnectionSyncRuns]);
+
+  const deleteCurrentUser: PlatformContextValue['deleteCurrentUser'] = async () => {
+    await apiRequest<void>('/users/me', {
+      method: 'DELETE',
+      token: session?.accessToken,
+    });
+    setSession(null);
+    setIsWorkspaceHydrated(true);
+    setUsers([]);
+    setOrganizations([]);
+    setSelectedOrganizationId('');
+    setMembers([]);
+    setInvitations([]);
+    setConnections([]);
+    setSyncRuns([]);
+    setCustomMetrics([]);
+    setConnectors(CONNECTOR_CATALOG as MarketplaceConnectorDefinition[]);
+    recordAction({
+      kind: 'auth',
+      title: 'Deleted account',
+      description: 'Current user account was deleted through the backend API.',
+    });
+  };
+
+  const value: PlatformContextValue = {
+    session,
+    isWorkspaceHydrated,
+    users,
+    organizations,
+    selectedOrganizationId,
+    members,
+    invitations,
+    connectors,
+    connections,
+    syncRuns,
+    customMetrics,
+    actionHistory,
+    notifications,
+    apiError,
+    register,
+    login,
+    logout,
+    createOrganization,
+    renameOrganization,
+    selectOrganization,
+    inviteMember,
+    acceptInvitation,
+    updateMemberRole,
+    removeMember,
+    transferOrganizationOwnership,
+    revokeInvitation,
+    connectShop,
+    validateConnection,
+    enqueueSync,
+    retrySync,
+    cancelSync,
+    addCustomMetric,
+    updateCustomMetric,
+    updateProfile,
+    changePassword,
+    requestPasswordReset,
+    resetPassword,
+    deleteCurrentUser,
+    loadSettingsTabData,
+    recordAction,
+    dismissNotification,
+    enqueueNotification,
+  };
+
+  return <PlatformContext.Provider value={value}>{children}</PlatformContext.Provider>;
+}
+
+export function usePlatform() {
+  const context = useContext(PlatformContext);
+  if (!context) throw new Error('usePlatform must be used within PlatformProvider');
+  return context;
+}

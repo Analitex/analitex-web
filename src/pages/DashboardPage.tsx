@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFilters } from '../context/FilterContext';
 import { useReportMode } from '../context/ReportModeContext';
+import { usePlatform } from '../context/PlatformContext';
 import { useSalesData } from '../hooks/useSalesData';
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics';
 import { useInventoryData } from '../hooks/useInventoryData';
+import { useAnalyticsWorkspaceData } from '../hooks/useAnalyticsWorkspaceData';
 import { MetricCard } from '../components/dashboard/MetricCard';
 import { formatCurrency, formatNumber, sumRecords } from '../lib/calculations';
-import { Activity, ArrowDownWideNarrow, ArrowUpWideNarrow, Check, ChevronDown, ChevronLeft, ChevronRight, GripVertical, Info, Search, Settings2, TrendingUp, X } from 'lucide-react';
+import { apiRequest } from '../lib/api';
+import { Activity, ArrowDownWideNarrow, ArrowUpWideNarrow, ChevronDown, ChevronLeft, ChevronRight, GripVertical, Info, Search, Settings2, TrendingUp, X } from 'lucide-react';
 import type { DashboardMetrics, Product, SalesRecord } from '../types';
+import { PRODUCT_REPORT_METRICS_CATALOG } from '../lib/platformCatalog';
 
 const WIDGET_PROFILES_STORAGE_KEY = 'dashboard-widget-profiles';
 const DEFAULT_WIDGET_PROFILE_ID = 'default-profile';
@@ -122,6 +126,23 @@ interface RevenueStructureRow {
   color: string;
 }
 
+type ProductReportingOverviewResponse = {
+  summary?: Record<string, unknown> | null;
+  topProducts?: Array<{
+    dimension?: {
+      productName?: string | null;
+      vendorCode?: string | null;
+      marketplaceArticle?: string | null;
+      brand?: string | null;
+      category?: string | null;
+      accountName?: string | null;
+      marketplace?: string | null;
+    } | null;
+    metrics?: Record<string, number | null> | null;
+  }> | null;
+  meta?: { updatedAt?: string | null; isPartial?: boolean | null } | null;
+};
+
 const TOP_MARGIN_OPTIONS = [10, 50, 100] as const;
 const ANALYTICS_TABLE_SETTINGS_KEY = 'dashboard-analytics-table-settings';
 const FINANCIAL_TOTAL_PAID_WIDGET_ID = 'metric-total-paid';
@@ -151,8 +172,6 @@ interface FloatingMenuPosition {
   top: number;
   left: number;
 }
-
-type ReportMode = 'management' | 'financial';
 
 interface AnalyticsTableRow {
   id: string;
@@ -316,8 +335,10 @@ const ANALYTICS_COLUMNS: AnalyticsColumnDefinition[] = [
 export function DashboardPage() {
   const { filters } = useFilters();
   const { reportMode } = useReportMode();
+  const { session } = usePlatform();
   const { records, prevRecords, products, loading } = useSalesData(filters);
   const { totalValue, avgTurnover } = useInventoryData(filters, products);
+  const analytics = useAnalyticsWorkspaceData();
   const metrics = useDashboardMetrics(records, prevRecords, totalValue, avgTurnover);
   const [isWidgetModalOpen, setIsWidgetModalOpen] = useState(false);
   const [isCreateMetricModalOpen, setIsCreateMetricModalOpen] = useState(false);
@@ -343,6 +364,9 @@ export function DashboardPage() {
       return [];
     }
   });
+  const [productReporting, setProductReporting] = useState<ProductReportingOverviewResponse | null>(null);
+  const [productReportingLoading, setProductReportingLoading] = useState(false);
+  const [productReportingError, setProductReportingError] = useState<string | null>(null);
 
   const totalSalesCount = useMemo(() => records.reduce((s, r) => s + r.sales, 0), [records]);
   const revenueCurrent = metrics.revenue.current;
@@ -350,10 +374,68 @@ export function DashboardPage() {
     () => buildWidgetDocuments(records, revenueCurrent),
     [records, revenueCurrent]
   );
+  const productReportingRequest = useMemo(
+    () => ({
+      dateFrom: filters.dateStart,
+      dateTo: filters.dateEnd,
+      mode: reportMode === 'financial' ? 'Financial' : 'Management',
+      accountIds: analytics.accountIds,
+      filters: {
+        productIds: filters.sku,
+        brandIds: filters.brand,
+        categoryIds: filters.category,
+      },
+      summaryMetrics: [...PRODUCT_REPORT_METRICS_CATALOG].slice(0, 5),
+      topProductMetrics: [...PRODUCT_REPORT_METRICS_CATALOG].slice(0, 4),
+      topProductsSortMetric: 'sales',
+      topProductsSortDirection: 'Desc',
+      topProductsLimit: 5,
+    }),
+    [analytics.accountIds, filters.brand, filters.category, filters.dateEnd, filters.dateStart, filters.sku, reportMode]
+  );
   const formulaMetricValues = useMemo(
     () => buildFormulaMetricValues(metrics, records, prevRecords, totalValue),
     [metrics, records, prevRecords, totalValue]
   );
+
+  useEffect(() => {
+    if (!session?.accessToken || analytics.accountIds.length === 0) {
+      setProductReporting(null);
+      setProductReportingLoading(false);
+      setProductReportingError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadProductReporting = async () => {
+      setProductReportingLoading(true);
+      try {
+        const response = await apiRequest<ProductReportingOverviewResponse>('/reporting/products/overview', {
+          method: 'POST',
+          token: session.accessToken,
+          body: JSON.stringify(productReportingRequest),
+        });
+
+        if (cancelled) return;
+
+        setProductReporting(response);
+        setProductReportingError(null);
+      } catch (error) {
+        if (cancelled) return;
+        setProductReporting(null);
+        setProductReportingError(error instanceof Error ? error.message : 'Не удалось загрузить товарный отчет.');
+      } finally {
+        if (!cancelled) setProductReportingLoading(false);
+      }
+    };
+
+    void loadProductReporting();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [analytics.accountIds.length, productReportingRequest, session?.accessToken]);
 
   const widgetDefs = useMemo<WidgetDefinition[]>(() => [
     {
@@ -655,26 +737,6 @@ export function DashboardPage() {
     };
   }, [isProfileMenuOpen]);
 
-  useEffect(() => {
-    if (!isWidgetModalOpen && !isCreateMetricModalOpen) return;
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-
-      if (isCreateMetricModalOpen) {
-        closeCreateMetricModal();
-        return;
-      }
-
-      if (isWidgetModalOpen) {
-        closeWidgetModal();
-      }
-    };
-
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isWidgetModalOpen, isCreateMetricModalOpen]);
-
   const orderedSelectedWidgetIds = selectedWidgetIds.filter(id =>
     availableWidgetDefs.some(widget => widget.id === id)
   );
@@ -697,8 +759,6 @@ export function DashboardPage() {
     () => buildRevenueStructureItems(records, products),
     [records, products]
   );
-  const showCostBreakdown = selectedWidgetIds.includes('detail-cost-breakdown');
-  const showUnitEconomics = selectedWidgetIds.includes('detail-unit-economics');
   const orderedWidgetDefs = orderWidgetDefinitions(availableWidgetDefs, draftWidgetIds);
   const filteredWidgetDefs = orderedWidgetDefs.filter(widget => {
     const search = widgetSearch.trim().toLowerCase();
@@ -706,15 +766,15 @@ export function DashboardPage() {
     return `${widget.title} ${widget.description}`.toLowerCase().includes(search);
   });
 
-  const openWidgetModal = () => {
+  const openWidgetModal = useCallback(() => {
     setDraftWidgetIds(selectedWidgetIds);
     setSelectedProfileId(DEFAULT_WIDGET_PROFILE_ID);
     setWidgetSearch('');
     setProfileName('');
     setIsWidgetModalOpen(true);
-  };
+  }, [selectedWidgetIds]);
 
-  const closeWidgetModal = () => {
+  const closeWidgetModal = useCallback(() => {
     setIsWidgetModalOpen(false);
     setIsProfileMenuOpen(false);
     setDraggedWidgetId(null);
@@ -723,16 +783,36 @@ export function DashboardPage() {
     setProfileName('');
     setSelectedProfileId(DEFAULT_WIDGET_PROFILE_ID);
     setDraftWidgetIds(selectedWidgetIds);
-  };
+  }, [selectedWidgetIds]);
 
-  const closeCreateMetricModal = () => {
+  const closeCreateMetricModal = useCallback(() => {
     setIsCreateMetricModalOpen(false);
     setEditingCustomMetricId(null);
     setMetricName('');
     setMetricFormula('');
     setMetricGrowthColor('');
     setMetricUnit('');
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!isWidgetModalOpen && !isCreateMetricModalOpen) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+
+      if (isCreateMetricModalOpen) {
+        closeCreateMetricModal();
+        return;
+      }
+
+      if (isWidgetModalOpen) {
+        closeWidgetModal();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [closeCreateMetricModal, closeWidgetModal, isWidgetModalOpen, isCreateMetricModalOpen]);
 
   const editCustomMetric = (customMetricId: string) => {
     const customMetric = customMetrics.find(metric => metric.id === customMetricId);
@@ -838,6 +918,93 @@ export function DashboardPage() {
           <h1 className="text-xl font-bold text-slate-900">Оцифровка
             <span className="text-sm font-medium text-slate-500"> {totalSalesCount.toLocaleString('ru-RU')} продаж</span>
           </h1>
+        </div>
+      </div>
+
+      <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-slate-900">Live API snapshot</div>
+            <p className="mt-1 text-sm text-slate-500">Backend summary for the selected period and active organization.</p>
+          </div>
+          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            {analytics.accountIds.length > 0 ? `${analytics.accountIds.length} accounts` : 'No accounts'}
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {[
+            { label: 'Sales', value: analytics.summary?.metrics?.sales ?? 0 },
+            { label: 'Commission', value: analytics.summary?.metrics?.commission ?? 0 },
+            { label: 'Logistics', value: analytics.summary?.metrics?.logistics ?? 0 },
+            { label: 'Orders', value: analytics.summary?.metrics?.ordersCount ?? 0 },
+            { label: 'Stock', value: analytics.summary?.metrics?.stockBalance ?? 0 },
+          ].map(item => (
+            <div key={item.label} className="rounded-2xl bg-slate-50 p-4">
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{item.label}</div>
+              <div className="mt-2 text-2xl font-semibold text-slate-950">
+                {Number(item.value || 0).toLocaleString('ru-RU')}
+              </div>
+            </div>
+          ))}
+        </div>
+        {analytics.error && (
+          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {analytics.error}
+          </div>
+        )}
+      </div>
+
+      <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-slate-900">Product reporting overview</div>
+            <p className="mt-1 text-sm text-slate-500">POST /api/v1/reporting/products/overview</p>
+          </div>
+          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            {productReportingLoading ? 'Loading' : productReporting?.meta?.isPartial ? 'Partial data' : 'Ready'}
+          </div>
+        </div>
+        {productReportingError && (
+          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {productReportingError}
+          </div>
+        )}
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {(productReporting?.summary ? Object.entries(productReporting.summary).slice(0, 5) : PRODUCT_REPORT_METRICS_CATALOG.slice(0, 5).map(metric => [metric, 0] as const)).map(([label, value]) => (
+            <div key={label} className="rounded-2xl bg-slate-50 p-4">
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</div>
+              <div className="mt-2 text-2xl font-semibold text-slate-950">
+                {Number(value ?? 0).toLocaleString('ru-RU')}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 grid gap-3">
+          {(productReporting?.topProducts ?? []).length > 0 ? productReporting.topProducts!.slice(0, 5).map((item, index) => (
+            <div key={`${item.dimension?.marketplaceArticle ?? item.dimension?.productName ?? index}`} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+              <div className="min-w-0">
+                <div className="font-medium text-slate-900">
+                  {item.dimension?.productName ?? item.dimension?.marketplaceArticle ?? `Товар ${index + 1}`}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {[item.dimension?.vendorCode, item.dimension?.brand, item.dimension?.marketplace, item.dimension?.accountName]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                {Object.entries(item.metrics ?? {}).slice(0, 3).map(([metric, value]) => (
+                  <span key={metric} className="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-700 shadow-sm">
+                    {metric}: {Number(value ?? 0).toLocaleString('ru-RU')}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )) : (
+            <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-400">
+              Товарные данные появятся после ответа backend.
+            </div>
+          )}
         </div>
       </div>
 
@@ -3546,66 +3713,4 @@ function formatCurrencyDetailed(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
-}
-
-function CostBreakdown({ metrics }: { metrics: ReturnType<typeof useDashboardMetrics> }) {
-  const items = [
-    { label: 'Логистика', value: metrics.logisticsCost.current, color: '#3b82f6' },
-    { label: 'Реклама', value: metrics.adsSpend.current, color: '#f59e0b' },
-    { label: 'Комиссия', value: metrics.commission.current, color: '#8b5cf6' },
-    { label: 'Хранение', value: metrics.storageCost.current, color: '#10b981' },
-    { label: 'Налоги', value: metrics.taxes.current, color: '#ef4444' },
-  ];
-  const total = items.reduce((s, i) => s + i.value, 0);
-
-  return (
-    <div className="space-y-3">
-      {items.map(item => {
-        const pct = total > 0 ? (item.value / total) * 100 : 0;
-        return (
-          <div key={item.label}>
-            <div className="flex items-center justify-between text-sm mb-1">
-              <span className="text-slate-600">{item.label}</span>
-              <span className="font-medium text-slate-800">{pct.toFixed(1)}%</span>
-            </div>
-            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${pct}%`, backgroundColor: item.color }}
-              />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function UnitEconomics({ metrics, records }: { metrics: ReturnType<typeof useDashboardMetrics>; records: SalesRecord[] }) {
-  const totalSales = records.reduce((s, r) => s + r.sales, 0);
-  const totalRevenue = metrics.revenue.current;
-  const totalProfit = metrics.profit.current;
-  const totalCosts = totalRevenue - totalProfit;
-
-  const items = [
-    { label: 'Выручка на ед', value: totalSales > 0 ? totalRevenue / totalSales : 0, format: formatCurrency, isGood: true },
-    { label: 'Себестоимость на ед', value: totalSales > 0 ? totalCosts / totalSales : 0, format: formatCurrency, isGood: false },
-    { label: 'Прибыль на ед', value: metrics.profitPerUnit.current, format: formatCurrency, isGood: true },
-    { label: 'Маржа', value: totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0, format: (v: number) => `${v.toFixed(1)}%`, isGood: true },
-    { label: 'ROI', value: metrics.roi.current, format: (v: number) => `${v.toFixed(1)}%`, isGood: true },
-    { label: '% Выкупа', value: metrics.buyoutRate.current, format: (v: number) => `${v.toFixed(1)}%`, isGood: true },
-  ];
-
-  return (
-    <div className="grid grid-cols-3 gap-4">
-      {items.map(item => (
-        <div key={item.label} className="bg-slate-50 rounded-lg p-3">
-          <div className="text-xs text-slate-500 mb-1">{item.label}</div>
-          <div className={`text-lg font-bold ${item.isGood ? 'text-slate-900' : 'text-red-600'}`}>
-            {item.format(item.value)}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
 }

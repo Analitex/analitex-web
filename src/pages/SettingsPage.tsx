@@ -1,15 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ChevronRight,
   LogOut,
+  Loader2,
   PencilLine,
+  Plus,
   ShieldAlert,
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
+import { usePlatform, type OrganizationMember, type SyncRun } from '../context/PlatformContext';
+import { apiRequest } from '../lib/api';
 import { SETTINGS_TABS, type SettingsTabId } from './settingsConfig';
 
-const CUSTOM_METRICS_STORAGE_KEY = 'dashboard-custom-metrics';
 type TaxModeId = 'usn-income' | 'usn-income-expense-fixed-vat' | 'usn-income-expense-vat-22' | 'ip-osno' | 'ooo-osno';
 
 interface ProfileState {
@@ -30,16 +33,6 @@ interface Shop {
   syncedAt: string;
 }
 
-interface OrganizationUser {
-  id: string;
-  name: string;
-  role: string;
-  email: string;
-  phone: string;
-  access: string;
-  status: string;
-}
-
 interface QuarterConfig {
   taxRate: string;
   vatRate: string;
@@ -56,9 +49,29 @@ interface CustomMetric {
   id: string;
   name: string;
   formula: string;
-  growthColor: string;
-  unit: string;
+  unitLabel: string;
+  active: boolean;
 }
+
+type SyncRunApiResponse = {
+  id: string;
+  marketplaceConnectionId: string;
+  syncKind?: string | null;
+  dateFrom: string;
+  dateTo: string;
+  requestedAt: string;
+  status: string | number;
+  error?: string | null;
+  attemptCount: number;
+  maxAttempts: number;
+  nextAttemptAt?: string | null;
+  progressPercent: number;
+  progressMessage?: string | null;
+  startedAt: string;
+  finishedAt?: string | null;
+  canRetry: boolean;
+  canCancel: boolean;
+};
 
 const TAX_MODES = [
   { id: 'usn-income', label: 'УСН "Доходы"', rateLabel: 'УСН', supportsVat: false, supportsCostExpense: false },
@@ -114,36 +127,6 @@ const SHOPS: Shop[] = [
   },
 ];
 
-const ORGANIZATION_USERS: OrganizationUser[] = [
-  {
-    id: 'user-1',
-    name: 'Алина Иванова',
-    role: 'Owner',
-    email: 'alina@analyticspro.ru',
-    phone: '+7 (999) 123-45-67',
-    access: 'Все магазины и настройки',
-    status: 'Активен',
-  },
-  {
-    id: 'user-2',
-    name: 'Михаил Корнеев',
-    role: 'Finance manager',
-    email: 'finance@analyticspro.ru',
-    phone: '+7 (912) 800-14-11',
-    access: 'Финансы, налоги, отчеты',
-    status: 'Активен',
-  },
-  {
-    id: 'user-3',
-    name: 'Екатерина Смирнова',
-    role: 'Marketplace manager',
-    email: 'ops@analyticspro.ru',
-    phone: '+7 (903) 700-20-10',
-    access: 'Магазины, метрики, дашборд',
-    status: 'Приглашение отправлено',
-  },
-];
-
 const MONTH_LABELS = [
   ['Январь', 'Февраль', 'Март'],
   ['Апрель', 'Май', 'Июнь'],
@@ -171,17 +154,59 @@ function createDefaultTaxConfig(): TaxConfig {
   };
 }
 
+function getSyncProgressColor(status: SyncRun['status']) {
+  switch (status) {
+    case 'Succeeded':
+      return 'bg-emerald-500';
+    case 'Running':
+      return 'bg-blue-600';
+    case 'Queued':
+      return 'bg-amber-500';
+    case 'Cancelled':
+      return 'bg-slate-400';
+    case 'Failed':
+    default:
+      return 'bg-rose-500';
+  }
+}
+
 interface SettingsPageProps {
   activeTab: SettingsTabId;
   onTabChange: (tab: SettingsTabId) => void;
 }
 
 export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
-  const [profile, setProfile] = useState(DEFAULT_PROFILE);
+  const {
+    session,
+    customMetrics,
+    loadSettingsTabData,
+    logout,
+    updateProfile,
+    changePassword,
+    requestPasswordReset,
+    deleteCurrentUser,
+    apiError,
+  } = usePlatform();
+  const [profile, setProfile] = useState<ProfileState>(() => ({
+    ...DEFAULT_PROFILE,
+    name: session?.user.firstName || DEFAULT_PROFILE.name,
+    surname: session?.user.lastName || DEFAULT_PROFILE.surname,
+    email: session?.user.email || DEFAULT_PROFILE.email,
+    phone: session?.user.phone || DEFAULT_PROFILE.phone,
+  }));
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileNotice, setProfileNotice] = useState<string | null>(null);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordNotice, setPasswordNotice] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<number>(TAX_YEARS[0]);
   const [selectedShopId, setSelectedShopId] = useState<string>(SHOPS[0].id);
-  const [customMetrics, setCustomMetrics] = useState<CustomMetric[]>([]);
+  const [settingsTabLoading, setSettingsTabLoading] = useState<SettingsTabId | null>(null);
   const [taxConfigs, setTaxConfigs] = useState<Record<string, Record<number, TaxConfig>>>(() => {
     const initialState: Record<string, Record<number, TaxConfig>> = {};
 
@@ -223,15 +248,34 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
   });
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    setProfile({
+      ...DEFAULT_PROFILE,
+      name: session?.user.firstName || DEFAULT_PROFILE.name,
+      surname: session?.user.lastName || DEFAULT_PROFILE.surname,
+      email: session?.user.email || DEFAULT_PROFILE.email,
+      phone: session?.user.phone || DEFAULT_PROFILE.phone,
+    });
+  }, [session?.user.email, session?.user.firstName, session?.user.lastName, session?.user.phone]);
 
-    try {
-      const raw = window.localStorage.getItem(CUSTOM_METRICS_STORAGE_KEY);
-      setCustomMetrics(raw ? (JSON.parse(raw) as CustomMetric[]) : []);
-    } catch {
-      setCustomMetrics([]);
+  useEffect(() => {
+    const requestedTab = activeTab === 'shops' || activeTab === 'users' || activeTab === 'metrics' ? activeTab : null;
+    if (!requestedTab) {
+      setSettingsTabLoading(null);
+      return;
     }
-  }, []);
+
+    let cancelled = false;
+    setSettingsTabLoading(requestedTab);
+    void loadSettingsTabData(requestedTab)
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setSettingsTabLoading(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, loadSettingsTabData]);
 
   const selectedShop = useMemo(
     () => SHOPS.find(shop => shop.id === selectedShopId) ?? SHOPS[0],
@@ -241,6 +285,73 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
   const currentTaxMode = TAX_MODES.find(mode => mode.id === currentTaxConfig.taxMode) ?? TAX_MODES[0];
   const updateProfileField = (field: keyof ProfileState, value: string) => {
     setProfile(current => ({ ...current, [field]: value }));
+  };
+
+  const cancelProfileEdit = () => {
+    setProfile({
+      ...DEFAULT_PROFILE,
+      name: session?.user.firstName || DEFAULT_PROFILE.name,
+      surname: session?.user.lastName || DEFAULT_PROFILE.surname,
+      email: session?.user.email || DEFAULT_PROFILE.email,
+      phone: session?.user.phone || DEFAULT_PROFILE.phone,
+    });
+    setIsEditingProfile(false);
+    setProfileNotice(null);
+  };
+
+  const saveProfile = async () => {
+    setProfileSaving(true);
+    setProfileNotice(null);
+    try {
+      await updateProfile({
+        firstName: profile.name.trim(),
+        lastName: profile.surname.trim(),
+        email: profile.email.trim(),
+        phone: profile.phone.trim(),
+      });
+      setIsEditingProfile(false);
+      setProfileNotice('Профиль сохранен через API.');
+    } catch (error) {
+      setProfileNotice(error instanceof Error ? error.message : 'Не удалось сохранить профиль.');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const submitPasswordChange = async () => {
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordNotice('Новый пароль и подтверждение не совпадают.');
+      return;
+    }
+
+    setPasswordSaving(true);
+    setPasswordNotice(null);
+    try {
+      await changePassword({
+        currentPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword,
+      });
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setPasswordNotice('Пароль изменен через API.');
+    } catch (error) {
+      setPasswordNotice(error instanceof Error ? error.message : 'Не удалось сменить пароль.');
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
+  const sendPasswordReset = async () => {
+    const email = session?.user.email || profile.email;
+    setPasswordSaving(true);
+    setPasswordNotice(null);
+    try {
+      await requestPasswordReset(email);
+      setPasswordNotice(`Ссылка для сброса пароля отправлена на ${email}.`);
+    } catch (error) {
+      setPasswordNotice(error instanceof Error ? error.message : 'Не удалось запросить сброс пароля.');
+    } finally {
+      setPasswordSaving(false);
+    }
   };
 
   const updateTaxConfig = (updater: (config: TaxConfig) => TaxConfig) => {
@@ -343,14 +454,27 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
             <ProfileTab
               profile={profile}
               isEditing={isEditingProfile}
+              saving={profileSaving}
+              notice={profileNotice}
+              apiError={apiError}
               onEditToggle={() => setIsEditingProfile(current => !current)}
+              onCancelEdit={cancelProfileEdit}
               onFieldChange={updateProfileField}
+              onSave={saveProfile}
+              onLogout={logout}
+              passwordForm={passwordForm}
+              passwordSaving={passwordSaving}
+              passwordNotice={passwordNotice}
+              onPasswordChange={setPasswordForm}
+              onPasswordSubmit={submitPasswordChange}
+              onPasswordReset={sendPasswordReset}
+              onDeleteCurrentUser={deleteCurrentUser}
             />
           )}
 
-          {activeTab === 'shops' && <ShopsTab />}
+          {activeTab === 'shops' && <ShopsTab isLoading={settingsTabLoading === 'shops'} />}
 
-          {activeTab === 'users' && <UsersTab />}
+          {activeTab === 'users' && <UsersTab isLoading={settingsTabLoading === 'users'} />}
 
           {activeTab === 'taxes' && (
             <TaxesTab
@@ -379,7 +503,7 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
             />
           )}
 
-          {activeTab === 'metrics' && <MetricsTab customMetrics={customMetrics} />}
+          {activeTab === 'metrics' && <MetricsTab customMetrics={customMetrics} isLoading={settingsTabLoading === 'metrics'} />}
         </div>
       </div>
     </div>
@@ -389,18 +513,43 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
 function ProfileTab({
   profile,
   isEditing,
+  saving,
+  notice,
+  apiError,
   onEditToggle,
+  onCancelEdit,
   onFieldChange,
+  onSave,
+  onLogout,
+  passwordForm,
+  passwordSaving,
+  passwordNotice,
+  onPasswordChange,
+  onPasswordSubmit,
+  onPasswordReset,
+  onDeleteCurrentUser,
 }: {
   profile: ProfileState;
   isEditing: boolean;
+  saving: boolean;
+  notice: string | null;
+  apiError: string | null;
   onEditToggle: () => void;
+  onCancelEdit: () => void;
   onFieldChange: (field: keyof ProfileState, value: string) => void;
+  onSave: () => void;
+  onLogout: () => void;
+  passwordForm: { currentPassword: string; newPassword: string; confirmPassword: string };
+  passwordSaving: boolean;
+  passwordNotice: string | null;
+  onPasswordChange: (value: { currentPassword: string; newPassword: string; confirmPassword: string }) => void;
+  onPasswordSubmit: () => void;
+  onPasswordReset: () => void;
+  onDeleteCurrentUser: () => Promise<void>;
 }) {
   const fields: { key: keyof ProfileState; label: string }[] = [
     { key: 'name', label: 'Имя' },
     { key: 'surname', label: 'Фамилия' },
-    { key: 'role', label: 'Роль' },
     { key: 'email', label: 'Email' },
     { key: 'phone', label: 'Телефон' },
   ];
@@ -418,11 +567,11 @@ function ProfileTab({
           </div>
           <button
             type="button"
-            onClick={onEditToggle}
+            onClick={isEditing ? onCancelEdit : onEditToggle}
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
           >
             <PencilLine size={16} />
-            {isEditing ? 'Завершить редактирование' : 'Редактировать'}
+            {isEditing ? 'Отменить' : 'Редактировать'}
           </button>
         </div>
 
@@ -441,9 +590,37 @@ function ProfileTab({
                     : 'border-slate-200 bg-slate-50 text-slate-600'
                 }`}
               />
-            </label>
+              </label>
           ))}
         </div>
+
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          {isEditing && (
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saving}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              {saving ? 'Сохранение...' : 'Сохранить профиль'}
+            </button>
+          )}
+          {!isEditing && (
+            <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">
+              Роль и доступы по-прежнему управляются на уровне организации.
+            </div>
+          )}
+        </div>
+
+        {(notice || apiError) && (
+          <div
+            className={`mt-4 rounded-2xl px-4 py-3 text-sm ${
+              notice ? 'bg-blue-50 text-blue-800' : 'bg-rose-50 text-rose-700'
+            }`}
+          >
+            {notice || apiError}
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
@@ -461,18 +638,63 @@ function ProfileTab({
           <div className="mt-5 flex flex-col gap-3 sm:flex-row">
             <button
               type="button"
+              onClick={onPasswordReset}
+              disabled={passwordSaving}
               className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
             >
-              Сменить пароль
+              Запросить сброс пароля
             </button>
             <button
               type="button"
+              onClick={onPasswordSubmit}
+              disabled={passwordSaving}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+            >
+              {passwordSaving ? 'Сохранение...' : 'Сменить пароль'}
+            </button>
+            <button
+              type="button"
+              onClick={onLogout}
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
             >
               <LogOut size={16} />
               Выйти из аккаунта
             </button>
           </div>
+
+          <div className="mt-5 grid gap-3">
+            <label className="block">
+              <div className="mb-2 text-sm font-medium text-slate-600">Текущий пароль</div>
+              <input
+                type="password"
+                value={passwordForm.currentPassword}
+                onChange={event => onPasswordChange({ ...passwordForm, currentPassword: event.target.value })}
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500"
+              />
+            </label>
+            <label className="block">
+              <div className="mb-2 text-sm font-medium text-slate-600">Новый пароль</div>
+              <input
+                type="password"
+                value={passwordForm.newPassword}
+                onChange={event => onPasswordChange({ ...passwordForm, newPassword: event.target.value })}
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500"
+              />
+            </label>
+            <label className="block">
+              <div className="mb-2 text-sm font-medium text-slate-600">Подтвердите новый пароль</div>
+              <input
+                type="password"
+                value={passwordForm.confirmPassword}
+                onChange={event => onPasswordChange({ ...passwordForm, confirmPassword: event.target.value })}
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500"
+              />
+            </label>
+          </div>
+
+          {passwordNotice && (
+            <div className="mt-4 rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-800">{passwordNotice}</div>
+          )}
         </div>
 
         <div className="rounded-3xl border border-rose-200 bg-rose-50 p-6 shadow-sm">
@@ -492,6 +714,10 @@ function ProfileTab({
 
           <button
             type="button"
+            onClick={async () => {
+              if (!window.confirm('Delete your profile permanently? This action cannot be undone.')) return;
+              await onDeleteCurrentUser();
+            }}
             className="mt-5 inline-flex items-center justify-center gap-2 rounded-2xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-rose-700"
           >
             <Trash2 size={16} />
@@ -503,7 +729,71 @@ function ProfileTab({
   );
 }
 
-function ShopsTab() {
+function ShopsTab({ isLoading }: { isLoading: boolean }) {
+  const { session, connections, syncRuns, selectedOrganizationId, validateConnection, enqueueSync, connectShop } = usePlatform();
+  const shops = connections.filter(connection => connection.organizationId === selectedOrganizationId);
+  const defaultDateTo = new Date().toISOString().slice(0, 10);
+  const defaultDateFrom = new Date(Date.now() - 13 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [isConnectFormOpen, setIsConnectFormOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyRuns, setHistoryRuns] = useState<SyncRun[]>([]);
+  const [historyShopName, setHistoryShopName] = useState('');
+  const [marketplace, setMarketplace] = useState<'Wildberries' | 'Ozon'>('Ozon');
+  const [displayName, setDisplayName] = useState('');
+  const [apiToken, setApiToken] = useState('');
+  const [clientId, setClientId] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [startInitialSync, setStartInitialSync] = useState(true);
+  const [connectNotice, setConnectNotice] = useState<string | null>(null);
+
+  const openHistory = async (shopId: string, shopName: string) => {
+    if (!session?.accessToken) return;
+
+    setHistoryShopName(shopName);
+    setIsHistoryOpen(true);
+    setHistoryLoading(true);
+    setHistoryError(null);
+
+    try {
+      const response = await apiRequest<SyncRunApiResponse[]>(`/marketplace-connections/${shopId}/sync-runs`, {
+        token: session.accessToken,
+      });
+      setHistoryRuns(
+        (response ?? []).map(item => ({
+          id: item.id,
+          connectionId: item.marketplaceConnectionId,
+          status:
+            item.status === 'Queued' ||
+            item.status === 'Running' ||
+            item.status === 'Cancelled' ||
+            item.status === 'Succeeded' ||
+            item.status === 'Failed'
+              ? item.status
+              : 'Queued',
+          dateFrom: item.dateFrom,
+          dateTo: item.dateTo,
+          syncKinds: item.syncKind ? [item.syncKind] : [],
+          progressPercent: item.progressPercent,
+          progressMessage: item.progressMessage ?? '',
+          error: item.error ?? undefined,
+          canRetry: item.canRetry,
+          canCancel: item.canCancel,
+          attemptCount: item.attemptCount,
+          maxAttempts: item.maxAttempts,
+          nextAttemptAt: item.nextAttemptAt ?? undefined,
+          enqueuedAt: item.requestedAt,
+        }))
+      );
+    } catch (error) {
+      setHistoryRuns([]);
+      setHistoryError(error instanceof Error ? error.message : 'Не удалось загрузить историю синхронизаций.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   return (
     <section className="space-y-6">
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -517,6 +807,7 @@ function ShopsTab() {
           </div>
           <button
             type="button"
+            onClick={() => setIsConnectFormOpen(current => !current)}
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
           >
             <Plus size={16} />
@@ -525,9 +816,130 @@ function ShopsTab() {
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
-        {SHOPS.map(shop => {
-          const isHealthy = shop.status === 'Синхронизация активна';
+      {isConnectFormOpen && (
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+            <div>
+              <div className="text-sm font-medium text-blue-600">Новый магазин</div>
+              <h3 className="mt-1 text-xl font-semibold text-slate-900">Подключение через API</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Заполните минимальные данные, чтобы создать подключение и, при желании, сразу поставить начальную синхронизацию в очередь.
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block md:col-span-2">
+                <div className="mb-2 text-sm font-medium text-slate-600">Маркетплейс</div>
+                <select
+                  value={marketplace}
+                  onChange={event => setMarketplace(event.target.value as 'Wildberries' | 'Ozon')}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                >
+                  <option value="Ozon">Ozon</option>
+                  <option value="Wildberries">Wildberries</option>
+                </select>
+              </label>
+              <label className="block md:col-span-2">
+                <div className="mb-2 text-sm font-medium text-slate-600">Название магазина</div>
+                <input
+                  value={displayName}
+                  onChange={event => setDisplayName(event.target.value)}
+                  placeholder="WB Main Shop"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                />
+              </label>
+              {marketplace === 'Ozon' ? (
+                <>
+                  <label className="block">
+                    <div className="mb-2 text-sm font-medium text-slate-600">Client ID</div>
+                    <input
+                      value={clientId}
+                      onChange={event => setClientId(event.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    />
+                  </label>
+                  <label className="block">
+                    <div className="mb-2 text-sm font-medium text-slate-600">API Key</div>
+                    <input
+                      value={apiKey}
+                      onChange={event => setApiKey(event.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    />
+                  </label>
+                </>
+              ) : (
+                <label className="block md:col-span-2">
+                  <div className="mb-2 text-sm font-medium text-slate-600">API Token</div>
+                  <input
+                    value={apiToken}
+                    onChange={event => setApiToken(event.target.value)}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  />
+                </label>
+              )}
+              <label className="flex items-center gap-3 md:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={startInitialSync}
+                  onChange={event => setStartInitialSync(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                />
+                <span className="text-sm text-slate-700">Запустить начальную синхронизацию сразу</span>
+              </label>
+              <div className="md:col-span-2 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!displayName.trim()) return;
+                    connectShop({
+                      marketplace,
+                      displayName: displayName.trim(),
+                      credentials:
+                        marketplace === 'Ozon'
+                          ? { clientId: clientId.trim(), apiKey: apiKey.trim() }
+                          : { apiToken: apiToken.trim() },
+                      startInitialSync,
+                      initialSyncDays: 14,
+                      initialSyncKinds:
+                        marketplace === 'Ozon'
+                          ? ['postings', 'finance', 'returns', 'stocks']
+                          : ['orders', 'sales', 'stocks', 'finance'],
+                    });
+                    setConnectNotice(`Shop ${displayName.trim()} is being connected.`);
+                    setIsConnectFormOpen(false);
+                    setDisplayName('');
+                    setApiToken('');
+                    setClientId('');
+                    setApiKey('');
+                  }}
+                  className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+                >
+                  Connect shop
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsConnectFormOpen(false)}
+                  className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+          {connectNotice && <div className="mt-4 rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-800">{connectNotice}</div>}
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+          <Loader2 size={16} className="animate-spin text-blue-600" />
+          Loading shop data...
+        </div>
+      )}
+
+      <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-2">
+        {shops.map(shop => {
+          const latestSync = syncRuns.find(run => run.id === shop.latestSyncRunId);
+          const isHealthy = shop.validationState === 'Validated';
 
           return (
             <article key={shop.id} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -536,21 +948,44 @@ function ShopsTab() {
                   <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                     {shop.marketplace}
                   </div>
-                  <h3 className="mt-2 text-xl font-semibold text-slate-900">{shop.name}</h3>
+                  <h3 className="mt-2 text-xl font-semibold text-slate-900">{shop.displayName}</h3>
                 </div>
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-semibold ${
                     isHealthy ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
                   }`}
                 >
-                  {shop.status}
+                  {shop.validationState}
                 </span>
               </div>
 
               <dl className="mt-6 space-y-4">
-                <MetaRow label="Юр. лицо" value={shop.legalEntity} />
-                <MetaRow label="ИНН" value={shop.inn} />
-                <MetaRow label="Последняя синхронизация" value={shop.syncedAt} />
+                <MetaRow label="Креды" value={shop.credentialSummary} />
+                <MetaRow label="Организация" value={shop.organizationId} />
+                <MetaRow
+                  label="Последняя синхронизация"
+                  value={
+                    latestSync ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-3 text-sm text-slate-700">
+                          <span>{latestSync.status}</span>
+                          <span className="font-semibold text-slate-900">{latestSync.progressPercent}%</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                          <div
+                            className={`h-full rounded-full ${getSyncProgressColor(latestSync.status)}`}
+                            style={{ width: `${Math.min(100, Math.max(0, latestSync.progressPercent))}%` }}
+                          />
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {latestSync.progressMessage || 'Синхронизация выполняется...'}
+                        </div>
+                      </div>
+                    ) : (
+                      'Нет данных'
+                    )
+                  }
+                />
               </dl>
 
               <div className="mt-6 flex gap-3">
@@ -562,23 +997,266 @@ function ShopsTab() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => void validateConnection(shop.id)}
                   className="flex-1 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
                 >
-                  Обновить токен
+                  Проверить
+                </button>
+              </div>
+
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    enqueueSync({
+                      connectionId: shop.id,
+                      dateFrom: defaultDateFrom,
+                      dateTo: defaultDateTo,
+                      syncKinds: shop.marketplace === 'Ozon' ? ['postings', 'finance', 'returns', 'stocks'] : ['orders', 'sales', 'stocks', 'finance'],
+                    })
+                  }
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  Запустить синхронизацию
+                </button>
+              </div>
+
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => void openHistory(shop.id, shop.displayName)}
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  История синхронизаций
                 </button>
               </div>
             </article>
           );
         })}
+
+        {!isLoading && shops.length === 0 && (
+          <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500 shadow-sm">
+            Для текущей организации пока нет подключенных магазинов.
+          </div>
+        )}
       </div>
+
+      {isHistoryOpen && (
+        <div
+          className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/45 p-4"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget) {
+              setIsHistoryOpen(false);
+            }
+          }}
+        >
+          <div className="max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-[2rem] bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+              <div>
+                <div className="text-sm font-medium text-blue-600">История синхронизаций</div>
+                <h3 className="text-2xl font-semibold text-slate-900">{historyShopName}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsHistoryOpen(false)}
+                className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                Закрыть
+              </button>
+            </div>
+
+            <div className="max-h-[calc(85vh-88px)] overflow-y-auto px-6 py-5">
+              {historyLoading && (
+                <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  <Loader2 size={16} className="animate-spin text-blue-600" />
+                  Загружаем синхронизации...
+                </div>
+              )}
+
+              {historyError && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {historyError}
+                </div>
+              )}
+
+              {!historyLoading && !historyError && (
+                <div className="space-y-3">
+                  {historyRuns.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                      Для этого магазина пока нет запусков синхронизации.
+                    </div>
+                  ) : (
+                    historyRuns.map(run => (
+                      <article key={run.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-slate-900">{run.id}</div>
+                            <div className="mt-1 text-sm text-slate-500">
+                              {run.dateFrom} → {run.dateTo} · {run.syncKinds.join(', ')}
+                            </div>
+                          </div>
+                          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+                            {run.status}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-2 lg:grid-cols-4">
+                          <div>Прогресс: {run.progressPercent}%</div>
+                          <div>Попытки: {run.attemptCount}/{run.maxAttempts}</div>
+                          <div>Можно повторить: {run.canRetry ? 'Да' : 'Нет'}</div>
+                          <div>Можно отменить: {run.canCancel ? 'Да' : 'Нет'}</div>
+                        </div>
+
+                        <div className="mt-3">
+                          <div className="h-2 overflow-hidden rounded-full bg-white">
+                            <div
+                              className={`h-full rounded-full ${getSyncProgressColor(run.status)}`}
+                              style={{ width: `${Math.min(100, Math.max(0, run.progressPercent))}%` }}
+                            />
+                          </div>
+                          <div className="mt-2 text-sm text-slate-500">
+                            {run.progressMessage || 'Идет синхронизация данных...'}
+                          </div>
+                        </div>
+
+                        <div className="mt-2 text-sm text-slate-500">
+                          <div>Запрошено: {new Date(run.enqueuedAt).toLocaleString('ru-RU')}</div>
+                          {run.nextAttemptAt && <div>Следующая попытка: {new Date(run.nextAttemptAt).toLocaleString('ru-RU')}</div>}
+                          {run.error && <div className="mt-1 text-rose-600">Ошибка: {run.error}</div>}
+                        </div>
+                      </article>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
 
-function UsersTab() {
+function UsersTab({ isLoading }: { isLoading: boolean }) {
+  const {
+    members,
+    invitations,
+    selectedOrganizationId,
+    organizations,
+    inviteMember,
+    renameOrganization,
+    updateMemberRole,
+    removeMember,
+    transferOrganizationOwnership,
+    revokeInvitation,
+    apiError,
+  } = usePlatform();
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<OrganizationMember['role']>('Manager');
+  const [inviteNotice, setInviteNotice] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
+  const [organizationName, setOrganizationName] = useState('');
+  const [busyInvitationId, setBusyInvitationId] = useState<string | null>(null);
+  const activeOrganization = organizations.find(org => org.id === selectedOrganizationId);
+
+  useEffect(() => {
+    setOrganizationName(activeOrganization?.name ?? '');
+  }, [activeOrganization?.id, activeOrganization?.name]);
+
+  const handleInvite = () => {
+    const email = inviteEmail.trim();
+    if (!email) return;
+
+    inviteMember({ email, role: inviteRole });
+    setInviteNotice(`Invite queued for ${email} in organization ${selectedOrganizationId}.`);
+    setInviteEmail('');
+  };
+
+  const handleRenameOrganization = async () => {
+    if (!activeOrganization || !organizationName.trim()) return;
+    setActionNotice(null);
+    await renameOrganization(activeOrganization.id, organizationName.trim());
+    setActionNotice('Organization name updated.');
+  };
+
+  const handleRoleChange = async (memberId: string, role: OrganizationMember['role']) => {
+    setBusyMemberId(memberId);
+    setActionNotice(null);
+    try {
+      await updateMemberRole({ memberId, role });
+      setActionNotice(`Member role updated to ${role}.`);
+    } finally {
+      setBusyMemberId(null);
+    }
+  };
+
+  const handleRemove = async (memberId: string) => {
+    setBusyMemberId(memberId);
+    setActionNotice(null);
+    try {
+      await removeMember(memberId);
+      setActionNotice('Member removed from the organization.');
+    } finally {
+      setBusyMemberId(null);
+    }
+  };
+
+  const handleTransfer = async (memberId: string) => {
+    setBusyMemberId(memberId);
+    setActionNotice(null);
+    try {
+      await transferOrganizationOwnership(memberId);
+      setActionNotice('Organization ownership transferred.');
+    } finally {
+      setBusyMemberId(null);
+    }
+  };
+
+  const handleRevoke = async (invitationId: string) => {
+    setBusyInvitationId(invitationId);
+    setActionNotice(null);
+    try {
+      await revokeInvitation(invitationId);
+      setActionNotice('Invitation revoked.');
+    } finally {
+      setBusyInvitationId(null);
+    }
+  };
+
   return (
     <section className="space-y-6">
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <div className="text-sm font-medium text-blue-600">Organization</div>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-900">Current organization settings</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Rename the active workspace and manage members, invitations, and ownership from one place.
+            </p>
+          </div>
+          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            {activeOrganization?.id ?? 'No organization selected'}
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-[1fr_auto]">
+          <input
+            value={organizationName}
+            onChange={event => setOrganizationName(event.target.value)}
+            placeholder="Organization name"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+          />
+          <button
+            type="button"
+            onClick={() => void handleRenameOrganization()}
+            disabled={!activeOrganization || !organizationName.trim()}
+            className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Rename
+          </button>
+        </div>
+
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <div className="text-sm font-medium text-blue-600">Пользователи</div>
@@ -589,12 +1267,49 @@ function UsersTab() {
           </div>
           <button
             type="button"
+            onClick={handleInvite}
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
           >
             <Plus size={16} />
             Пригласить пользователя
           </button>
         </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-[1fr_220px_auto]">
+          <input
+            value={inviteEmail}
+            onChange={event => setInviteEmail(event.target.value)}
+            placeholder="manager@company.com"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+          />
+          <select
+            value={inviteRole}
+            onChange={event => setInviteRole(event.target.value as OrganizationMember['role'])}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+          >
+            <option value="Owner">Owner</option>
+            <option value="Admin">Admin</option>
+            <option value="Manager">Manager</option>
+          </select>
+          <button
+            type="button"
+            onClick={handleInvite}
+            className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+          >
+            Отправить
+          </button>
+        </div>
+
+        {isLoading && (
+          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+            <Loader2 size={16} className="animate-spin text-blue-600" />
+            Loading team data...
+          </div>
+        )}
+
+        {inviteNotice && <div className="mt-3 rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-800">{inviteNotice}</div>}
+        {actionNotice && <div className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{actionNotice}</div>}
+        {apiError && <div className="mt-3 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{apiError}</div>}
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -607,24 +1322,88 @@ function UsersTab() {
         </div>
 
         <div className="divide-y divide-slate-200">
-          {ORGANIZATION_USERS.map(user => (
-            <div key={user.id} className="grid gap-4 px-5 py-5 md:grid-cols-[1.2fr_0.8fr_1fr_0.9fr_0.8fr] md:px-6">
-              <div className="space-y-3 md:space-y-1">
-                <div className="font-semibold text-slate-900">{user.name}</div>
-                <div className="text-sm text-slate-500">{user.phone}</div>
+          {members.map(member => {
+            const fullName = `${member.firstName} ${member.lastName}`.trim() || member.email;
+
+            return (
+              <div key={member.id} className="grid gap-4 px-5 py-5 md:grid-cols-[1.2fr_0.8fr_1fr_1fr_0.8fr] md:px-6">
+                <div className="space-y-3 md:space-y-1">
+                  <div className="font-semibold text-slate-900">{fullName}</div>
+                  <div className="text-sm text-slate-500">{member.phone}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 md:hidden">Роль</div>
+                  <select
+                    value={member.role}
+                    onChange={event => void handleRoleChange(member.id, event.target.value as OrganizationMember['role'])}
+                    disabled={member.role === 'Owner' || busyMemberId === member.id}
+                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none disabled:bg-slate-50"
+                  >
+                    <option value="Owner">Owner</option>
+                    <option value="Admin">Admin</option>
+                    <option value="Manager">Manager</option>
+                  </select>
+                </div>
+                <MobileInfoRow label="Контакты" value={member.email} />
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 md:hidden">Действия</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleTransfer(member.id)}
+                      disabled={member.id === activeOrganization?.ownerUserId || busyMemberId === member.id}
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Transfer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleRemove(member.id)}
+                      disabled={member.role === 'Owner' || busyMemberId === member.id}
+                      className="rounded-xl border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-3 md:block">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 md:hidden">Статус</div>
+                  <span
+                    className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                      member.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                    }`}
+                  >
+                    {member.status}
+                  </span>
+                </div>
               </div>
-              <MobileInfoRow label="Роль" value={user.role} />
-              <MobileInfoRow label="Контакты" value={user.email} />
-              <MobileInfoRow label="Доступ" value={user.access} />
+            );
+          })}
+
+          {invitations.map(invitation => (
+            <div key={invitation.id} className="grid gap-4 px-5 py-5 md:grid-cols-[1.2fr_0.8fr_1fr_0.9fr_0.8fr] md:px-6">
+              <div className="space-y-3 md:space-y-1">
+                <div className="font-semibold text-slate-900">{invitation.email}</div>
+                <div className="text-sm text-slate-500">Invitation ID: {invitation.id}</div>
+              </div>
+              <MobileInfoRow label="Роль" value={invitation.role} />
+              <MobileInfoRow label="Контакты" value="—" />
+              <MobileInfoRow label="Доступ" value="Pending invite" />
               <div className="flex items-center justify-between gap-3 md:block">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 md:hidden">Статус</div>
-                <span
-                  className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                    user.status === 'Активен' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                  }`}
-                >
-                  {user.status}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                    {invitation.status}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleRevoke(invitation.id)}
+                    disabled={busyInvitationId === invitation.id}
+                    className="rounded-xl border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Revoke
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -846,7 +1625,7 @@ function MobileInfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MetricsTab({ customMetrics }: { customMetrics: CustomMetric[] }) {
+function MetricsTab({ customMetrics, isLoading }: { customMetrics: CustomMetric[]; isLoading: boolean }) {
   return (
     <section className="space-y-6">
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -858,7 +1637,12 @@ function MetricsTab({ customMetrics }: { customMetrics: CustomMetric[] }) {
         </p>
       </div>
 
-      {customMetrics.length === 0 ? (
+      {isLoading ? (
+        <div className="flex items-center gap-3 rounded-3xl border border-slate-200 bg-white p-10 text-sm text-slate-600 shadow-sm">
+          <Loader2 size={16} className="animate-spin text-blue-600" />
+          Loading custom metrics...
+        </div>
+      ) : customMetrics.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
           <div className="text-lg font-semibold text-slate-900">Пользовательские метрики пока не созданы</div>
           <p className="mt-3 text-sm leading-6 text-slate-500">
@@ -872,13 +1656,14 @@ function MetricsTab({ customMetrics }: { customMetrics: CustomMetric[] }) {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900">{metric.name}</h3>
-                  <p className="mt-1 text-sm text-slate-500">Единица измерения: {metric.unit || 'Не указана'}</p>
+                  <p className="mt-1 text-sm text-slate-500">Единица измерения: {metric.unitLabel || 'Не указана'}</p>
                 </div>
                 <span
-                  className="rounded-full px-3 py-1 text-xs font-semibold"
-                  style={{ backgroundColor: `${metric.growthColor}22`, color: metric.growthColor || '#0f172a' }}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                    metric.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                  }`}
                 >
-                  Цвет роста
+                  {metric.active ? 'Активна' : 'Неактивна'}
                 </span>
               </div>
 
@@ -896,7 +1681,7 @@ function MetricsTab({ customMetrics }: { customMetrics: CustomMetric[] }) {
   );
 }
 
-function MetaRow({ label, value }: { label: string; value: string }) {
+function MetaRow({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-4">
       <dt className="text-sm text-slate-500">{label}</dt>

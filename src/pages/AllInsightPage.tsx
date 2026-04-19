@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { useFilters } from '../context/FilterContext';
 import { useSalesData } from '../hooks/useSalesData';
-import { calcProfit, sumRecords, formatCurrency, formatNumber } from '../lib/calculations';
+import { useAnalyticsWorkspaceData } from '../hooks/useAnalyticsWorkspaceData';
+import { calcProfit, sumRecords, formatCurrency } from '../lib/calculations';
 import { Sparkles, AlertTriangle, TrendingDown, TrendingUp, Lightbulb, Target, Zap } from 'lucide-react';
 import type { SalesRecord, Product } from '../types';
 
@@ -81,6 +82,7 @@ function ProductInsightRow({ product, records, rank }: {
 export function AIInsightsPage() {
   const { filters } = useFilters();
   const { records, products, loading } = useSalesData(filters);
+  const analytics = useAnalyticsWorkspaceData();
 
   const insights = useMemo((): Insight[] => {
     if (records.length === 0) return [];
@@ -230,6 +232,58 @@ export function AIInsightsPage() {
 
   return (
     <div className="p-6 space-y-6">
+      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">AI Инсайты</h1>
+            <p className="mt-0.5 text-sm text-slate-500">Автоматический анализ локальных данных и live API explanations</p>
+          </div>
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
+            {analytics.accountIds.length > 0 ? `${analytics.accountIds.length} accounts` : 'No accounts'}
+          </div>
+        </div>
+
+        {analytics.error && (
+          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {analytics.error}
+          </div>
+        )}
+
+        {analytics.explanation && (
+          <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_0.9fr]">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="text-sm font-semibold text-slate-900">API explanation for sales</div>
+              <div className="mt-3 space-y-2">
+                {(analytics.explanation.breakdown ?? []).slice(0, 5).map((item, index) => (
+                  <div key={`${item.label ?? 'item'}-${index}`} className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3 text-sm">
+                    <div className="font-medium text-slate-900">{item.label ?? `Item ${index + 1}`}</div>
+                    <div className="text-slate-700">{Number.isFinite(item.value ?? NaN) ? Number(item.value).toLocaleString('ru-RU') : '0'}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="text-sm font-semibold text-slate-900">API state</div>
+              <dl className="mt-3 space-y-3 text-sm">
+                <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3">
+                  <dt className="text-slate-500">Summary rows</dt>
+                  <dd className="font-medium text-slate-900">{analytics.breakdown?.rows?.length ?? 0}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3">
+                  <dt className="text-slate-500">Trend points</dt>
+                  <dd className="font-medium text-slate-900">{analytics.trends?.series?.length ?? 0}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3">
+                  <dt className="text-slate-500">Updated</dt>
+                  <dd className="font-medium text-slate-900">{analytics.summary?.meta?.updatedAt ?? 'n/a'}</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-xl flex items-center justify-center">
           <Sparkles size={20} className="text-white" />
