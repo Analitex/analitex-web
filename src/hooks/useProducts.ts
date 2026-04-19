@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
 import type { Product } from '../types';
-import { products as localProducts } from '../lib/localData';
 
 export function useProducts() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setProducts([...localProducts].sort((a, b) => a.name.localeCompare(b.name, 'ru')));
+    setProducts([]);
     setLoading(false);
   }, []);
 

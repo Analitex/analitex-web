@@ -6,6 +6,236 @@
     "version": "v1"
   },
   "paths": {
+    "/api/v1/reporting/products/metric-breakdowns": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingProductMetricBreakdownsEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductMetricBreakdownsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductMetricBreakdownsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/products/details": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingProductMetricDetailsEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductMetricDetailsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductMetricDetailsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/product-metrics": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingProductMetricsEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductMetricsCatalogResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/products/overview": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingProductOverviewEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductOverviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductOverviewResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/products/query": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingProductsQueryEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductReportResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/products": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingProductsReportEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductReportResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/products/stock-history": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingProductStockHistoryEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductStockHistoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductStockHistoryResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/products/stock-sources": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingProductStockSourcesEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductStockSourcesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductStockSourcesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/overview/summary": {
       "post": {
         "tags": [
@@ -1736,7 +1966,6 @@
       "ConnectMarketplaceShopRequest": {
         "required": [
           "credentials",
-          "displayName",
           "marketplace",
           "organizationId"
         ],
@@ -2531,9 +2760,8 @@
           "marketplace",
           "marketplaceConnectionId",
           "marketplaceSyncRunId",
-          "payload",
-          "payloadSize",
           "recordCount",
+          "storageType",
           "syncKind"
         ],
         "type": "object",
@@ -2569,11 +2797,7 @@
             "type": "integer",
             "format": "int32"
           },
-          "payloadSize": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "payload": {
+          "storageType": {
             "type": "string",
             "nullable": true
           },
@@ -2955,6 +3179,1020 @@
               "type": "string"
             },
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductDimension": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "vendorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "marketplaceArticle": {
+            "type": "string",
+            "nullable": true
+          },
+          "productName": {
+            "type": "string",
+            "nullable": true
+          },
+          "brand": {
+            "type": "string",
+            "nullable": true
+          },
+          "category": {
+            "type": "string",
+            "nullable": true
+          },
+          "subjectId": {
+            "type": "string",
+            "nullable": true
+          },
+          "accountName": {
+            "type": "string",
+            "nullable": true
+          },
+          "marketplace": {
+            "$ref": "#/components/schemas/MarketplaceKey"
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "productUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "currencyCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "currentPrice": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "oldPrice": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "marketingPrice": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "minimumPrice": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "netPrice": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "vatRate": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "sellerDiscountPercent": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "marketplaceDiscountPercent": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "barcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "sizeName": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMetricBreakdownItem": {
+        "required": [
+          "amount",
+          "key",
+          "label"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "nullable": true
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMetricBreakdownsRequest": {
+        "required": [
+          "dateFrom",
+          "dateTo"
+        ],
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ReportingMode"
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceKey"
+            },
+            "nullable": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticsFilters"
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMetricBreakdownsResponse": {
+        "required": [
+          "meta",
+          "query",
+          "scope"
+        ],
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScope"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QueryContext"
+          },
+          "product": {
+            "$ref": "#/components/schemas/ProductDimension"
+          },
+          "summary": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double",
+              "nullable": true
+            },
+            "nullable": true
+          },
+          "metricBreakdowns": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ProductMetricBreakdownItem"
+              }
+            },
+            "nullable": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMetricDefinition": {
+        "required": [
+          "enableColumnFilter",
+          "enableSorting",
+          "header",
+          "id",
+          "meta",
+          "slug"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "slug": {
+            "type": "string",
+            "nullable": true
+          },
+          "header": {
+            "type": "string",
+            "nullable": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ProductMetricMeta"
+          },
+          "enableSorting": {
+            "type": "boolean"
+          },
+          "enableColumnFilter": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMetricDetailsRequest": {
+        "required": [
+          "dateFrom",
+          "dateTo",
+          "metric"
+        ],
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ReportingMode"
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceKey"
+            },
+            "nullable": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticsFilters"
+          },
+          "metric": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMetricDetailsResponse": {
+        "required": [
+          "breakdown",
+          "meta",
+          "metric",
+          "query",
+          "scope",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScope"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QueryContext"
+          },
+          "product": {
+            "$ref": "#/components/schemas/ProductDimension"
+          },
+          "summary": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double",
+              "nullable": true
+            },
+            "nullable": true
+          },
+          "metric": {
+            "type": "string",
+            "nullable": true
+          },
+          "total": {
+            "type": "number",
+            "format": "double"
+          },
+          "breakdown": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductMetricBreakdownItem"
+            },
+            "nullable": true
+          },
+          "metricBreakdowns": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ProductMetricBreakdownItem"
+              }
+            },
+            "nullable": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMetricMeta": {
+        "type": "object",
+        "properties": {
+          "filterType": {
+            "type": "string",
+            "nullable": true
+          },
+          "hint": {
+            "type": "string",
+            "nullable": true
+          },
+          "suffix": {
+            "type": "string",
+            "nullable": true
+          },
+          "displayDiff": {
+            "type": "boolean"
+          },
+          "positiveIfGrow": {
+            "type": "boolean"
+          },
+          "precision": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "valueSource": {
+            "type": "string",
+            "nullable": true
+          },
+          "temporalKind": {
+            "type": "string",
+            "nullable": true
+          },
+          "availableIn": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "group": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMetricsCatalogResponse": {
+        "required": [
+          "metrics"
+        ],
+        "type": "object",
+        "properties": {
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductMetricDefinition"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductOverviewRequest": {
+        "required": [
+          "dateFrom",
+          "dateTo"
+        ],
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ReportingMode"
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceKey"
+            },
+            "nullable": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticsFilters"
+          },
+          "summaryMetrics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "topProductMetrics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "topProductsSortMetric": {
+            "type": "string",
+            "nullable": true
+          },
+          "topProductsSortDirection": {
+            "$ref": "#/components/schemas/SortDirection"
+          },
+          "topProductsLimit": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductOverviewResponse": {
+        "required": [
+          "meta",
+          "query",
+          "scope",
+          "summary",
+          "topProducts"
+        ],
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScope"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QueryContext"
+          },
+          "summary": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double",
+              "nullable": true
+            },
+            "nullable": true
+          },
+          "topProducts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductReportRow"
+            },
+            "nullable": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductReportPagination": {
+        "required": [
+          "limit",
+          "page",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductReportRequest": {
+        "required": [
+          "dateFrom",
+          "dateTo"
+        ],
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ReportingMode"
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceKey"
+            },
+            "nullable": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticsFilters"
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "sort": {
+            "$ref": "#/components/schemas/ProductReportSort"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductReportResponse": {
+        "required": [
+          "meta",
+          "pagination",
+          "query",
+          "rows",
+          "scope",
+          "summary"
+        ],
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScope"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QueryContext"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductReportRow"
+            },
+            "nullable": true
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ProductReportSummary"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/ProductReportPagination"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductReportRow": {
+        "required": [
+          "dimension",
+          "id",
+          "metrics"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimension": {
+            "$ref": "#/components/schemas/ProductDimension"
+          },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double",
+              "nullable": true
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductReportSort": {
+        "type": "object",
+        "properties": {
+          "metric": {
+            "type": "string",
+            "nullable": true
+          },
+          "direction": {
+            "$ref": "#/components/schemas/SortDirection"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductReportSummary": {
+        "required": [
+          "page",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double",
+              "nullable": true
+            },
+            "nullable": true
+          },
+          "page": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double",
+              "nullable": true
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductStockHistoryPoint": {
+        "required": [
+          "date",
+          "inWayFromClientQty",
+          "inWayToClientQty",
+          "marketplaceQty",
+          "quantity",
+          "userWarehouseQty"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "marketplaceQty": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "userWarehouseQty": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "inWayToClientQty": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "inWayFromClientQty": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductStockHistoryRequest": {
+        "required": [
+          "dateFrom",
+          "dateTo"
+        ],
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ReportingMode"
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceKey"
+            },
+            "nullable": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticsFilters"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductStockHistoryResponse": {
+        "required": [
+          "meta",
+          "query",
+          "scope",
+          "series"
+        ],
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScope"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QueryContext"
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductStockHistoryPoint"
+            },
+            "nullable": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductStockSourceItem": {
+        "required": [
+          "quantity",
+          "sourceKind"
+        ],
+        "type": "object",
+        "properties": {
+          "sourceKind": {
+            "$ref": "#/components/schemas/ProductStockSourceKind"
+          },
+          "sourceLabel": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceType": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceKey": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceName": {
+            "type": "string",
+            "nullable": true
+          },
+          "regionName": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductStockSourceKind": {
+        "enum": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "type": "integer",
+        "format": "int32"
+      },
+      "ProductStockSourceKindSummary": {
+        "required": [
+          "label",
+          "quantity",
+          "sourceKind"
+        ],
+        "type": "object",
+        "properties": {
+          "sourceKind": {
+            "$ref": "#/components/schemas/ProductStockSourceKind"
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductStockSourcesRequest": {
+        "required": [
+          "dateFrom",
+          "dateTo"
+        ],
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ReportingMode"
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceKey"
+            },
+            "nullable": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticsFilters"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductStockSourcesResponse": {
+        "required": [
+          "items",
+          "meta",
+          "query",
+          "scope",
+          "snapshotDate",
+          "sourceKindTotals"
+        ],
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScope"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QueryContext"
+          },
+          "product": {
+            "$ref": "#/components/schemas/ProductDimension"
+          },
+          "snapshotDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ProductStockSourcesSummary"
+          },
+          "sourceKindTotals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductStockSourceKindSummary"
+            },
+            "nullable": true
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductStockSourceItem"
+            },
+            "nullable": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductStockSourcesSummary": {
+        "required": [
+          "distinctRegions",
+          "distinctSources",
+          "marketplaceWarehouseQuantity",
+          "sellerWarehouseQuantity",
+          "sourceBucketQuantity",
+          "totalQuantity",
+          "unknownQuantity",
+          "warehouseQuantity"
+        ],
+        "type": "object",
+        "properties": {
+          "totalQuantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "warehouseQuantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "marketplaceWarehouseQuantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sellerWarehouseQuantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sourceBucketQuantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unknownQuantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "distinctSources": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "distinctRegions": {
+            "type": "integer",
+            "format": "int32"
           }
         },
         "additionalProperties": false

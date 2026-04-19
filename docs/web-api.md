@@ -188,7 +188,6 @@ Request:
 {
   "organizationId": "guid",
   "marketplace": "Wildberries",
-  "displayName": "WB Main Shop",
   "credentials": {
     "apiToken": "token"
   },
@@ -204,7 +203,6 @@ For Ozon:
 {
   "organizationId": "guid",
   "marketplace": "Ozon",
-  "displayName": "Ozon Main Shop",
   "credentials": {
     "clientId": "12345",
     "apiKey": "secret"
@@ -219,6 +217,12 @@ Response:
 - created connection
 - validation result
 - optional initial sync enqueue result
+
+Current behavior:
+- `displayName` is no longer required for `connect-shop`
+- the backend validates marketplace credentials immediately
+- if the marketplace returns a shop/account name, that name is saved into the connection automatically
+- `displayName` can still be sent as an optional fallback label when the provider does not return a name
 
 ### `GET /api/v1/organizations/{organizationId}/marketplace-connections`
 ### `POST /api/v1/marketplace-connections`
@@ -781,7 +785,14 @@ Response:
 
 Current behavior:
 - normalized facts are used when available
-- `products` is built from normalized product SKU values so the web app can populate `productIds` filters directly
+- `products` is moving to a canonical product catalog read model built during normalization
+- product filter `id` prefers seller-facing product identity:
+  - `vendorCode`
+  - fallback: `marketplaceArticle`
+- product filter `label` prefers:
+  - `vendorCode`
+  - fallback: `productName`
+  - fallback: `marketplaceArticle`
 - when no synced data exists yet, the endpoint returns empty filter lists and echoes the requested date range instead of prototype placeholder data
 
 ## Custom Metrics

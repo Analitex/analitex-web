@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Info, Menu, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
 import { useFilters } from '../../context/FilterContext';
 import { useReportMode } from '../../context/ReportModeContext';
-import { MultiSelect } from '../filters/MultiSelect';
+import { MultiSelect, type MultiSelectOption } from '../filters/MultiSelect';
 import { DateRangePicker } from './DateRangePicker';
 import type { Page } from '../../types';
 
@@ -11,7 +11,7 @@ interface FilterBarProps {
   brands: string[];
   categories: string[];
   marketplaces: string[];
-  stores: string[];
+  stores: MultiSelectOption[];
   skus: { id: string; sku: string; name: string }[];
   onOpenMobileNav?: () => void;
 }
@@ -23,6 +23,23 @@ function getSkuOptions(skus: { id: string; sku: string; name: string }[]) {
     value: item.id,
     label: `${item.sku} · ${item.name}`,
     searchText: `${item.sku} ${item.name}`,
+  }));
+}
+
+function getMarketplaceOptions(marketplaces: string[]) {
+  return marketplaces.map(marketplace => ({
+    value: marketplace,
+    label: marketplace,
+    searchText: marketplace,
+    marketplace,
+  }));
+}
+
+function getStoreOptions(stores: MultiSelectOption[]) {
+  return stores.map(store => ({
+    ...store,
+    optionKey: store.optionKey ?? `${store.marketplace ?? 'store'}:${store.value}`,
+    searchText: (store.searchText ?? `${store.label} ${store.marketplace ?? ''}`).trim(),
   }));
 }
 
@@ -62,6 +79,8 @@ export function FilterBar({
   );
 
   const skuOptions = useMemo(() => getSkuOptions(skus), [skus]);
+  const marketplaceOptions = useMemo(() => getMarketplaceOptions(marketplaces), [marketplaces]);
+  const storeOptions = useMemo(() => getStoreOptions(stores), [stores]);
 
   useEffect(() => {
     if (!isMobileSheetOpen) return;
@@ -105,14 +124,14 @@ export function FilterBar({
 
           <MultiSelect
             label="Площадки:"
-            options={marketplaces}
+            options={marketplaceOptions}
             value={filters.marketplace}
             onChange={v => setFilters({ ...filters, marketplace: v })}
           />
 
           <MultiSelect
             label="Магазины:"
-            options={stores}
+            options={storeOptions}
             value={filters.store}
             onChange={v => setFilters({ ...filters, store: v })}
           />
@@ -285,7 +304,7 @@ export function FilterBar({
 
             <MultiSelect
               label="Площадки:"
-              options={marketplaces}
+              options={marketplaceOptions}
               value={filters.marketplace}
               onChange={v => setFilters({ ...filters, marketplace: v })}
               fullWidth
@@ -293,7 +312,7 @@ export function FilterBar({
 
             <MultiSelect
               label="Магазины:"
-              options={stores}
+              options={storeOptions}
               value={filters.store}
               onChange={v => setFilters({ ...filters, store: v })}
               fullWidth

@@ -125,7 +125,7 @@ interface PlatformContextValue {
   revokeInvitation: (invitationId: string) => Promise<void>;
   connectShop: (input: {
     marketplace: 'Wildberries' | 'Ozon';
-    displayName: string;
+    displayName?: string;
     credentials: Record<string, string>;
     startInitialSync: boolean;
     initialSyncDays: number;
@@ -152,24 +152,7 @@ const STORAGE_KEY = 'aistats-platform-state';
 const ACTION_HISTORY_STORAGE_KEY = 'aistats-platform-action-history';
 const NOTIFICATION_LIMIT = 4;
 
-const demoUser: PlatformUser = {
-  id: 'user-demo',
-  firstName: 'Anna',
-  lastName: 'Ivanova',
-  email: 'owner@company.com',
-  phone: '+79990000000',
-  status: 'Active',
-};
-
-const initialActionHistory: ActionRecord[] = [
-  {
-    id: 'action-welcome',
-    kind: 'navigation',
-    title: 'Opened workspace',
-    description: 'Loaded the API-first workspace shell.',
-    timestamp: '2026-04-18T09:00:00Z',
-  },
-];
+const initialActionHistory: ActionRecord[] = [];
 
 const initialNotifications: NotificationItem[] = [];
 
@@ -209,15 +192,6 @@ function loadStoredActionHistory() {
 function saveStoredActionHistory(actionHistory: ActionRecord[]) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(ACTION_HISTORY_STORAGE_KEY, JSON.stringify(actionHistory));
-}
-
-function createToken(email: string) {
-  const slug = email.split('@')[0].replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-  return `jwt-${slug || 'token'}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function createIsoHoursFromNow(hours: number) {
-  return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 }
 
 function createId(prefix: string) {
@@ -422,11 +396,13 @@ function mapInvitation(invitation: ApiInvitation): Invitation {
 }
 
 function mapConnection(connection: ApiConnection): MarketplaceConnection {
+  const marketplace = mapMarketplace(connection.marketplace);
+  const fallbackDisplayName = connection.displayName ?? connection.externalAccountId ?? `${marketplace} shop`;
   return {
     id: String(connection.id),
     organizationId: String(connection.organizationId),
-    marketplace: mapMarketplace(connection.marketplace),
-    displayName: connection.displayName ?? '',
+    marketplace,
+    displayName: fallbackDisplayName,
     credentialSummary: connection.externalAccountId ?? 'connected',
     validationState: mapConnectionStatus(connection.status),
     latestSyncRunId: connection.latestSyncRun?.id ? String(connection.latestSyncRun.id) : undefined,
@@ -466,7 +442,7 @@ function mapCustomMetric(metric: ApiCustomMetric): CustomMetric {
 export function PlatformProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(() => loadStoredSession());
   const [isWorkspaceHydrated, setIsWorkspaceHydrated] = useState(() => loadStoredSession() === null);
-  const [users, setUsers] = useState<PlatformUser[]>([demoUser]);
+  const [users, setUsers] = useState<PlatformUser[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [selectedOrganizationId, setSelectedOrganizationId] = useState('');
   const [members, setMembers] = useState<OrganizationMember[]>([]);
@@ -588,20 +564,6 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
   };
 
   const register: PlatformContextValue['register'] = async input => {
-    const optimisticUser: PlatformUser = {
-      id: createId('user'),
-      firstName: input.firstName,
-      lastName: input.lastName,
-      email: input.email,
-      phone: input.phone,
-      status: 'Active',
-    };
-    const optimisticSession: AuthSession = {
-      accessToken: createToken(input.email),
-      tokenType: 'Bearer',
-      expiresAt: createIsoHoursFromNow(6),
-      user: optimisticUser,
-    };
     setOrganizations([]);
     setSelectedOrganizationId('');
     setMembers([]);
@@ -616,11 +578,14 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
         method: 'POST',
         body: JSON.stringify(input),
       });
+      if (!response.accessToken || !response.expiresAt || !response.user) {
+        throw new Error('Backend returned incomplete registration payload.');
+      }
       const nextSession: AuthSession = {
-        accessToken: response.accessToken ?? optimisticSession.accessToken,
-        tokenType: response.tokenType ?? 'Bearer',
-        expiresAt: response.expiresAt ?? optimisticSession.expiresAt,
-        user: mapAuthUser(response.user ?? optimisticUser),
+        accessToken: response.accessToken,
+        tokenType: response.tokenType === 'Bearer' ? 'Bearer' : 'Bearer',
+        expiresAt: response.expiresAt,
+        user: mapAuthUser(response.user),
       };
       setUsers(current => [...current.filter(item => item.email !== nextSession.user.email), nextSession.user]);
       setSession(nextSession);
@@ -644,13 +609,6 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
   };
 
   const login: PlatformContextValue['login'] = async input => {
-    const optimisticUser = users.find(item => item.email.toLowerCase() === input.email.toLowerCase()) ?? demoUser;
-    const optimisticSession: AuthSession = {
-      accessToken: createToken(input.email),
-      tokenType: 'Bearer',
-      expiresAt: createIsoHoursFromNow(6),
-      user: optimisticUser,
-    };
     setOrganizations([]);
     setSelectedOrganizationId('');
     setMembers([]);
@@ -665,12 +623,16 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
         method: 'POST',
         body: JSON.stringify(input),
       });
+      if (!response.accessToken || !response.expiresAt || !response.user) {
+        throw new Error('Backend returned incomplete login payload.');
+      }
       const nextSession: AuthSession = {
-        accessToken: response.accessToken ?? optimisticSession.accessToken,
-        tokenType: response.tokenType ?? 'Bearer',
-        expiresAt: response.expiresAt ?? optimisticSession.expiresAt,
-        user: mapAuthUser(response.user ?? optimisticUser),
+        accessToken: response.accessToken,
+        tokenType: response.tokenType === 'Bearer' ? 'Bearer' : 'Bearer',
+        expiresAt: response.expiresAt,
+        user: mapAuthUser(response.user),
       };
+      setUsers(current => [...current.filter(item => item.email !== nextSession.user.email), nextSession.user]);
       setSession(nextSession);
       setIsWorkspaceHydrated(false);
       enqueueNotification({
@@ -718,7 +680,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     const optimistic: Organization = {
       id: createId('org'),
       name,
-      ownerUserId: session?.user.id ?? demoUser.id,
+      ownerUserId: session?.user.id ?? '',
       createdAt: new Date().toISOString(),
     };
     setOrganizations(current => [...current, optimistic]);
@@ -924,11 +886,12 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
   };
 
   const connectShop: PlatformContextValue['connectShop'] = input => {
+    const optimisticDisplayName = input.displayName?.trim() || `${input.marketplace} shop`;
     const optimisticConnection: MarketplaceConnection = {
       id: createId('conn'),
       organizationId: selectedOrganizationId,
       marketplace: input.marketplace,
-      displayName: input.displayName,
+      displayName: optimisticDisplayName,
       credentialSummary: Object.keys(input.credentials).join(', '),
       validationState: 'Validated',
     };
@@ -939,7 +902,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({
         organizationId: selectedOrganizationId,
         marketplace: input.marketplace,
-        displayName: input.displayName,
+        displayName: input.displayName?.trim() || undefined,
         credentials: input.credentials,
         startInitialSync: input.startInitialSync,
         initialSyncDays: input.initialSyncDays,
@@ -1122,6 +1085,12 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
 
         const mappedConnections = (connectionsResponse ?? []).map(mapConnection);
         setConnections(mappedConnections);
+        setSyncRuns(
+          (connectionsResponse ?? [])
+            .map(connection => connection.latestSyncRun)
+            .filter((run): run is ApiSyncRun => Boolean(run))
+            .map(mapSyncRun)
+        );
         setConnectors(
           (connectorCatalog ?? []).map((connector: ApiConnector) => ({
             marketplace: mapMarketplace(connector.marketplace),
@@ -1134,11 +1103,6 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
             })),
           }))
         );
-
-        const nextSyncRuns = await Promise.all(
-          mappedConnections.map(connection => refreshConnectionSyncRuns(connection.id).catch(() => [] as SyncRun[]))
-        );
-        setSyncRuns(nextSyncRuns.flat());
       }
 
       if (tab === 'users') {
@@ -1161,7 +1125,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       setApiError(error instanceof Error ? error.message : 'Failed to load requested settings data.');
       throw error;
     }
-  }, [session?.accessToken, selectedOrganizationId, refreshConnectionSyncRuns]);
+  }, [session?.accessToken, selectedOrganizationId]);
 
   const deleteCurrentUser: PlatformContextValue['deleteCurrentUser'] = async () => {
     await apiRequest<void>('/users/me', {

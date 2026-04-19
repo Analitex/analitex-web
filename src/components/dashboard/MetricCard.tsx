@@ -25,6 +25,7 @@ interface MetricCardProps {
   unit?: string;
   description?: string;
   isLoading?: boolean;
+  isPlaceholder?: boolean;
   faq?: string;
   documents?: MetricDocuments;
   onEdit?: () => void;
@@ -41,6 +42,16 @@ function SkeletonCard() {
   );
 }
 
+function PlaceholderCard({ title }: { title: string }) {
+  return (
+    <div className="rounded-xl border border-dashed border-slate-200 bg-white p-2.5">
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{title}</div>
+      <div className="mb-1 text-lg font-bold tracking-tight text-slate-300 sm:text-xl">--</div>
+      <div className="text-xs text-slate-400 sm:text-sm">Нет live данных</div>
+    </div>
+  );
+}
+
 export function MetricCard({
   title,
   metric,
@@ -50,6 +61,7 @@ export function MetricCard({
   unit,
   description,
   isLoading = false,
+  isPlaceholder = false,
   faq,
   documents,
   onEdit,
@@ -86,6 +98,7 @@ export function MetricCard({
   }, [isDocsOpen]);
 
   if (isLoading) return <SkeletonCard />;
+  if (isPlaceholder) return <PlaceholderCard title={title} />;
 
   const isPositive = metric.trend === 'up';
   const isNegative = metric.trend === 'down';

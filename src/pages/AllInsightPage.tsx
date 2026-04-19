@@ -1,10 +1,8 @@
 import { useMemo } from 'react';
-import { useFilters } from '../context/FilterContext';
-import { useSalesData } from '../hooks/useSalesData';
 import { useAnalyticsWorkspaceData } from '../hooks/useAnalyticsWorkspaceData';
-import { calcProfit, sumRecords, formatCurrency } from '../lib/calculations';
-import { Sparkles, AlertTriangle, TrendingDown, TrendingUp, Lightbulb, Target, Zap } from 'lucide-react';
-import type { SalesRecord, Product } from '../types';
+import { useProductReportingData } from '../hooks/useProductReportingData';
+import { formatCurrency } from '../lib/calculations';
+import { AlertTriangle, Lightbulb, Sparkles, Target, TrendingDown, TrendingUp, Zap } from 'lucide-react';
 
 interface Insight {
   type: 'warning' | 'success' | 'info' | 'critical';
@@ -13,6 +11,20 @@ interface Insight {
   value?: string;
   action?: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
+}
+
+interface ProductInsightItem {
+  id: string;
+  name: string;
+  article: string;
+  brand: string;
+  revenue: number;
+  profit: number;
+  margin: number;
+  drr: number;
+  buyoutRate: number;
+  logisticsPercent: number;
+  returns: number;
 }
 
 function InsightCard({ insight }: { insight: Insight }) {
@@ -49,16 +61,8 @@ function InsightCard({ insight }: { insight: Insight }) {
   );
 }
 
-function ProductInsightRow({ product, records, rank }: {
-  product: Product;
-  records: SalesRecord[];
-  rank: number;
-}) {
-  const agg = sumRecords(records);
-  const profit = records.reduce((s, r) => s + calcProfit(r), 0);
-  const margin = agg.revenue > 0 ? (profit / agg.revenue) * 100 : 0;
-
-  const statusColor = margin < 0 ? 'bg-red-100 text-red-600' : margin < 10 ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600';
+function ProductInsightRow({ product, rank }: { product: ProductInsightItem; rank: number }) {
+  const statusColor = product.margin < 0 ? 'bg-red-100 text-red-600' : product.margin < 10 ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600';
 
   return (
     <div className="flex items-center gap-3 py-2.5 border-b border-slate-100 last:border-0">
@@ -67,12 +71,12 @@ function ProductInsightRow({ product, records, rank }: {
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium text-slate-800 truncate">{product.name}</div>
-        <div className="text-xs text-slate-400">{product.sku} · {product.brand}</div>
+        <div className="text-xs text-slate-400">{product.article} · {product.brand || 'Без бренда'}</div>
       </div>
       <div className="text-right shrink-0">
-        <div className="text-sm font-semibold text-slate-700">{formatCurrency(agg.revenue, true)}</div>
+        <div className="text-sm font-semibold text-slate-700">{formatCurrency(product.revenue, true)}</div>
         <div className={`text-xs font-medium px-1.5 py-0.5 rounded-full inline-block ${statusColor}`}>
-          {margin.toFixed(1)}% маржа
+          {product.margin.toFixed(1)}% маржа
         </div>
       </div>
     </div>
@@ -80,142 +84,154 @@ function ProductInsightRow({ product, records, rank }: {
 }
 
 export function AIInsightsPage() {
-  const { filters } = useFilters();
-  const { records, products, loading } = useSalesData(filters);
-  const analytics = useAnalyticsWorkspaceData();
+  const analytics = useAnalyticsWorkspaceData({
+    includeTrends: false,
+    includeBreakdown: false,
+  });
+  const productReporting = useProductReportingData({
+    accountIds: analytics.accountIds,
+    limit: 50,
+  });
+
+  const products = useMemo<ProductInsightItem[]>(() => {
+    return (productReporting.rows ?? []).map((row, index) => {
+      const metrics = row.metrics ?? {};
+      const revenue = Number(metrics.sales ?? 0);
+      const profit = Number(metrics.profit ?? 0);
+      const advertisingExpense = Number(metrics.advertisingExpense ?? metrics.advertisingExpenseSum ?? 0);
+      const logistics = Number(metrics.logistics ?? 0);
+      const returns = Number(metrics.returns ?? 0);
+
+      return {
+        id: row.dimension?.vendorCode ?? row.dimension?.marketplaceArticle ?? row.dimension?.productName ?? `product-${index + 1}`,
+        name: row.dimension?.productName ?? row.dimension?.vendorCode ?? `Товар ${index + 1}`,
+        article: row.dimension?.vendorCode ?? row.dimension?.marketplaceArticle ?? '\u2014',
+        brand: row.dimension?.brand ?? '',
+        revenue,
+        profit,
+        margin: revenue > 0 ? (profit / revenue) * 100 : 0,
+        drr: revenue > 0 ? (advertisingExpense / revenue) * 100 : 0,
+        buyoutRate: Number(metrics.averageRedemption ?? 0),
+        logisticsPercent: revenue > 0 ? (logistics / revenue) * 100 : 0,
+        returns,
+      };
+    });
+  }, [productReporting.rows]);
 
   const insights = useMemo((): Insight[] => {
-    if (records.length === 0) return [];
-    const result: Insight[] = [];
+    if (products.length === 0) return [];
 
-    const agg = sumRecords(records);
-    const totalProfit = records.reduce((s, r) => s + calcProfit(r), 0);
-    const margin = agg.revenue > 0 ? (totalProfit / agg.revenue) * 100 : 0;
+    const totalRevenue = products.reduce((sum, item) => sum + item.revenue, 0);
+    const totalProfit = products.reduce((sum, item) => sum + item.profit, 0);
+    const totalReturns = products.reduce((sum, item) => sum + item.returns, 0);
+    const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+    const avgDrr = totalRevenue > 0 ? products.reduce((sum, item) => sum + (item.drr * item.revenue), 0) / totalRevenue : 0;
+    const avgBuyoutRate = products.length > 0 ? products.reduce((sum, item) => sum + item.buyoutRate, 0) / products.length : 0;
+    const avgLogisticsShare = totalRevenue > 0 ? products.reduce((sum, item) => sum + (item.logisticsPercent * item.revenue), 0) / totalRevenue : 0;
+
+    const result: Insight[] = [];
 
     if (totalProfit < 0) {
       result.push({
         type: 'critical',
         title: 'Убыточный период',
-        description: `За выбранный период зафиксирован суммарный убыток. Общая выручка ${formatCurrency(agg.revenue, true)}, но расходы превышают её.`,
+        description: `За выбранный период зафиксирован суммарный убыток. Общая выручка ${formatCurrency(totalRevenue, true)}, но расходы превышают её.`,
         value: formatCurrency(totalProfit, true),
         action: 'Срочно пересмотрите стратегию ценообразования и рекламных расходов',
         icon: AlertTriangle,
       });
-    } else if (margin < 10) {
+    } else if (avgMargin < 10) {
       result.push({
         type: 'warning',
         title: 'Низкая маржинальность',
-        description: `Маржа ${margin.toFixed(1)}% ниже рекомендуемого порога 10–15%. Рассмотрите оптимизацию расходов.`,
-        value: `Маржа: ${margin.toFixed(1)}%`,
+        description: `Маржа ${avgMargin.toFixed(1)}% ниже рекомендуемого порога 10–15%. Рассмотрите оптимизацию расходов.`,
+        value: `Маржа: ${avgMargin.toFixed(1)}%`,
         action: 'Проанализируйте структуру затрат и оптимизируйте логистику',
         icon: TrendingDown,
       });
-    } else if (margin > 25) {
+    } else if (avgMargin > 25) {
       result.push({
         type: 'success',
         title: 'Отличная маржинальность',
-        description: `Маржа ${margin.toFixed(1)}% превышает средний показатель по рынку. Хороший результат!`,
-        value: `Маржа: ${margin.toFixed(1)}%`,
+        description: `Маржа ${avgMargin.toFixed(1)}% превышает средний показатель по рынку. Хороший результат!`,
+        value: `Маржа: ${avgMargin.toFixed(1)}%`,
         icon: TrendingUp,
       });
     }
 
-    const drrPct = agg.revenue > 0 ? (agg.ads_spend / agg.revenue) * 100 : 0;
-    if (drrPct > 20) {
+    if (avgDrr > 20) {
       result.push({
         type: 'critical',
         title: 'Высокие рекламные расходы (ДРР)',
-        description: `ДРР составляет ${drrPct.toFixed(1)}%, что значительно выше нормы (5–15%). Реклама поглощает большую часть выручки.`,
-        value: `ДРР: ${drrPct.toFixed(1)}%`,
+        description: `ДРР составляет ${avgDrr.toFixed(1)}%, что значительно выше нормы (5–15%). Реклама поглощает большую часть выручки.`,
+        value: `ДРР: ${avgDrr.toFixed(1)}%`,
         action: 'Оптимизируйте рекламные кампании — отключите неэффективные объявления',
         icon: AlertTriangle,
       });
-    } else if (drrPct < 3 && agg.revenue > 0) {
+    } else if (avgDrr > 0 && avgDrr < 3) {
       result.push({
         type: 'info',
         title: 'Низкий рекламный бюджет',
-        description: `ДРР всего ${drrPct.toFixed(1)}%. Возможно, вы недоинвестируете в рекламу и теряете долю рынка.`,
+        description: `ДРР всего ${avgDrr.toFixed(1)}%. Возможно, вы недоинвестируете в рекламу и теряете долю рынка.`,
         action: 'Рассмотрите увеличение рекламного бюджета для роста продаж',
         icon: Target,
       });
     }
 
-    const buyoutRate = agg.buyoutRate;
-    if (buyoutRate < 40) {
+    if (avgBuyoutRate > 0 && avgBuyoutRate < 40) {
       result.push({
         type: 'critical',
         title: 'Критично низкий % выкупа',
-        description: `Только ${buyoutRate.toFixed(1)}% заказов завершаются выкупом. Это указывает на проблемы с качеством товара или описанием.`,
-        value: `Выкуп: ${buyoutRate.toFixed(1)}%`,
+        description: `Только ${avgBuyoutRate.toFixed(1)}% заказов завершаются выкупом. Это указывает на проблемы с качеством товара или описанием.`,
+        value: `Выкуп: ${avgBuyoutRate.toFixed(1)}%`,
         action: 'Улучшите описания, фото и размерную сетку. Проверьте отзывы покупателей',
         icon: AlertTriangle,
       });
-    } else if (buyoutRate < 60) {
+    } else if (avgBuyoutRate > 0 && avgBuyoutRate < 60) {
       result.push({
         type: 'warning',
         title: 'Низкий % выкупа',
-        description: `Выкуп ${buyoutRate.toFixed(1)}% ниже нормы (70–85%). Высокий процент отмен увеличивает логистические расходы.`,
+        description: `Выкуп ${avgBuyoutRate.toFixed(1)}% ниже нормы (70–85%). Высокий процент отмен увеличивает логистические расходы.`,
         action: 'Улучшите карточки товаров и добавьте размерную таблицу',
         icon: TrendingDown,
       });
-    } else if (buyoutRate > 80) {
+    } else if (avgBuyoutRate > 80) {
       result.push({
         type: 'success',
         title: 'Высокий % выкупа',
-        description: `Отличный показатель выкупа ${buyoutRate.toFixed(1)}%. Покупатели довольны товаром и описанием.`,
+        description: `Отличный показатель выкупа ${avgBuyoutRate.toFixed(1)}%. Покупатели довольны товаром и описанием.`,
         icon: TrendingUp,
       });
     }
 
-    const logPct = agg.revenue > 0 ? (agg.logistics_cost / agg.revenue) * 100 : 0;
-    if (logPct > 30) {
+    if (avgLogisticsShare > 30) {
       result.push({
         type: 'warning',
         title: 'Высокая доля логистики',
-        description: `Логистика составляет ${logPct.toFixed(1)}% от выручки. Рассмотрите оптимизацию упаковки или переход на другой склад.`,
+        description: `Логистика составляет ${avgLogisticsShare.toFixed(1)}% от выручки. Рассмотрите оптимизацию упаковки или переход на другой склад.`,
         action: 'Пересмотрите упаковку товара для снижения габаритной стоимости',
         icon: Lightbulb,
       });
     }
 
+    if (totalReturns > 0 && totalRevenue > 0 && (totalReturns / totalRevenue) * 100 > 10) {
+      result.push({
+        type: 'warning',
+        title: 'Высокая доля возвратов',
+        description: 'Возвраты занимают заметную долю в структуре продаж. Проверьте качество товара, упаковку и описание карточек.',
+        value: formatCurrency(totalReturns, true),
+        action: 'Найдите SKU с максимальными возвратами и проверьте отзывы по ним',
+        icon: AlertTriangle,
+      });
+    }
+
     return result;
-  }, [records]);
+  }, [products]);
 
-  const topProducts = useMemo(() => {
-    const byProduct = new Map<string, SalesRecord[]>();
-    for (const r of records) {
-      if (!byProduct.has(r.product_id)) byProduct.set(r.product_id, []);
-      byProduct.get(r.product_id)!.push(r);
-    }
-    return [...byProduct.entries()]
-      .map(([pid, recs]) => ({ product: products.get(pid), records: recs }))
-      .filter(({ product }) => product !== undefined)
-      .sort((a, b) => {
-        const ra = sumRecords(a.records).revenue;
-        const rb = sumRecords(b.records).revenue;
-        return rb - ra;
-      })
-      .slice(0, 10) as { product: Product; records: SalesRecord[] }[];
-  }, [records, products]);
+  const topProducts = useMemo(() => [...products].sort((a, b) => b.revenue - a.revenue).slice(0, 10), [products]);
+  const worstProducts = useMemo(() => [...products].filter(item => item.profit < 0).sort((a, b) => a.profit - b.profit).slice(0, 5), [products]);
 
-  const worstProducts = useMemo(() => {
-    const byProduct = new Map<string, SalesRecord[]>();
-    for (const r of records) {
-      if (!byProduct.has(r.product_id)) byProduct.set(r.product_id, []);
-      byProduct.get(r.product_id)!.push(r);
-    }
-    return [...byProduct.entries()]
-      .map(([pid, recs]) => ({
-        product: products.get(pid),
-        records: recs,
-        profit: recs.reduce((s, r) => s + calcProfit(r), 0),
-      }))
-      .filter(({ product, profit }) => product !== undefined && profit < 0)
-      .sort((a, b) => a.profit - b.profit)
-      .slice(0, 5) as { product: Product; records: SalesRecord[]; profit: number }[];
-  }, [records, products]);
-
-  if (loading) {
+  if (analytics.loading || productReporting.loading) {
     return (
       <div className="p-6">
         <div className="animate-pulse space-y-4">
@@ -236,16 +252,22 @@ export function AIInsightsPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold text-slate-900">AI Инсайты</h1>
-            <p className="mt-0.5 text-sm text-slate-500">Автоматический анализ локальных данных и live API explanations</p>
+            <p className="mt-0.5 text-sm text-slate-500">Автоматический анализ reporting API и live explanations</p>
           </div>
           <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
-            {analytics.accountIds.length > 0 ? `${analytics.accountIds.length} accounts` : 'No accounts'}
+            {analytics.accountIds.length > 0 ? `${analytics.accountIds.length} кабинетов` : 'Кабинеты не найдены'}
           </div>
         </div>
 
         {analytics.error && (
           <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {analytics.error}
+          </div>
+        )}
+
+        {productReporting.error && (
+          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {productReporting.error}
           </div>
         )}
 
@@ -267,16 +289,16 @@ export function AIInsightsPage() {
               <div className="text-sm font-semibold text-slate-900">API state</div>
               <dl className="mt-3 space-y-3 text-sm">
                 <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3">
-                  <dt className="text-slate-500">Summary rows</dt>
-                  <dd className="font-medium text-slate-900">{analytics.breakdown?.rows?.length ?? 0}</dd>
+                  <dt className="text-slate-500">Products loaded</dt>
+                  <dd className="font-medium text-slate-900">{productReporting.rows.length}</dd>
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3">
-                  <dt className="text-slate-500">Trend points</dt>
-                  <dd className="font-medium text-slate-900">{analytics.trends?.series?.length ?? 0}</dd>
+                  <dt className="text-slate-500">Explanation items</dt>
+                  <dd className="font-medium text-slate-900">{analytics.explanation.breakdown?.length ?? 0}</dd>
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3">
                   <dt className="text-slate-500">Updated</dt>
-                  <dd className="font-medium text-slate-900">{analytics.summary?.meta?.updatedAt ?? 'n/a'}</dd>
+                  <dd className="font-medium text-slate-900">{productReporting.overview?.meta?.updatedAt ? new Date(productReporting.overview.meta.updatedAt).toLocaleString('ru-RU') : analytics.summary?.meta?.updatedAt ? new Date(analytics.summary.meta.updatedAt).toLocaleString('ru-RU') : '\u2014'}</dd>
                 </div>
               </dl>
             </div>
@@ -297,11 +319,11 @@ export function AIInsightsPage() {
         </div>
       </div>
 
-      {records.length === 0 ? (
+      {products.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-slate-400">
           <Sparkles size={40} className="mb-3 opacity-30" />
           <div className="text-lg font-medium">Нет данных для анализа</div>
-          <div className="text-sm mt-1">Измените фильтры или диапазон дат</div>
+          <div className="text-sm mt-1">Измените фильтры или дождитесь загрузки данных из reporting API</div>
         </div>
       ) : (
         <>
@@ -330,7 +352,7 @@ export function AIInsightsPage() {
                   <div className="text-sm font-semibold text-slate-700">Топ-10 по выручке</div>
                 </div>
                 {topProducts.map((item, i) => (
-                  <ProductInsightRow key={item.product.id} product={item.product} records={item.records} rank={i + 1} />
+                  <ProductInsightRow key={item.id} product={item} rank={i + 1} />
                 ))}
               </div>
             )}
@@ -342,13 +364,13 @@ export function AIInsightsPage() {
                   <div className="text-sm font-semibold text-slate-700">Убыточные товары</div>
                 </div>
                 {worstProducts.map((item, i) => (
-                  <div key={item.product.id} className="flex items-center gap-3 py-2.5 border-b border-slate-100 last:border-0">
+                  <div key={item.id} className="flex items-center gap-3 py-2.5 border-b border-slate-100 last:border-0">
                     <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center text-xs font-bold text-red-600">
                       {i + 1}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-slate-800 truncate">{item.product.name}</div>
-                      <div className="text-xs text-slate-400">{item.product.sku}</div>
+                      <div className="text-sm font-medium text-slate-800 truncate">{item.name}</div>
+                      <div className="text-xs text-slate-400">{item.article}</div>
                     </div>
                     <div className="text-sm font-bold text-red-500">{formatCurrency(item.profit, true)}</div>
                   </div>
@@ -366,17 +388,17 @@ export function AIInsightsPage() {
               {[
                 {
                   title: 'Масштабируйте лидеров',
-                  desc: 'Увеличьте бюджеты на рекламу топ-10 товаров по ROI',
+                  desc: 'Увеличьте бюджеты на рекламу товаров с лучшей выручкой и положительной маржей',
                   icon: TrendingUp,
                 },
                 {
                   title: 'Оптимизируйте убыточных',
-                  desc: 'Пересмотрите цену или себестоимость убыточных SKU',
+                  desc: 'Пересмотрите цену, логистику и карточки товаров с отрицательной прибылью',
                   icon: Target,
                 },
                 {
-                  title: 'Пополните склад',
-                  desc: 'Следите за оборачиваемостью, не допускайте out-of-stock',
+                  title: 'Снижайте возвраты',
+                  desc: 'Проверьте SKU с высокими возвратами и доработайте описание и упаковку',
                   icon: Zap,
                 },
               ].map((rec, i) => {

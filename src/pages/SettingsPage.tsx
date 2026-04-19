@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
+  Check,
   ChevronRight,
   LogOut,
   Loader2,
@@ -9,6 +10,7 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
+import { MarketplaceBadge } from '../components/common/MarketplaceIcon';
 import { usePlatform, type OrganizationMember, type SyncRun } from '../context/PlatformContext';
 import { apiRequest } from '../lib/api';
 import { SETTINGS_TABS, type SettingsTabId } from './settingsConfig';
@@ -736,10 +738,16 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
   const defaultDateFrom = new Date(Date.now() - 13 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const [isConnectFormOpen, setIsConnectFormOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyRuns, setHistoryRuns] = useState<SyncRun[]>([]);
   const [historyShopName, setHistoryShopName] = useState('');
+  const [syncShopId, setSyncShopId] = useState<string | null>(null);
+  const [syncShopName, setSyncShopName] = useState('');
+  const [syncDateFrom, setSyncDateFrom] = useState(defaultDateFrom);
+  const [syncDateTo, setSyncDateTo] = useState(defaultDateTo);
+  const [syncDateError, setSyncDateError] = useState<string | null>(null);
   const [marketplace, setMarketplace] = useState<'Wildberries' | 'Ozon'>('Ozon');
   const [displayName, setDisplayName] = useState('');
   const [apiToken, setApiToken] = useState('');
@@ -747,6 +755,43 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
   const [apiKey, setApiKey] = useState('');
   const [startInitialSync, setStartInitialSync] = useState(true);
   const [connectNotice, setConnectNotice] = useState<string | null>(null);
+  const [isMarketplaceMenuOpen, setIsMarketplaceMenuOpen] = useState(false);
+
+  const openSyncModal = (shopId: string, shopName: string) => {
+    setSyncShopId(shopId);
+    setSyncShopName(shopName);
+    setSyncDateFrom(defaultDateFrom);
+    setSyncDateTo(defaultDateTo);
+    setSyncDateError(null);
+    setIsSyncModalOpen(true);
+  };
+
+  const closeSyncModal = () => {
+    setIsSyncModalOpen(false);
+    setSyncShopId(null);
+    setSyncShopName('');
+    setSyncDateError(null);
+  };
+
+  const submitSync = (marketplaceName: 'Wildberries' | 'Ozon') => {
+    if (!syncShopId) return;
+    if (!syncDateFrom || !syncDateTo) {
+      setSyncDateError('Укажите обе даты для синхронизации.');
+      return;
+    }
+    if (syncDateFrom > syncDateTo) {
+      setSyncDateError('Дата начала не может быть позже даты окончания.');
+      return;
+    }
+
+    enqueueSync({
+      connectionId: syncShopId,
+      dateFrom: syncDateFrom,
+      dateTo: syncDateTo,
+      syncKinds: marketplaceName === 'Ozon' ? ['postings', 'finance', 'returns', 'stocks'] : ['orders', 'sales', 'stocks', 'finance'],
+    });
+    closeSyncModal();
+  };
 
   const openHistory = async (shopId: string, shopName: string) => {
     if (!session?.accessToken) return;
@@ -829,21 +874,53 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block md:col-span-2">
                 <div className="mb-2 text-sm font-medium text-slate-600">Маркетплейс</div>
-                <select
-                  value={marketplace}
-                  onChange={event => setMarketplace(event.target.value as 'Wildberries' | 'Ozon')}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                >
-                  <option value="Ozon">Ozon</option>
-                  <option value="Wildberries">Wildberries</option>
-                </select>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsMarketplaceMenuOpen(current => !current)}
+                    className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-sm text-slate-900 outline-none transition-colors hover:border-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  >
+                    <div className="flex items-center gap-3">
+                      <MarketplaceBadge marketplace={marketplace} compact className="border-transparent bg-slate-100" />
+                      <span className="font-medium">{marketplace}</span>
+                    </div>
+                    <ChevronRight size={16} className={`text-slate-400 transition-transform ${isMarketplaceMenuOpen ? 'rotate-90' : ''}`} />
+                  </button>
+
+                  {isMarketplaceMenuOpen && (
+                    <div className="absolute left-0 top-full z-20 mt-2 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                      {(['Ozon', 'Wildberries'] as const).map(option => {
+                        const active = marketplace === option;
+                        return (
+                          <button
+                            key={option}
+                            type="button"
+                            onClick={() => {
+                              setMarketplace(option);
+                              setIsMarketplaceMenuOpen(false);
+                            }}
+                            className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm transition-colors ${
+                              active ? 'bg-slate-50 text-slate-900' : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <MarketplaceBadge marketplace={option} compact className="border-transparent bg-slate-100" />
+                              <span className="font-medium">{option}</span>
+                            </div>
+                            {active && <Check size={16} className="text-blue-600" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </label>
               <label className="block md:col-span-2">
-                <div className="mb-2 text-sm font-medium text-slate-600">Название магазина</div>
+                <div className="mb-2 text-sm font-medium text-slate-600">Название магазина (необязательно)</div>
                 <input
                   value={displayName}
                   onChange={event => setDisplayName(event.target.value)}
-                  placeholder="WB Main Shop"
+                  placeholder="Если маркетплейс не вернет название сам"
                   className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                 />
               </label>
@@ -889,10 +966,9 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                 <button
                   type="button"
                   onClick={() => {
-                    if (!displayName.trim()) return;
                     connectShop({
                       marketplace,
-                      displayName: displayName.trim(),
+                      displayName: displayName.trim() || undefined,
                       credentials:
                         marketplace === 'Ozon'
                           ? { clientId: clientId.trim(), apiKey: apiKey.trim() }
@@ -904,7 +980,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                           ? ['postings', 'finance', 'returns', 'stocks']
                           : ['orders', 'sales', 'stocks', 'finance'],
                     });
-                    setConnectNotice(`Shop ${displayName.trim()} is being connected.`);
+                    setConnectNotice(`Подключение ${displayName.trim() || marketplace} отправлено в API.`);
                     setIsConnectFormOpen(false);
                     setDisplayName('');
                     setApiToken('');
@@ -945,9 +1021,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
             <article key={shop.id} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                    {shop.marketplace}
-                  </div>
+                  <MarketplaceBadge marketplace={shop.marketplace} className="bg-slate-50" />
                   <h3 className="mt-2 text-xl font-semibold text-slate-900">{shop.displayName}</h3>
                 </div>
                 <span
@@ -1007,14 +1081,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
               <div className="mt-3">
                 <button
                   type="button"
-                  onClick={() =>
-                    enqueueSync({
-                      connectionId: shop.id,
-                      dateFrom: defaultDateFrom,
-                      dateTo: defaultDateTo,
-                      syncKinds: shop.marketplace === 'Ozon' ? ['postings', 'finance', 'returns', 'stocks'] : ['orders', 'sales', 'stocks', 'finance'],
-                    })
-                  }
+                  onClick={() => openSyncModal(shop.id, shop.displayName)}
                   className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
                 >
                   Запустить синхронизацию
@@ -1129,6 +1196,94 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                   )}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isSyncModalOpen && (
+        <div
+          className="fixed inset-0 z-[145] flex items-center justify-center bg-slate-950/45 p-4"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget) {
+              closeSyncModal();
+            }
+          }}
+        >
+          <div className="w-full max-w-xl overflow-hidden rounded-[2rem] bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+              <div>
+                <div className="text-sm font-medium text-blue-600">Синхронизация</div>
+                <h3 className="text-2xl font-semibold text-slate-900">{syncShopName}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={closeSyncModal}
+                className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                Закрыть
+              </button>
+            </div>
+
+            <div className="space-y-5 px-6 py-5">
+              <p className="text-sm leading-6 text-slate-500">
+                Укажите период для запуска синхронизации. В API будет отправлен payload с полями <code>dateFrom</code> и <code>dateTo</code> в camelCase.
+              </p>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <div className="mb-2 text-sm font-medium text-slate-600">Дата начала</div>
+                  <input
+                    type="date"
+                    value={syncDateFrom}
+                    max={syncDateTo || undefined}
+                    onChange={event => {
+                      setSyncDateFrom(event.target.value);
+                      setSyncDateError(null);
+                    }}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  />
+                </label>
+
+                <label className="block">
+                  <div className="mb-2 text-sm font-medium text-slate-600">Дата окончания</div>
+                  <input
+                    type="date"
+                    value={syncDateTo}
+                    min={syncDateFrom || undefined}
+                    max={defaultDateTo}
+                    onChange={event => {
+                      setSyncDateTo(event.target.value);
+                      setSyncDateError(null);
+                    }}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  />
+                </label>
+              </div>
+
+              {syncDateError && <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{syncDateError}</div>}
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const shop = shops.find(item => item.id === syncShopId);
+                    if (shop) {
+                      submitSync(shop.marketplace);
+                    }
+                  }}
+                  className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+                >
+                  Запустить синхронизацию
+                </button>
+                <button
+                  type="button"
+                  onClick={closeSyncModal}
+                  className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  Отмена
+                </button>
+              </div>
             </div>
           </div>
         </div>

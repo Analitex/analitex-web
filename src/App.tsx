@@ -3,6 +3,7 @@ import { PlatformProvider, usePlatform } from './context/PlatformContext';
 import { FilterProvider } from './context/FilterContext';
 import { ReportModeProvider } from './context/ReportModeContext';
 import { useAnalyticsWorkspaceData } from './hooks/useAnalyticsWorkspaceData';
+import type { MultiSelectOption } from './components/filters/MultiSelect';
 import { Layout } from './components/layout/Layout';
 import { DevSidebar } from './components/layout/DevSidebar';
 import { DashboardPage } from './pages/DashboardPage';
@@ -326,6 +327,24 @@ function AppRouter() {
   });
   const filterOptions = useMemo(() => {
     const unique = (values: string[]) => Array.from(new Set(values)).sort((a, b) => a.localeCompare(b, 'ru'));
+    const uniqueStoreOptions = (items: MultiSelectOption[]) => {
+      const seen = new Set<string>();
+      return items.filter(item => {
+        const key = `${item.marketplace ?? 'store'}:${item.value.trim()}`;
+        if (!item.value.trim() || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+    const uniqueSkuOptions = (items: { id: string; sku: string; name: string }[]) => {
+      const seen = new Set<string>();
+      return items.filter(item => {
+        const key = item.id.trim();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
     const apiOptions = analyticsWorkspace.filterOptions;
     const apiAccounts = apiOptions?.accounts ?? [];
     const apiProducts = apiOptions?.products ?? [];
@@ -336,14 +355,24 @@ function AppRouter() {
       brands: unique(apiBrands.map(item => item.label ?? item.id).filter(Boolean)),
       categories: unique(apiCategories.map(item => item.label ?? item.id).filter(Boolean)),
       marketplaces: unique(apiAccounts.map(item => item.marketplace ?? '').filter(Boolean)),
-      stores: unique(apiAccounts.map(item => item.label ?? '').filter(Boolean)),
-      skus: apiProducts
-        .map(item => ({
-          id: String(item.id),
-          sku: item.label ?? String(item.id),
-          name: item.label ?? String(item.id),
+      stores: uniqueStoreOptions(
+        apiAccounts.map(item => ({
+          value: item.label ?? '',
+          label: item.label ?? '',
+          optionKey: `${item.marketplace ?? 'store'}:${item.label ?? ''}`,
+          marketplace: item.marketplace ?? undefined,
+          searchText: `${item.label ?? ''} ${item.marketplace ?? ''}`.trim(),
         }))
-        .filter(item => Boolean(item.id)),
+      ),
+      skus: uniqueSkuOptions(
+        apiProducts
+          .map(item => ({
+            id: String(item.id),
+            sku: item.label ?? String(item.id),
+            name: item.label ?? String(item.id),
+          }))
+          .filter(item => Boolean(item.id))
+      ),
     };
   }, [analyticsWorkspace.filterOptions]);
 

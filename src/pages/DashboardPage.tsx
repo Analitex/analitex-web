@@ -1,17 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFilters } from '../context/FilterContext';
 import { useReportMode } from '../context/ReportModeContext';
-import { usePlatform } from '../context/PlatformContext';
 import { useSalesData } from '../hooks/useSalesData';
-import { useDashboardMetrics } from '../hooks/useDashboardMetrics';
 import { useInventoryData } from '../hooks/useInventoryData';
 import { useAnalyticsWorkspaceData } from '../hooks/useAnalyticsWorkspaceData';
+import { useProductReportingData } from '../hooks/useProductReportingData';
+import { MarketplaceBadge } from '../components/common/MarketplaceIcon';
 import { MetricCard } from '../components/dashboard/MetricCard';
-import { formatCurrency, formatNumber, sumRecords } from '../lib/calculations';
-import { apiRequest } from '../lib/api';
+import { buildMetricValue, formatCurrency, formatNumber, sumRecords } from '../lib/calculations';
 import { Activity, ArrowDownWideNarrow, ArrowUpWideNarrow, ChevronDown, ChevronLeft, ChevronRight, GripVertical, Info, Search, Settings2, TrendingUp, X } from 'lucide-react';
-import type { DashboardMetrics, Product, SalesRecord } from '../types';
-import { PRODUCT_REPORT_METRICS_CATALOG } from '../lib/platformCatalog';
+import type { DashboardMetrics, MetricValue, Product, SalesRecord } from '../types';
 
 const WIDGET_PROFILES_STORAGE_KEY = 'dashboard-widget-profiles';
 const DEFAULT_WIDGET_PROFILE_ID = 'default-profile';
@@ -126,36 +124,71 @@ interface RevenueStructureRow {
   color: string;
 }
 
-type ProductReportingOverviewResponse = {
-  summary?: Record<string, unknown> | null;
-  topProducts?: Array<{
-    dimension?: {
-      productName?: string | null;
-      vendorCode?: string | null;
-      marketplaceArticle?: string | null;
-      brand?: string | null;
-      category?: string | null;
-      accountName?: string | null;
-      marketplace?: string | null;
-    } | null;
-    metrics?: Record<string, number | null> | null;
-  }> | null;
-  meta?: { updatedAt?: string | null; isPartial?: boolean | null } | null;
-};
+function buildApiMetricValue(
+  current: number | null | undefined,
+  comparison?: { previous?: number | null; delta?: number | null; deltaPercent?: number | null },
+  fallback?: MetricValue
+): MetricValue {
+  if (!Number.isFinite(current ?? NaN)) {
+    return fallback ?? buildMetricValue(0, 0, []);
+  }
+
+  const currentValue = Number(current ?? 0);
+  const previousValue = Number.isFinite(comparison?.previous ?? NaN)
+    ? Number(comparison?.previous ?? 0)
+    : currentValue - Number(comparison?.delta ?? 0);
+  const deltaValue = Number.isFinite(comparison?.delta ?? NaN)
+    ? Number(comparison?.delta ?? 0)
+    : currentValue - previousValue;
+  const deltaPercentValue = Number.isFinite(comparison?.deltaPercent ?? NaN)
+    ? Number(comparison?.deltaPercent ?? 0)
+    : previousValue !== 0
+      ? (deltaValue / Math.abs(previousValue)) * 100
+      : 0;
+
+  return {
+    current: currentValue,
+    previous: previousValue,
+    delta: deltaValue,
+    deltaPercent: deltaPercentValue,
+    trend: deltaValue > 0 ? 'up' : deltaValue < 0 ? 'down' : 'neutral',
+    sparkline: fallback?.sparkline ?? [],
+  };
+}
+
+function formatUpdatedAt(value?: string | null) {
+  if (!value) return '\u2014';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('ru-RU');
+}
 
 const TOP_MARGIN_OPTIONS = [10, 50, 100] as const;
 const ANALYTICS_TABLE_SETTINGS_KEY = 'dashboard-analytics-table-settings';
 const FINANCIAL_TOTAL_PAID_WIDGET_ID = 'metric-total-paid';
+const EMPTY_METRIC_VALUE: MetricValue = { current: 0, previous: 0, delta: 0, deltaPercent: 0, trend: 'neutral', sparkline: [] };
+const EMPTY_DASHBOARD_METRICS: DashboardMetrics = {
+  revenue: EMPTY_METRIC_VALUE,
+  orders: EMPTY_METRIC_VALUE,
+  sales: EMPTY_METRIC_VALUE,
+  profit: EMPTY_METRIC_VALUE,
+  roi: EMPTY_METRIC_VALUE,
+  buyoutRate: EMPTY_METRIC_VALUE,
+  logisticsCost: EMPTY_METRIC_VALUE,
+  adsSpend: EMPTY_METRIC_VALUE,
+  commission: EMPTY_METRIC_VALUE,
+  storageCost: EMPTY_METRIC_VALUE,
+  taxes: EMPTY_METRIC_VALUE,
+  returns: EMPTY_METRIC_VALUE,
+  cogs: EMPTY_METRIC_VALUE,
+  avgSalePrice: EMPTY_METRIC_VALUE,
+  profitPerUnit: EMPTY_METRIC_VALUE,
+  inventoryValue: EMPTY_METRIC_VALUE,
+  inventoryTurnover: EMPTY_METRIC_VALUE,
+  drr: EMPTY_METRIC_VALUE,
+};
 
-const ANALYTICS_GROUP_OPTIONS = [
-  { value: 'product', label: 'По товару' },
-  { value: 'brand', label: 'По бренду' },
-  { value: 'store', label: 'По магазину' },
-  { value: 'category', label: 'По категории' },
-  { value: 'group', label: 'По группе' },
-] as const;
-
-type AnalyticsGroupBy = (typeof ANALYTICS_GROUP_OPTIONS)[number]['value'];
+type AnalyticsGroupBy = 'product';
 type AnalyticsSortDirection = 'asc' | 'desc';
 
 interface AnalyticsSortState {
@@ -255,13 +288,11 @@ const ANALYTICS_COLUMNS: AnalyticsColumnDefinition[] = [
     label: 'Артикул',
     sticky: 'article',
     render: row => (
-      <div className="min-w-[220px]">
-        <a href={`#${row.id}`} className="font-medium text-slate-800 underline-offset-2 hover:text-blue-600 hover:underline">{row.productName}</a>
-        <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
-          <span className="rounded-full px-1.5 py-0.5" style={{ backgroundColor: `${getMarketplaceColor(row.marketplace)}22`, color: getMarketplaceColor(row.marketplace) }}>
-            {getMarketplaceShort(row.marketplace)}
-          </span>
-          <span>{row.articleLabel}</span>
+      <div className="min-w-[220px] whitespace-normal break-words">
+        <a href={`#${row.id}`} className="font-medium leading-5 text-slate-800 underline-offset-2 hover:text-blue-600 hover:underline">{row.productName}</a>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+          <MarketplaceBadge marketplace={row.marketplace} compact className="border-transparent bg-slate-100" />
+          <span className="break-all">{row.articleLabel}</span>
         </div>
       </div>
     ),
@@ -335,11 +366,46 @@ const ANALYTICS_COLUMNS: AnalyticsColumnDefinition[] = [
 export function DashboardPage() {
   const { filters } = useFilters();
   const { reportMode } = useReportMode();
-  const { session } = usePlatform();
   const { records, prevRecords, products, loading } = useSalesData(filters);
-  const { totalValue, avgTurnover } = useInventoryData(filters, products);
-  const analytics = useAnalyticsWorkspaceData();
-  const metrics = useDashboardMetrics(records, prevRecords, totalValue, avgTurnover);
+  const { totalValue } = useInventoryData(filters, products);
+  const analytics = useAnalyticsWorkspaceData({
+    includeTrends: false,
+    includeBreakdown: false,
+    includeExplanation: false,
+  });
+  const productReportingData = useProductReportingData({ accountIds: analytics.accountIds });
+  const metrics = useMemo<DashboardMetrics>(() => {
+    const summaryMetrics = analytics.summary?.metrics;
+    const comparisons = analytics.summary?.comparisons;
+
+    if (!summaryMetrics) {
+      return EMPTY_DASHBOARD_METRICS;
+    }
+
+    return {
+      revenue: buildApiMetricValue(summaryMetrics.sales, comparisons?.sales),
+      orders: buildApiMetricValue(summaryMetrics.ordersCount, comparisons?.ordersCount),
+      sales: buildApiMetricValue(summaryMetrics.sales, comparisons?.sales),
+      profit: buildApiMetricValue((summaryMetrics.sales ?? 0) - (summaryMetrics.commission ?? 0) - (summaryMetrics.logistics ?? 0) - (summaryMetrics.storage ?? 0) - (summaryMetrics.returns ?? 0)),
+      roi: EMPTY_METRIC_VALUE,
+      buyoutRate: EMPTY_METRIC_VALUE,
+      logisticsCost: buildApiMetricValue(summaryMetrics.logistics, comparisons?.logistics),
+      adsSpend: EMPTY_METRIC_VALUE,
+      commission: buildApiMetricValue(summaryMetrics.commission, comparisons?.commission),
+      storageCost: buildApiMetricValue(summaryMetrics.storage, comparisons?.storage),
+      taxes: EMPTY_METRIC_VALUE,
+      returns: buildApiMetricValue(summaryMetrics.returns, comparisons?.returns),
+      cogs: EMPTY_METRIC_VALUE,
+      avgSalePrice: EMPTY_METRIC_VALUE,
+      profitPerUnit: EMPTY_METRIC_VALUE,
+      inventoryValue: EMPTY_METRIC_VALUE,
+      inventoryTurnover: EMPTY_METRIC_VALUE,
+      drr: EMPTY_METRIC_VALUE,
+    };
+  }, [analytics.summary?.comparisons, analytics.summary?.metrics]);
+  const hasLiveSummaryMetrics = Boolean(analytics.summary?.metrics);
+  const isMetricsLoading = analytics.loading && !hasLiveSummaryMetrics;
+  const showMetricPlaceholders = !isMetricsLoading && !hasLiveSummaryMetrics;
   const [isWidgetModalOpen, setIsWidgetModalOpen] = useState(false);
   const [isCreateMetricModalOpen, setIsCreateMetricModalOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -364,78 +430,16 @@ export function DashboardPage() {
       return [];
     }
   });
-  const [productReporting, setProductReporting] = useState<ProductReportingOverviewResponse | null>(null);
-  const [productReportingLoading, setProductReportingLoading] = useState(false);
-  const [productReportingError, setProductReportingError] = useState<string | null>(null);
-
   const totalSalesCount = useMemo(() => records.reduce((s, r) => s + r.sales, 0), [records]);
   const revenueCurrent = metrics.revenue.current;
   const widgetDocuments = useMemo(
     () => buildWidgetDocuments(records, revenueCurrent),
     [records, revenueCurrent]
   );
-  const productReportingRequest = useMemo(
-    () => ({
-      dateFrom: filters.dateStart,
-      dateTo: filters.dateEnd,
-      mode: reportMode === 'financial' ? 'Financial' : 'Management',
-      accountIds: analytics.accountIds,
-      filters: {
-        productIds: filters.sku,
-        brandIds: filters.brand,
-        categoryIds: filters.category,
-      },
-      summaryMetrics: [...PRODUCT_REPORT_METRICS_CATALOG].slice(0, 5),
-      topProductMetrics: [...PRODUCT_REPORT_METRICS_CATALOG].slice(0, 4),
-      topProductsSortMetric: 'sales',
-      topProductsSortDirection: 'Desc',
-      topProductsLimit: 5,
-    }),
-    [analytics.accountIds, filters.brand, filters.category, filters.dateEnd, filters.dateStart, filters.sku, reportMode]
-  );
   const formulaMetricValues = useMemo(
     () => buildFormulaMetricValues(metrics, records, prevRecords, totalValue),
     [metrics, records, prevRecords, totalValue]
   );
-
-  useEffect(() => {
-    if (!session?.accessToken || analytics.accountIds.length === 0) {
-      setProductReporting(null);
-      setProductReportingLoading(false);
-      setProductReportingError(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadProductReporting = async () => {
-      setProductReportingLoading(true);
-      try {
-        const response = await apiRequest<ProductReportingOverviewResponse>('/reporting/products/overview', {
-          method: 'POST',
-          token: session.accessToken,
-          body: JSON.stringify(productReportingRequest),
-        });
-
-        if (cancelled) return;
-
-        setProductReporting(response);
-        setProductReportingError(null);
-      } catch (error) {
-        if (cancelled) return;
-        setProductReporting(null);
-        setProductReportingError(error instanceof Error ? error.message : 'Не удалось загрузить товарный отчет.');
-      } finally {
-        if (!cancelled) setProductReportingLoading(false);
-      }
-    };
-
-    void loadProductReporting();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [analytics.accountIds.length, productReportingRequest, session?.accessToken]);
 
   const widgetDefs = useMemo<WidgetDefinition[]>(() => [
     {
@@ -743,21 +747,30 @@ export function DashboardPage() {
   const visibleMetricDefs = orderedSelectedWidgetIds
     .map(id => availableWidgetDefs.find(widget => widget.id === id && widget.section === 'metrics'))
     .filter((widget): widget is WidgetDefinition => Boolean(widget));
+  const apiAnalyticsRows = useMemo(
+    () => buildAnalyticsRowsFromApi(productReportingData.rows),
+    [productReportingData.rows]
+  );
   const topMarginArticles = useMemo(
-    () => buildTopMarginArticles(records, products),
-    [records, products]
+    () => (apiAnalyticsRows.length > 0 ? buildTopMarginArticlesFromApi(apiAnalyticsRows) : buildTopMarginArticles(records, products)),
+    [apiAnalyticsRows, products, records]
   );
   const topMarginCategories = useMemo(
-    () => buildTopMarginCategories(records, products),
-    [records, products]
+    () => (apiAnalyticsRows.length > 0 ? buildTopMarginCategoriesFromApi(apiAnalyticsRows) : buildTopMarginCategories(records, products)),
+    [apiAnalyticsRows, products, records]
   );
   const visibleTopMarginArticles =
     articleMarginLimit === 'all' ? topMarginArticles : topMarginArticles.slice(0, articleMarginLimit);
   const visibleTopMarginCategories =
     categoryMarginLimit === 'all' ? topMarginCategories : topMarginCategories.slice(0, categoryMarginLimit);
   const revenueStructureItems = useMemo(
-    () => buildRevenueStructureItems(records, products),
-    [records, products]
+    () => {
+      if (productReportingData.overview?.summary) {
+        return buildRevenueStructureItemsFromApi(productReportingData.overview.summary);
+      }
+      return buildRevenueStructureItems(records, products);
+    },
+    [productReportingData.overview?.summary, products, records]
   );
   const orderedWidgetDefs = orderWidgetDefinitions(availableWidgetDefs, draftWidgetIds);
   const filteredWidgetDefs = orderedWidgetDefs.filter(widget => {
@@ -928,22 +941,27 @@ export function DashboardPage() {
             <p className="mt-1 text-sm text-slate-500">Backend summary for the selected period and active organization.</p>
           </div>
           <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            {analytics.accountIds.length > 0 ? `${analytics.accountIds.length} accounts` : 'No accounts'}
+            {analytics.accountIds.length > 0 ? `${analytics.accountIds.length} кабинетов` : analytics.loading ? 'Загрузка кабинетов' : 'Кабинеты не найдены'}
           </div>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          {[
-            { label: 'Sales', value: analytics.summary?.metrics?.sales ?? 0 },
-            { label: 'Commission', value: analytics.summary?.metrics?.commission ?? 0 },
-            { label: 'Logistics', value: analytics.summary?.metrics?.logistics ?? 0 },
-            { label: 'Orders', value: analytics.summary?.metrics?.ordersCount ?? 0 },
-            { label: 'Stock', value: analytics.summary?.metrics?.stockBalance ?? 0 },
+          {analytics.summary?.metrics ? [
+            { label: 'Sales', value: analytics.summary.metrics.sales },
+            { label: 'Commission', value: analytics.summary.metrics.commission },
+            { label: 'Logistics', value: analytics.summary.metrics.logistics },
+            { label: 'Orders', value: analytics.summary.metrics.ordersCount },
+            { label: 'Stock', value: analytics.summary.metrics.stockBalance },
           ].map(item => (
             <div key={item.label} className="rounded-2xl bg-slate-50 p-4">
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{item.label}</div>
               <div className="mt-2 text-2xl font-semibold text-slate-950">
-                {Number(item.value || 0).toLocaleString('ru-RU')}
+                {Number(item.value ?? 0).toLocaleString('ru-RU')}
               </div>
+            </div>
+          )) : Array.from({ length: 5 }).map((_, index) => (
+            <div key={`analytics-metric-placeholder-${index}`} className="rounded-2xl bg-slate-50 p-4">
+              <div className="h-3 w-20 animate-pulse rounded bg-slate-200" />
+              <div className="mt-3 h-8 w-28 animate-pulse rounded bg-slate-200" />
             </div>
           ))}
         </div>
@@ -957,30 +975,51 @@ export function DashboardPage() {
       <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-slate-900">Product reporting overview</div>
-            <p className="mt-1 text-sm text-slate-500">POST /api/v1/reporting/products/overview</p>
+            <div className="text-sm font-semibold text-slate-900">Товарный отчет API</div>
+            <p className="mt-1 text-sm text-slate-500">Сводка и топ товаров из `POST /api/v1/reporting/products/overview`</p>
           </div>
           <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            {productReportingLoading ? 'Loading' : productReporting?.meta?.isPartial ? 'Partial data' : 'Ready'}
+            {productReportingData.loading ? 'Загрузка' : productReportingData.overview?.meta?.isPartial ? 'Частичные данные' : 'Готово'}
           </div>
         </div>
-        {productReportingError && (
+        {productReportingData.error && (
           <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {productReportingError}
+            {productReportingData.error}
           </div>
         )}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            {productReportingData.rows.length.toLocaleString('ru-RU')} строк в таблице
+          </span>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            Обновлено: {formatUpdatedAt(productReportingData.overview?.meta?.updatedAt)}
+          </span>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            Фильтр SKU: {filters.sku.length > 0 ? filters.sku.length : 'все'}
+          </span>
+        </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          {(productReporting?.summary ? Object.entries(productReporting.summary).slice(0, 5) : PRODUCT_REPORT_METRICS_CATALOG.slice(0, 5).map(metric => [metric, 0] as const)).map(([label, value]) => (
+          {productReportingData.overview?.summary ? Object.entries(productReportingData.overview.summary).slice(0, 5).map(([label, value]) => (
             <div key={label} className="rounded-2xl bg-slate-50 p-4">
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</div>
               <div className="mt-2 text-2xl font-semibold text-slate-950">
                 {Number(value ?? 0).toLocaleString('ru-RU')}
               </div>
             </div>
+          )) : Array.from({ length: 5 }).map((_, index) => (
+            <div key={`product-summary-placeholder-${index}`} className="rounded-2xl bg-slate-50 p-4">
+              <div className="h-3 w-20 animate-pulse rounded bg-slate-200" />
+              <div className="mt-3 h-8 w-28 animate-pulse rounded bg-slate-200" />
+            </div>
           ))}
         </div>
         <div className="mt-5 grid gap-3">
-          {(productReporting?.topProducts ?? []).length > 0 ? productReporting.topProducts!.slice(0, 5).map((item, index) => (
+          {productReportingData.loading && (productReportingData.overview?.topProducts?.length ?? 0) === 0 ? Array.from({ length: 4 }).map((_, index) => (
+            <div key={`top-product-placeholder-${index}`} className="rounded-2xl bg-slate-50 px-4 py-3">
+              <div className="h-4 w-2/5 animate-pulse rounded bg-slate-200" />
+              <div className="mt-2 h-3 w-3/5 animate-pulse rounded bg-slate-200" />
+            </div>
+          )) : (productReportingData.overview?.topProducts ?? []).length > 0 ? productReportingData.overview!.topProducts!.slice(0, 5).map((item, index) => (
             <div key={`${item.dimension?.marketplaceArticle ?? item.dimension?.productName ?? index}`} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
               <div className="min-w-0">
                 <div className="font-medium text-slate-900">
@@ -1002,7 +1041,7 @@ export function DashboardPage() {
             </div>
           )) : (
             <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-400">
-              Товарные данные появятся после ответа backend.
+              Для выбранных фильтров backend пока не вернул товарные данные.
             </div>
           )}
         </div>
@@ -1056,7 +1095,8 @@ export function DashboardPage() {
             format={def.format!}
             formatDelta={def.formatDelta}
             invertColors={def.invertColors}
-            isLoading={loading}
+            isLoading={isMetricsLoading}
+            isPlaceholder={showMetricPlaceholders}
             faq={def.faq}
             documents={def.documents}
             onEdit={def.customMetricId ? () => editCustomMetric(def.customMetricId!) : undefined}
@@ -1064,7 +1104,7 @@ export function DashboardPage() {
         ))}
       </div>
 
-      {!loading && records.length > 0 && (
+      {(productReportingData.loading || visibleTopMarginArticles.length > 0) && (
         <div className="mt-6 grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
           <MarginLeaderboardCard
             title="Топ маржинальных артикулов"
@@ -1073,7 +1113,7 @@ export function DashboardPage() {
             items={visibleTopMarginArticles}
             limit={articleMarginLimit}
             onLimitChange={setArticleMarginLimit}
-            emptyMessage="Для выбранных фильтров пока нет артикулов с продажами."
+            emptyMessage={productReportingData.loading ? 'Загружаем маржинальные артикулы...' : 'Для выбранных фильтров пока нет артикулов с продажами.'}
           />
           <MarginLeaderboardCard
             title="Топ маржинальных категорий"
@@ -1082,20 +1122,20 @@ export function DashboardPage() {
             items={visibleTopMarginCategories}
             limit={categoryMarginLimit}
             onLimitChange={setCategoryMarginLimit}
-            emptyMessage="Для выбранных фильтров пока нет категорий с продажами."
+            emptyMessage={productReportingData.loading ? 'Загружаем категории...' : 'Для выбранных фильтров пока нет категорий с продажами.'}
           />
         </div>
       )}
 
-      {!loading && records.length > 0 && (
+      {(productReportingData.loading || revenueStructureItems.length > 0) && (
         <div className="mt-6">
           <RevenueStructureAccordion items={revenueStructureItems} />
         </div>
       )}
 
-      {!loading && records.length > 0 && (
+      {(productReportingData.rows.length > 0 || productReportingData.loading || productReportingData.error) && (
         <div className="mt-6">
-          <AnalyticsDataSection records={records} products={products} />
+          <AnalyticsDataSection rows={buildAnalyticsRowsFromApi(productReportingData.rows)} loading={productReportingData.loading} error={productReportingData.error} />
         </div>
       )}
 
@@ -1980,6 +2020,20 @@ function buildTopMarginArticles(records: SalesRecord[], products: Map<string, Pr
     .sort((a, b) => b.margin - a.margin || b.profit - a.profit || b.revenue - a.revenue);
 }
 
+function buildTopMarginArticlesFromApi(rows: AnalyticsTableRow[]): MarginLeaderboardRow[] {
+  return rows
+    .filter(row => row.revenue > 0)
+    .map(row => ({
+      id: row.id,
+      title: row.productName,
+      subtitle: `${row.marketplaceArticleId} · ${row.brand}`,
+      revenue: row.revenue,
+      profit: row.profit,
+      margin: row.marginality,
+    }))
+    .sort((a, b) => b.margin - a.margin || b.profit - a.profit || b.revenue - a.revenue);
+}
+
 function buildRevenueStructureItems(records: SalesRecord[], products: Map<string, Product>): RevenueStructureRow[] {
   const summary = sumRecords(records);
   const revenue = summary.revenue || 1;
@@ -2002,6 +2056,26 @@ function buildRevenueStructureItems(records: SalesRecord[], products: Map<string
     { label: 'Реклама', value: summary.ads_spend, percent: (summary.ads_spend / revenue) * 100, color: 'rgba(41,181,115,0.85)' },
     { label: 'Прочее', value: summary.other_costs + summary.storage_cost, percent: ((summary.other_costs + summary.storage_cost) / revenue) * 100, color: 'rgba(55,61,63,0.85)' },
     { label: 'Компенсация', value: -summary.returns * summary.avgSalePrice, percent: ((-summary.returns * summary.avgSalePrice) / revenue) * 100, color: 'rgba(16,185,129,0.85)' },
+  ];
+}
+
+function buildRevenueStructureItemsFromApi(summary: Record<string, number | null>) {
+  const revenue = Number(summary.sales ?? 0);
+  const safeRevenue = revenue || 1;
+  const profit = Number(summary.profit ?? 0);
+  const commission = Number(summary.commission ?? 0);
+  const logistics = Number(summary.logistics ?? 0);
+  const storage = Number(summary.storage ?? 0);
+  const returns = Number(summary.returns ?? 0);
+  const totalPaid = Number(summary.totalPaid ?? 0);
+
+  return [
+    { label: 'Прибыль', value: profit, percent: (profit / safeRevenue) * 100, color: 'rgba(22,189,202,0.85)' },
+    { label: 'Комиссия', value: commission, percent: (commission / safeRevenue) * 100, color: 'rgba(214,31,105,0.85)' },
+    { label: 'Логистика', value: logistics, percent: (logistics / safeRevenue) * 100, color: 'rgba(26,86,219,0.85)' },
+    { label: 'Хранение', value: storage, percent: (storage / safeRevenue) * 100, color: 'rgba(144,97,249,0.85)' },
+    { label: 'Возвраты', value: returns, percent: (returns / safeRevenue) * 100, color: 'rgba(244,114,182,0.85)' },
+    { label: 'К выплате', value: totalPaid, percent: (totalPaid / safeRevenue) * 100, color: 'rgba(41,181,115,0.85)' },
   ];
 }
 
@@ -2056,6 +2130,36 @@ function buildTopMarginCategories(records: SalesRecord[], products: Map<string, 
       };
     })
     .filter((item): item is MarginLeaderboardRow => item !== null)
+    .sort((a, b) => b.margin - a.margin || b.profit - a.profit || b.revenue - a.revenue);
+}
+
+function buildTopMarginCategoriesFromApi(rows: AnalyticsTableRow[]): MarginLeaderboardRow[] {
+  const byCategory = new Map<string, AnalyticsTableRow[]>();
+
+  rows.forEach(row => {
+    const key = row.category || 'Без категории';
+    if (!byCategory.has(key)) {
+      byCategory.set(key, []);
+    }
+    byCategory.get(key)!.push(row);
+  });
+
+  return Array.from(byCategory.entries())
+    .map(([category, categoryRows]) => {
+      const revenue = categoryRows.reduce((sum, row) => sum + row.revenue, 0);
+      const profit = categoryRows.reduce((sum, row) => sum + row.profit, 0);
+      const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+
+      return {
+        id: category,
+        title: category,
+        subtitle: `${categoryRows.length} строк`,
+        revenue,
+        profit,
+        margin,
+      };
+    })
+    .filter(item => item.revenue > 0)
     .sort((a, b) => b.margin - a.margin || b.profit - a.profit || b.revenue - a.revenue);
 }
 
@@ -2208,7 +2312,7 @@ function MarginLeaderboardCard({
                 hoveredItemId={hoveredItemId}
                 onHoverChange={setHoveredItemId}
               />
-              <div className="space-y-1.5 lg:pt-0.5">
+              <div className="max-h-[32rem] space-y-1.5 overflow-y-auto pr-2 lg:pt-0.5">
                 {items.map((item, index) => {
                   const tone = getMarginChartColor(index);
                   const isActive = hoveredItemId === item.id;
@@ -2241,7 +2345,7 @@ function MarginLeaderboardCard({
               </div>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="max-h-[32rem] space-y-2 overflow-y-auto pr-2">
               {items.map((item, index) => (
                 <div
                   key={item.id}
@@ -2348,11 +2452,13 @@ function MarginPieChart({
 }
 
 function AnalyticsDataSection({
-  records,
-  products,
+  rows,
+  loading,
+  error,
 }: {
-  records: SalesRecord[];
-  products: Map<string, Product>;
+  rows: AnalyticsTableRow[];
+  loading: boolean;
+  error: string | null;
 }) {
   const [groupBy, setGroupBy] = useState<AnalyticsGroupBy>('product');
   const [sourceTable, setSourceTable] = useState('Исходная таблица');
@@ -2443,7 +2549,6 @@ function AnalyticsDataSection({
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [isExportMenuOpen]);
 
-  const rows = useMemo(() => buildAnalyticsRows(records, products, groupBy), [records, products, groupBy]);
   useEffect(() => {
     setCurrentPage(1);
   }, [groupBy, pageSize, appliedColumnFilterValues, appliedRangeFilters, sortState]);
@@ -2637,13 +2742,13 @@ function AnalyticsDataSection({
               label="Группировка"
               value={groupBy}
               onChange={value => setGroupBy(value as AnalyticsGroupBy)}
-              options={ANALYTICS_GROUP_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+              options={[{ value: 'product', label: 'По товару' }]}
             />
             <ToolbarSelect
               label=""
               value={sourceTable}
               onChange={setSourceTable}
-              options={[{ value: 'Исходная таблица', label: 'Исходная таблица' }]}
+              options={[{ value: 'Product reporting API', label: 'Product reporting API' }]}
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -2685,6 +2790,12 @@ function AnalyticsDataSection({
           </div>
         </div>
       </div>
+
+      {error && (
+        <div className="mx-5 mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
 
       <div className="overflow-visible">
         <div className="max-h-[720px] overflow-auto">
@@ -2729,10 +2840,33 @@ function AnalyticsDataSection({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              <AnalyticsTableRowView row={totalRow} columns={orderedColumns} stickyLeft={stickyLeft} isTotal />
-              {pageRows.map(row => (
-                <AnalyticsTableRowView key={row.id} row={row} columns={orderedColumns} stickyLeft={stickyLeft} />
-              ))}
+              {loading ? (
+                Array.from({ length: 8 }).map((_, index) => (
+                  <tr key={`analytics-loading-${index}`}>
+                    {orderedColumns.map(column => (
+                      <td
+                        key={`${String(column.id)}-${index}`}
+                        className={`px-3 py-3 ${column.sticky ? `sticky ${stickyLeft(column)} bg-white` : ''}`}
+                      >
+                        <div className="h-4 animate-pulse rounded bg-slate-100" />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : pageRows.length === 0 ? (
+                <tr>
+                  <td colSpan={orderedColumns.length} className="px-4 py-10 text-center text-sm text-slate-400">
+                    Нет данных от product reporting API для выбранных фильтров.
+                  </td>
+                </tr>
+              ) : (
+                <>
+                  <AnalyticsTableRowView row={totalRow} columns={orderedColumns} stickyLeft={stickyLeft} isTotal />
+                  {pageRows.map(row => (
+                    <AnalyticsTableRowView key={row.id} row={row} columns={orderedColumns} stickyLeft={stickyLeft} />
+                  ))}
+                </>
+              )}
             </tbody>
           </table>
         </div>
@@ -2968,7 +3102,7 @@ function AnalyticsTableRowView({
         return (
           <td
             key={String(column.id)}
-            className={`whitespace-nowrap border-b border-slate-100 px-3 py-3 align-middle ${
+            className={`border-b border-slate-100 px-3 py-3 align-middle ${
               column.align === 'right' ? 'text-right' : 'text-left'
             } ${column.sticky ? `sticky ${stickyLeft(column)} ${isTotal ? 'bg-slate-50 shadow-[6px_0_10px_-10px_rgba(15,23,42,0.35)]' : 'bg-white shadow-[6px_0_10px_-10px_rgba(15,23,42,0.18)]'}` : ''}`}
             style={column.sticky === 'photo' ? { width: 72, minWidth: 72 } : column.sticky === 'article' ? { width: 260, minWidth: 260 } : undefined}
@@ -3340,106 +3474,101 @@ function getAnalyticsBarcode(row: AnalyticsTableRow) {
   return raw ? `20${raw.padStart(11, '0').slice(0, 11)}` : `20${row.id.replace(/\D/g, '').padStart(11, '0').slice(0, 11)}`;
 }
 
-function buildAnalyticsRows(
-  records: SalesRecord[],
-  products: Map<string, Product>,
-  groupBy: AnalyticsGroupBy
+function buildAnalyticsRowsFromApi(
+  rows: Array<{
+    dimension?: {
+      vendorCode?: string | null;
+      marketplaceArticle?: string | null;
+      productName?: string | null;
+      brand?: string | null;
+      category?: string | null;
+      accountName?: string | null;
+      marketplace?: string | null;
+    } | null;
+    metrics?: Record<string, number | null> | null;
+  }>
 ) {
-  const groups = new Map<string, { rows: SalesRecord[]; products: Product[] }>();
-  const revenueTotal = records.reduce((sum, record) => sum + record.revenue, 0) || 1;
-
-  records.forEach(record => {
-    const product = products.get(record.product_id);
-    if (!product) return;
-    const key = getAnalyticsGroupKey(product, groupBy);
-    if (!groups.has(key)) {
-      groups.set(key, { rows: [], products: [] });
-    }
-    groups.get(key)!.rows.push(record);
-    if (!groups.get(key)!.products.some(item => item.id === product.id)) {
-      groups.get(key)!.products.push(product);
-    }
-  });
-
-  const rows = Array.from(groups.entries()).map(([key, value]) => {
-    const summary = sumRecords(value.rows);
-    const primaryProduct = value.products[0];
-    const costOfSales = value.rows.reduce((sum, record) => sum + (products.get(record.product_id)?.cost_price ?? 0) * record.sales, 0);
-    const operationalExpense = summary.logistics_cost + summary.ads_spend + summary.commission + summary.storage_cost + summary.taxes + summary.other_costs;
-    const profitWithoutExpense = summary.revenue - costOfSales;
-    const capitalizationByCost = value.products.reduce((sum, product) => sum + product.cost_price * 100, 0);
-    const capitalizationByRetail = summary.count > 0 ? summary.avgSalePrice * Math.max(summary.sales, 1) : summary.revenue;
-    const shareOfRevenue = (summary.revenue / revenueTotal) * 100;
-    const compensation = Math.max(0, summary.returns * summary.avgSalePrice * 0.18);
+  return rows.map((row, index) => {
+    const metrics = row.metrics ?? {};
+    const dimension = row.dimension ?? {};
+    const revenue = Number(metrics.sales ?? 0);
+    const sales = Number(metrics.ordersCount ?? 0);
+    const commission = Number(metrics.commission ?? 0);
+    const logistics = Number(metrics.logistics ?? 0);
+    const storage = Number(metrics.storage ?? 0);
+    const returns = Number(metrics.returns ?? 0);
+    const totalPaid = Number(metrics.totalPaid ?? 0);
+    const profit = Number(metrics.profit ?? revenue - commission - logistics - storage - returns);
+    const stockBalance = Number(metrics.stockBalance ?? 0);
+    const avgSalePrice = sales > 0 ? revenue / sales : 0;
+    const drr = revenue > 0 ? (logistics / revenue) * 100 : 0;
 
     return {
-      id: key,
-      photoLabel: primaryProduct?.name ?? key,
-      articleLabel: groupBy === 'product' ? primaryProduct?.sku ?? key : key,
-      productName: groupBy === 'product' ? primaryProduct?.name ?? key : key,
-      marketplace: primaryProduct?.marketplace ?? 'Mixed',
-      store: groupBy === 'store' ? key : primaryProduct?.store ?? '—',
-      brand: groupBy === 'brand' ? key : primaryProduct?.brand ?? 'Нет бренда',
-      category: groupBy === 'category' ? key : primaryProduct?.category ?? '—',
-      group: groupBy === 'group' ? key : deriveProductGroup(primaryProduct),
-      marketplaceArticleId: String(buildMarketplaceArticleId(primaryProduct?.id ?? key)),
-      avgCost: costOfSales / Math.max(summary.sales, 1),
-      operationalExpense,
-      otherDeduction: summary.other_costs,
-      avgPriceBeforeDiscount: summary.avgPrice,
-      avgSalePrice: summary.avgSalePrice,
-      revenue: summary.revenue,
-      turnoverSales: Math.max(1, 30 / Math.max(summary.sales, 1)),
-      turnoverOrders: Math.max(1, 30 / Math.max(summary.orders, 1)),
-      sales: summary.sales,
-      toTransfer: summary.revenue - summary.commission - summary.logistics_cost,
-      returns: summary.returns,
-      costOfSales,
+      id: dimension.marketplaceArticle ?? dimension.vendorCode ?? dimension.productName ?? `product-${index + 1}`,
+      photoLabel: dimension.productName ?? dimension.marketplaceArticle ?? `Товар ${index + 1}`,
+      articleLabel: dimension.marketplaceArticle ?? dimension.vendorCode ?? `Товар ${index + 1}`,
+      productName: dimension.productName ?? dimension.marketplaceArticle ?? `Товар ${index + 1}`,
+      marketplace: dimension.marketplace ?? '—',
+      store: dimension.accountName ?? '—',
+      brand: dimension.brand ?? '—',
+      category: dimension.category ?? '—',
+      group: dimension.category ?? '—',
+      marketplaceArticleId: dimension.marketplaceArticle ?? dimension.vendorCode ?? '—',
+      avgCost: 0,
+      operationalExpense: commission + logistics + storage,
+      otherDeduction: 0,
+      avgPriceBeforeDiscount: avgSalePrice,
+      avgSalePrice,
+      revenue,
+      turnoverSales: 0,
+      turnoverOrders: 0,
+      sales,
+      toTransfer: totalPaid,
+      returns,
+      costOfSales: 0,
       fines: 0,
-      ordersCount: summary.orders,
-      ordersAmount: summary.orders * summary.avgPrice,
-      commission: summary.commission,
-      wbFinalReward: summary.revenue - summary.commission,
-      compensation,
-      averageLogisticsCost: summary.logistics_cost / Math.max(summary.sales, 1),
-      capitalizationByCost,
-      capitalizationByRetail,
-      capitalizationOwnWarehouse: capitalizationByCost * 0.42,
-      gmroi: costOfSales > 0 ? (summary.profit / costOfSales) * 100 : 0,
-      gmroiYear: costOfSales > 0 ? ((summary.profit / costOfSales) * 100) * 12 : 0,
-      logisticsCost: summary.logistics_cost,
-      storage: summary.storage_cost,
-      rejectionsAndReturns: summary.returns,
-      totalSales: summary.sales,
-      buyoutRate: summary.buyoutRate,
-      averageProfitPerPiece: summary.profitPerUnit,
-      taxes: summary.taxes,
-      taxBase: summary.revenue - summary.commission,
-      profit: summary.profit,
-      profitWithoutExpense,
-      roi: summary.roi,
-      shareOfRevenue,
-      marginality: summary.margin,
-      marginalityWithoutExpense: summary.revenue > 0 ? (profitWithoutExpense / summary.revenue) * 100 : 0,
-      advertisingExpense: summary.ads_spend,
-      drrSales: summary.drr,
-      advertisingExpenseBonus: summary.ads_spend * 0.18,
-      drrBonus: summary.revenue > 0 ? ((summary.ads_spend * 0.18) / summary.revenue) * 100 : 0,
-      advertisingExpenseTotal: summary.ads_spend * 1.18,
-      drrTotal: summary.revenue > 0 ? ((summary.ads_spend * 1.18) / summary.revenue) * 100 : 0,
-      drrOrders: summary.orders > 0 ? ((summary.ads_spend * 1.18) / (summary.orders * summary.avgSalePrice)) * 100 : 0,
-      acceptanceSum: summary.revenue * 0.012,
-      abcProfit: getAbcBucket(summary.profit, 'profit'),
-      abcRevenue: getAbcBucket(summary.revenue, 'revenue'),
-      stockBalanceMP: value.products.length * 120,
-      stockBalanceOwn: value.products.length * 45,
-      stockBalanceToClient: Math.round(summary.orders * 0.12),
-      stockBalanceFromClient: Math.round(summary.returns * 0.35),
-      salesUnits: summary.sales,
+      ordersCount: sales,
+      ordersAmount: revenue,
+      commission,
+      wbFinalReward: totalPaid,
+      compensation: 0,
+      averageLogisticsCost: sales > 0 ? logistics / sales : 0,
+      capitalizationByCost: 0,
+      capitalizationByRetail: stockBalance * avgSalePrice,
+      capitalizationOwnWarehouse: 0,
+      gmroi: 0,
+      gmroiYear: 0,
+      logisticsCost: logistics,
+      storage,
+      rejectionsAndReturns: returns,
+      totalSales: sales,
+      buyoutRate: 0,
+      averageProfitPerPiece: sales > 0 ? profit / sales : 0,
+      taxes: 0,
+      taxBase: revenue - commission,
+      profit,
+      profitWithoutExpense: profit,
+      roi: 0,
+      shareOfRevenue: 0,
+      marginality: revenue > 0 ? (profit / revenue) * 100 : 0,
+      marginalityWithoutExpense: revenue > 0 ? (profit / revenue) * 100 : 0,
+      advertisingExpense: 0,
+      drrSales: drr,
+      advertisingExpenseBonus: 0,
+      drrBonus: 0,
+      advertisingExpenseTotal: 0,
+      drrTotal: 0,
+      drrOrders: 0,
+      acceptanceSum: 0,
+      abcProfit: '—',
+      abcRevenue: '—',
+      stockBalanceMP: stockBalance,
+      stockBalanceOwn: 0,
+      stockBalanceToClient: 0,
+      stockBalanceFromClient: 0,
+      salesUnits: sales,
     } satisfies AnalyticsTableRow;
   });
-
-  return rows.sort((left, right) => right.revenue - left.revenue);
 }
 
 function buildAnalyticsTotalRow(rows: AnalyticsTableRow[]): AnalyticsTableRow;
@@ -3546,62 +3675,11 @@ function getAnalyticsExportValue(row: AnalyticsTableRow, columnId: AnalyticsColu
   return typeof value === 'number' ? value : value ?? '';
 }
 
-function getAnalyticsGroupKey(product: Product, groupBy: AnalyticsGroupBy) {
-  switch (groupBy) {
-    case 'brand':
-      return product.brand || 'Нет бренда';
-    case 'store':
-      return product.store;
-    case 'category':
-      return product.category;
-    case 'group':
-      return deriveProductGroup(product);
-    case 'product':
-    default:
-      return product.id;
-  }
-}
-
-function deriveProductGroup(product?: Product) {
-  if (!product) return 'Без группы';
-  if (product.category === 'Термопосуда') return 'Kitchen';
-  if (product.category === 'Спорт') return 'Sport';
-  if (product.category === 'Освещение' || product.category === 'Хранение') return 'Home';
-  return 'Other';
-}
-
-function buildMarketplaceArticleId(seed: string) {
-  return Math.abs(
-    Array.from(seed).reduce((sum, char) => sum * 31 + char.charCodeAt(0), 17)
-  )
-    .toString()
-    .slice(0, 9);
-}
-
-function getMarketplaceShort(marketplace: string) {
-  if (marketplace.includes('Wildberries')) return 'WB';
-  if (marketplace.includes('Ozon')) return 'OZ';
-  if (marketplace.includes('Яндекс')) return 'YM';
-  return 'MP';
-}
-
 function getMarketplaceColor(marketplace: string) {
   if (marketplace.includes('Wildberries')) return '#7c3aed';
   if (marketplace.includes('Ozon')) return '#2563eb';
   if (marketplace.includes('Яндекс')) return '#f59e0b';
   return '#0f766e';
-}
-
-function getAbcBucket(value: number, mode: 'profit' | 'revenue') {
-  const absValue = Math.abs(value);
-  if (mode === 'profit') {
-    if (absValue > 150000) return 'A';
-    if (absValue > 60000) return 'B';
-    return 'C';
-  }
-  if (absValue > 500000) return 'A';
-  if (absValue > 200000) return 'B';
-  return 'C';
 }
 
 function describePieSlice(cx: number, cy: number, radius: number, startAngle: number, endAngle: number) {

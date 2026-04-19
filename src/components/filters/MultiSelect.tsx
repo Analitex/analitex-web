@@ -1,10 +1,13 @@
 import { useState, useRef, useEffect, useMemo, type MouseEvent as ReactMouseEvent, type KeyboardEvent } from 'react';
 import { ChevronDown, X, Check, Search } from 'lucide-react';
+import { MarketplaceIcon } from '../common/MarketplaceIcon';
 
 export interface MultiSelectOption {
   label: string;
   value: string;
+  optionKey?: string;
   searchText?: string;
+  marketplace?: string;
 }
 
 interface MultiSelectProps {
@@ -38,7 +41,9 @@ export function MultiSelect({
           : {
               label: option.label,
               value: option.value,
+              optionKey: option.optionKey,
               searchText: (option.searchText ?? option.label).toLowerCase(),
+              marketplace: option.marketplace,
             }
       ),
     [options]
@@ -162,7 +167,7 @@ export function MultiSelect({
 
             {filteredOptions.map(opt => (
               <button
-                key={opt.value}
+                key={opt.optionKey ?? opt.value}
                 type="button"
                 onClick={() => toggle(opt.value)}
                 className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
@@ -172,6 +177,7 @@ export function MultiSelect({
                 }`}>
                   {value.includes(opt.value) && <Check size={10} className="text-white" />}
                 </div>
+                {opt.marketplace && <MarketplaceIcon marketplace={opt.marketplace} className="shrink-0" />}
                 <span className="truncate">{opt.label}</span>
               </button>
             ))}

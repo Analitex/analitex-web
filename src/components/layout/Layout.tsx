@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import type { MultiSelectOption } from '../filters/MultiSelect';
 import { FilterBar } from './FilterBar';
 import { Sidebar } from './Sidebar';
 import type { Page } from '../../types';
@@ -10,7 +11,7 @@ interface LayoutProps {
   brands: string[];
   categories: string[];
   marketplaces: string[];
-  stores: string[];
+  stores: MultiSelectOption[];
   skus: { id: string; sku: string; name: string }[];
 }
 

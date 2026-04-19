@@ -13,6 +13,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react';
+import { MarketplaceBadge } from '../components/common/MarketplaceIcon';
 import { usePlatform } from '../context/PlatformContext';
 import type { Page } from '../types';
 import {
@@ -732,7 +733,10 @@ export function ConnectionsPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="font-semibold text-slate-900">{connection.displayName}</div>
-                      <div className="text-sm text-slate-500">{connection.marketplace} · {connection.credentialSummary}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                        <MarketplaceBadge marketplace={connection.marketplace} compact className="border-transparent bg-slate-100" />
+                        <span>{connection.credentialSummary}</span>
+                      </div>
                     </div>
                     <Pill tone={connection.validationState === 'Validated' ? 'emerald' : 'amber'}>{connection.validationState}</Pill>
                   </div>

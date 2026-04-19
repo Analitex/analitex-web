@@ -18,6 +18,34 @@ export class ApiError extends Error {
   }
 }
 
+const IN_FLIGHT_REQUESTS = new Map<string, Promise<unknown>>();
+const RESPONSE_CACHE = new Map<string, { expiresAt: number; value: unknown }>();
+const RESPONSE_CACHE_TTL_MS = 5_000;
+
+function isDedupableRequest(path: string, options: RequestInit & { token?: string | null }) {
+  const method = (options.method ?? 'GET').toUpperCase();
+  if (method === 'GET') return true;
+  if (method !== 'POST') return false;
+
+  return (
+    path.startsWith('/metadata/') ||
+    path.startsWith('/overview/') ||
+    path.startsWith('/analytics/') ||
+    path.startsWith('/reporting/')
+  );
+}
+
+function buildRequestKey(path: string, options: RequestInit & { token?: string | null }) {
+  const method = (options.method ?? 'GET').toUpperCase();
+  const body = typeof options.body === 'string' ? options.body : '';
+  return JSON.stringify({
+    method,
+    path: buildUrl(path),
+    token: options.token ?? null,
+    body,
+  });
+}
+
 function buildUrl(path: string) {
   return `${API_BASE_URL.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
 }
@@ -47,6 +75,25 @@ export async function apiRequest<T>(
   path: string,
   options: RequestInit & { token?: string | null } = {}
 ): Promise<T> {
+  const canDeduplicate = isDedupableRequest(path, options);
+  const requestKey = buildRequestKey(path, options);
+  if (canDeduplicate) {
+    const cachedResponse = RESPONSE_CACHE.get(requestKey);
+    if (cachedResponse && cachedResponse.expiresAt > Date.now()) {
+      return cachedResponse.value as T;
+    }
+    if (cachedResponse) {
+      RESPONSE_CACHE.delete(requestKey);
+    }
+  }
+
+  if (canDeduplicate) {
+    const existingRequest = IN_FLIGHT_REQUESTS.get(requestKey);
+    if (existingRequest) {
+      return existingRequest as Promise<T>;
+    }
+  }
+
   const headers = new Headers(options.headers);
   headers.set('Accept', 'application/json');
 
@@ -58,25 +105,46 @@ export async function apiRequest<T>(
     headers.set('Authorization', `Bearer ${options.token}`);
   }
 
-  const response = await fetch(buildUrl(path), {
-    ...options,
-    headers,
-  });
+  const requestPromise = (async () => {
+    const response = await fetch(buildUrl(path), {
+      ...options,
+      headers,
+    });
 
-  if (!response.ok) {
-    let details: ApiErrorBody | undefined;
-    try {
-      details = (await response.json()) as ApiErrorBody;
-    } catch {
-      details = undefined;
+    if (!response.ok) {
+      let details: ApiErrorBody | undefined;
+      try {
+        details = (await response.json()) as ApiErrorBody;
+      } catch {
+        details = undefined;
+      }
+      const message = resolveApiErrorMessage(details, response.statusText || 'Request failed');
+      throw new ApiError(message, response.status, details);
     }
-    const message = resolveApiErrorMessage(details, response.statusText || 'Request failed');
-    throw new ApiError(message, response.status, details);
+
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    return (await response.json()) as T;
+  })();
+
+  if (canDeduplicate) {
+    IN_FLIGHT_REQUESTS.set(requestKey, requestPromise);
   }
 
-  if (response.status === 204) {
-    return undefined as T;
+  try {
+    const response = await requestPromise;
+    if (canDeduplicate) {
+      RESPONSE_CACHE.set(requestKey, {
+        expiresAt: Date.now() + RESPONSE_CACHE_TTL_MS,
+        value: response,
+      });
+    }
+    return response;
+  } finally {
+    if (canDeduplicate) {
+      IN_FLIGHT_REQUESTS.delete(requestKey);
+    }
   }
-
-  return (await response.json()) as T;
 }

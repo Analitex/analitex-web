@@ -205,14 +205,6 @@ export function SummaryTable({ title = 'SummaryReport', rows, loading }: Summary
     return diffs;
   }, [sortedRows]);
 
-  const toggleSort = (key: keyof SummaryRow) => {
-    setSort(previous => {
-      if (previous.key !== key) return { key, dir: 'desc' };
-      if (previous.dir === 'desc') return { key, dir: 'asc' };
-      return { key, dir: null };
-    });
-  };
-
   const openColumnMenu = (key: keyof SummaryRow, anchor: HTMLElement) => {
     setOpenColumnMenuKey(current => {
       if (current === key) {
@@ -425,13 +417,13 @@ export function SummaryTable({ title = 'SummaryReport', rows, loading }: Summary
                       return (
                         <td
                           key={String(column.key)}
-                          className={`px-4 py-3 whitespace-nowrap ${
+                          className={`px-4 py-3 ${
                             column.align === 'right' ? 'text-right' : 'text-left'
                           } ${column.sticky ? 'sticky left-0 z-10 bg-white shadow-[8px_0_16px_-16px_rgba(15,23,42,0.28)]' : ''}`}
                           style={{ minWidth: getColumnWidth(column), width: getColumnWidth(column) }}
                         >
                           <div className={column.key === 'profit' && typeof rawValue === 'number' ? (rawValue >= 0 ? 'text-emerald-600' : 'text-red-500') : 'text-slate-700'}>
-                            <div className={`font-medium ${column.key === 'profit' ? 'font-semibold' : ''}`}>{formatted}</div>
+                            <div className={`font-medium ${column.key === 'profit' ? 'font-semibold' : ''} ${column.key === 'periodLabel' ? 'whitespace-normal break-words leading-5' : 'whitespace-nowrap'}`}>{formatted}</div>
                             {isNumeric && diffText && (
                               <div className={`mt-0.5 text-[11px] font-medium ${diffValue! >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                                 {diffText}

@@ -74,7 +74,7 @@ Manager can:
 - [x] typed response models for validation / orders / sales / stocks / finance
 - [x] validation and finance DTOs aligned to real captured WB responses
 - [-] hardening around live response variations
-- [ ] richer catalog enrichment
+- [x] connector-side catalog enrichment from cards + prices APIs for active sync kinds
 - [ ] ads sync
 - [ ] search/funnel sync
 
@@ -82,6 +82,7 @@ Manager can:
 
 - [x] credential validation with real API
 - [x] postings sync
+- [x] postings response contracts handle both `result: []` and `result.postings: []`
 - [x] finance sync
 - [x] finance sync date-range chunking for historical backfills
 - [x] stocks sync
@@ -91,6 +92,8 @@ Manager can:
 - [x] product metadata enrichment for synced rows
 - [x] typed response models for validation / catalog / postings / returns / stocks / finance
 - [-] hardening around live response variations
+- [x] connector-side price enrichment from `/v5/product/info/prices`
+- [x] active postings now persist price snapshot fields from posting financial payload and catalog price metadata
 - [ ] analytics sync
 - [ ] richer catalog sync
 
@@ -98,13 +101,25 @@ Manager can:
 
 - [-] remove raw artifact payload storage from sync pipeline
 - [-] typed WB/Ozon staging tables for first-sync persistence
-- [-] richer unified product aggregate storage for frontend-facing reporting
+- [x] canonical product catalog read model
+- [x] stock daily snapshot read model
+- [-] stock source snapshot read model
+- [x] `products/stock-sources` now returns normalized source semantics for WB warehouses and Ozon stock buckets
+- [x] `products/stock-sources` now returns summary blocks and grouped totals for inventory drawers
+- [-] product metric breakdown read model
+- [x] persistent grouped breakdowns for commission / stock / profit / logistics / storage / tax / cost of sales / returns / advertising / payout metrics
+- [-] richer product period aggregate storage for frontend-facing reporting
+- [x] richer product period aggregate now persists first-pass seller KPIs (`cost`, prices, turnover, GMROI, share metrics)
+- [x] product period aggregate now persists first-pass ad-efficiency metrics (`drr`, `drrByOrders`)
 - [-] unified product metric details/explanation API on top of product aggregates
 - [-] product overview endpoint on top of unified product aggregates
+- [-] finance decomposition in unified product aggregates (`nominalCommission`, `marketplaceDiscount`, `netMarketplaceReward`)
 - [x] typed raw commerce artifact refactor
 - [x] typed raw finance artifact refactor
 - [x] typed raw returns artifact refactor
 - [x] typed raw stocks artifact refactor
+- [x] staging rows now persist typed connector-side catalog/price snapshot fields (`currencyCode`, current/old/marketing/min/net price, VAT, discounts, barcode, size, subject id)
+- [x] normalization now carries typed connector-side catalog/price snapshot fields into canonical product catalog and product-period aggregates
 - [x] normalized daily facts
 - [x] event-date aware normalization
 - [x] sync-kind-aware metric normalization
@@ -124,6 +139,7 @@ Manager can:
 - [-] frontend-facing product reporting API on richer product aggregates
 - [-] frontend-facing product metric detail endpoint on richer product aggregates
 - [-] frontend-facing product overview endpoint on richer product aggregates
+- [-] dedicated product metric breakdown endpoint on persistent read model
 - [x] DB-backed summary for core normalized metrics
 - [x] real previous-period comparisons for sync-backed summary
 - [x] DB-backed trends for core normalized metrics
@@ -147,8 +163,12 @@ Manager can:
 - [x] sync-backed metric definitions for `sales`, `commission`, `logistics`, `storage`, `returns`, `ordersCount`, `stockBalance`
 - [x] first-class dimensions catalog independent of prototype snapshot
 - [x] sync-backed filter options for accounts / products / brands / categories / date range
+- [x] product filter identity cleanup so frontend receives seller-facing ids/labels instead of raw marketplace technical values
+- [x] product filter options use canonical product catalog instead of aggregate/fact fallbacks
 - [x] metadata endpoints no longer depend on prototype fallback for primary web paths
 - [x] validation / preview endpoints for custom metrics
+- [x] product reporting `dimension` payload now exposes normalized connector-side snapshot fields (subject id, price/VAT/discount snapshots, barcode, size)
+- [x] product metrics catalog now formalizes period vs snapshot semantics and exposes snapshot-backed price/discount/VAT metrics for reporting screens
 
 ## Frontend Support
 
@@ -204,7 +224,8 @@ Manager can:
 
 ## Immediate Next Priorities
 
-1. Finish enrichment of unified product aggregates with stronger product identity and finance decomposition from WB/Ozon.
-2. Finish product overview/dashboard API on top of product aggregates and align the web flow to it.
-3. Split broader financial costs beyond `commission`, `logistics`, and `storage` into clearer buckets like ads.
-4. Tighten production auth / password-reset behavior before public rollout.
+1. Finish warehouse/source-aware stock views and complete stock source snapshot rollout.
+2. Expose the new normalized connector-side snapshot fields in reporting/product API contracts where they help the web app.
+3. Finish dedicated product metric breakdown read model rollout for richer drawers and explanation families.
+4. Finish `products/query` promotion and continue moving reporting contracts onto cleaner screen-oriented endpoints.
+5. Finish Ozon and Wildberries live payload hardening for enriched catalog/price flows.

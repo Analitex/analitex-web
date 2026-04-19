@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useFilters } from '../context/FilterContext';
 import { useSalesData } from '../hooks/useSalesData';
 import { usePlanFactData } from '../hooks/usePlanFactData';
-import { formatCurrency, formatNumber } from '../lib/calculations';
+import { formatCurrency } from '../lib/calculations';
 import { Target, TrendingUp, TrendingDown, Search } from 'lucide-react';
 import type { PlanFactRow } from '../types';
 
@@ -54,6 +54,7 @@ export function PlanFactPage() {
 
   const overPlanCount = rows.filter(r => r.revenueDeviationPct >= 0).length;
   const underPlanCount = rows.filter(r => r.revenueDeviationPct < 0).length;
+  const hasData = rows.length > 0;
 
   const overallRevPct = totalPlannedRevenue > 0 ? ((totalActualRevenue - totalPlannedRevenue) / totalPlannedRevenue) * 100 : 0;
   const overallProfPct = totalPlannedProfit > 0 ? ((totalActualProfit - totalPlannedProfit) / totalPlannedProfit) * 100 : 0;
@@ -92,14 +93,14 @@ export function PlanFactPage() {
           return (
             <div key={item.label} className="bg-white rounded-xl border border-slate-200 p-4">
               <div className="flex items-center gap-2 mb-2">
-                <div className={`w-8 h-8 rounded-lg ${item.bg} flex items-center justify-center`}>
+              <div className={`w-8 h-8 rounded-lg ${item.bg} flex items-center justify-center`}>
                   <Icon size={15} className={item.color} />
                 </div>
                 <div className="text-xs text-slate-500">{item.label}</div>
               </div>
-              <div className={`text-xl font-bold ${item.color}`}>{item.value}</div>
-              <div className="text-xs text-slate-400 mt-0.5">{item.sub}</div>
-              {item.pct !== null && (
+              <div className={`text-xl font-bold ${hasData ? item.color : 'text-slate-300'}`}>{hasData ? item.value : '--'}</div>
+              <div className="text-xs text-slate-400 mt-0.5">{hasData ? item.sub : 'Ожидаем live данные'}</div>
+              {hasData && item.pct !== null && (
                 <div className="mt-2">
                   <DeviationBadge pct={item.pct} />
                 </div>
@@ -108,6 +109,13 @@ export function PlanFactPage() {
           );
         })}
       </div>
+
+      {!loading && !hasData && (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center">
+          <div className="text-sm font-semibold text-slate-700">Live данные план/факт пока недоступны</div>
+          <div className="mt-1 text-sm text-slate-500">Локальные seed-данные удалены из этой страницы. После подключения backend endpoint таблица заполнится автоматически.</div>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 gap-3">

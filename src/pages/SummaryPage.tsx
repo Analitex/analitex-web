@@ -1,11 +1,7 @@
 import { useState, useMemo } from 'react';
-import { useFilters } from '../context/FilterContext';
-import { useSalesData } from '../hooks/useSalesData';
 import { useAnalyticsWorkspaceData } from '../hooks/useAnalyticsWorkspaceData';
 import { SummaryTable } from '../components/table/SummaryTable';
-import { sumRecords, calcProfit } from '../lib/calculations';
 import type { SummaryRow, GroupBy } from '../types';
-import type { SalesRecord } from '../types';
 
 const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: 'day', label: 'По дням' },
@@ -16,100 +12,64 @@ const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: 'category', label: 'По категории' },
 ];
 
-function getDetailedWeekLabel(dateStr: string) {
-  const start = new Date(dateStr);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
-
-  const startOfYear = new Date(start.getFullYear(), 0, 1);
-  const days = Math.floor((start.getTime() - startOfYear.getTime()) / 86400000);
-  const weekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7);
-
-  const format = (date: Date) =>
-    `${`${date.getDate()}`.padStart(2, '0')}.${`${date.getMonth() + 1}`.padStart(2, '0')}.${date.getFullYear()}`;
-
-  return `${weekNumber} неделя (${format(start)} - ${format(end)})`;
-}
-
-function buildRows(
-  records: SalesRecord[],
-  groupBy: GroupBy,
-  products: Map<string, import('../types').Product>
-): SummaryRow[] {
-  const groupFn = (r: SalesRecord): string => {
-    switch (groupBy) {
-      case 'week': {
-        const d = new Date(r.date);
-        const day = d.getDay();
-        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-        const monday = new Date(d.setDate(diff));
-        return monday.toISOString().split('T')[0];
-      }
-      case 'month': {
-        const d = new Date(r.date);
-        return `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}`;
-      }
-      case 'day': return r.date;
-      case 'sku': return r.product_id;
-      case 'brand': return products.get(r.product_id)?.brand ?? 'Неизвестно';
-      case 'category': return products.get(r.product_id)?.category ?? 'Неизвестно';
-    }
-  };
-
-  const groups = new Map<string, SalesRecord[]>();
-  for (const r of records) {
-    const key = groupFn(r);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(r);
-  }
-
-  return Array.from(groups.entries()).map(([key, recs]) => {
-    const agg = sumRecords(recs);
-    const totalProfit = recs.reduce((s, r) => s + calcProfit(r), 0);
-    const payouts = agg.revenue - agg.commission - agg.logistics_cost;
-
-    let periodLabel = key;
-    if (groupBy === 'week') periodLabel = getDetailedWeekLabel(key);
-    else if (groupBy === 'month') {
-      const [year, month] = key.split('-').map(Number);
-      periodLabel = new Date(year, month - 1, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-    }
-    else if (groupBy === 'day') {
-      const d = new Date(key);
-      periodLabel = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', weekday: 'short' });
-    } else if (groupBy === 'sku') {
-      const p = products.get(key);
-      periodLabel = p ? `${p.name} (${p.sku})` : key;
-    }
-
-    return {
-      period: key,
-      periodLabel,
-      avgPriceBeforeDiscount: agg.avgPrice,
-      avgSalePrice: agg.avgSalePrice,
-      revenue: agg.revenue,
-      sales: agg.sales,
-      payouts: Math.max(0, payouts),
-      returns: agg.returns,
-      operationalCosts: agg.totalCosts,
-      profit: totalProfit,
-      orders: agg.orders,
-      buyoutRate: agg.buyoutRate,
-      productId: groupBy === 'sku' ? key : undefined,
-      productName: groupBy === 'sku' ? products.get(key)?.name : undefined,
-      brand: groupBy === 'brand' ? key : products.get(recs[0]?.product_id)?.brand,
-      category: groupBy === 'category' ? key : products.get(recs[0]?.product_id)?.category,
-    } as SummaryRow;
-  }).sort((a, b) => a.period.localeCompare(b.period));
-}
-
 export function SummaryPage() {
-  const { filters } = useFilters();
-  const { records, products, loading } = useSalesData(filters);
-  const analytics = useAnalyticsWorkspaceData();
   const [groupBy, setGroupBy] = useState<GroupBy>('week');
+  const analyticsGroupBy = useMemo(() => {
+    switch (groupBy) {
+      case 'day':
+        return 'Date' as const;
+      case 'week':
+        return 'Week' as const;
+      case 'month':
+        return 'Month' as const;
+      case 'brand':
+        return 'Brand' as const;
+      case 'category':
+        return 'Category' as const;
+      case 'sku':
+      default:
+        return 'Product' as const;
+    }
+  }, [groupBy]);
+  const analytics = useAnalyticsWorkspaceData({
+    breakdownGroupBy: analyticsGroupBy,
+    includeTrends: false,
+    includeExplanation: false,
+  });
 
-  const rows = useMemo(() => buildRows(records, groupBy, products), [records, groupBy, products]);
+  const rows = useMemo(() => {
+    const apiRows = analytics.breakdown?.rows ?? [];
+    return apiRows.map((row, index) => {
+      const dimension = typeof row.dimension === 'string' ? row.dimension : row.dimension?.label ?? row.dimension?.id ?? `Row ${index + 1}`;
+      const metrics = row.metrics ?? {};
+      const revenue = Number(metrics.sales ?? 0);
+      const sales = Number(metrics.ordersCount ?? 0);
+      const commission = Number(metrics.commission ?? 0);
+      const logistics = Number(metrics.logistics ?? 0);
+      const storage = Number(metrics.storage ?? 0);
+      const returns = Number(metrics.returns ?? 0);
+      const profit = revenue - commission - logistics - storage - returns;
+
+      return {
+        period: typeof row.dimension === 'string' ? row.dimension : row.dimension?.id ?? dimension,
+        periodLabel: dimension,
+        avgPriceBeforeDiscount: 0,
+        avgSalePrice: sales > 0 ? revenue / sales : 0,
+        revenue,
+        sales,
+        payouts: Math.max(0, revenue - commission - logistics),
+        returns,
+        operationalCosts: commission + logistics + storage,
+        profit,
+        orders: sales,
+        buyoutRate: 0,
+        productId: groupBy === 'sku' ? (typeof row.dimension === 'string' ? row.dimension : row.dimension?.id ?? undefined) : undefined,
+        productName: groupBy === 'sku' ? dimension : undefined,
+        brand: groupBy === 'brand' ? dimension : undefined,
+        category: groupBy === 'category' ? dimension : undefined,
+      } satisfies SummaryRow;
+    });
+  }, [analytics.breakdown?.rows, groupBy]);
 
   const apiRows = analytics.breakdown?.rows ?? [];
   const apiMetrics = analytics.summary?.metrics ?? {};
@@ -123,7 +83,7 @@ export function SummaryPage() {
             <p className="mt-1 text-sm text-slate-500">Агрегированные данные за выбранный период и live API snapshot</p>
           </div>
           <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            {analytics.accountIds.length > 0 ? `${analytics.accountIds.length} accounts` : 'No accounts'}
+            {analytics.accountIds.length > 0 ? `${analytics.accountIds.length} кабинетов` : analytics.loading ? 'Загрузка кабинетов' : 'Кабинеты не найдены'}
           </div>
         </div>
 
@@ -134,18 +94,23 @@ export function SummaryPage() {
         )}
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          {[
-            { label: 'Sales', value: apiMetrics.sales ?? 0 },
-            { label: 'Commission', value: apiMetrics.commission ?? 0 },
-            { label: 'Logistics', value: apiMetrics.logistics ?? 0 },
-            { label: 'Orders', value: apiMetrics.ordersCount ?? 0 },
-            { label: 'Stock', value: apiMetrics.stockBalance ?? 0 },
+          {analytics.summary?.metrics ? [
+            { label: 'Sales', value: apiMetrics.sales },
+            { label: 'Commission', value: apiMetrics.commission },
+            { label: 'Logistics', value: apiMetrics.logistics },
+            { label: 'Orders', value: apiMetrics.ordersCount },
+            { label: 'Stock', value: apiMetrics.stockBalance },
           ].map(item => (
             <div key={item.label} className="rounded-2xl bg-slate-50 p-4">
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{item.label}</div>
               <div className="mt-2 text-2xl font-semibold text-slate-950">
-                {Number.isFinite(item.value) ? item.value.toLocaleString('ru-RU') : '0'}
+                {Number(item.value ?? 0).toLocaleString('ru-RU')}
               </div>
+            </div>
+          )) : Array.from({ length: 5 }).map((_, index) => (
+            <div key={`summary-metric-placeholder-${index}`} className="rounded-2xl bg-slate-50 p-4">
+              <div className="h-3 w-20 animate-pulse rounded bg-slate-200" />
+              <div className="mt-3 h-8 w-28 animate-pulse rounded bg-slate-200" />
             </div>
           ))}
         </div>
@@ -168,9 +133,15 @@ export function SummaryPage() {
                   </div>
                 );
               })}
-              {apiRows.length === 0 && (
+              {analytics.loading && apiRows.length === 0 && Array.from({ length: 4 }).map((_, index) => (
+                <div key={`summary-breakdown-placeholder-${index}`} className="rounded-xl bg-white px-4 py-3">
+                  <div className="h-4 w-2/5 animate-pulse rounded bg-slate-200" />
+                  <div className="mt-2 h-3 w-1/4 animate-pulse rounded bg-slate-200" />
+                </div>
+              ))}
+              {!analytics.loading && apiRows.length === 0 && (
                 <div className="rounded-xl bg-white px-4 py-3 text-sm text-slate-500">
-                  No breakdown rows from the API yet.
+                  Backend пока не вернул строки детализации.
                 </div>
               )}
             </div>
@@ -181,7 +152,7 @@ export function SummaryPage() {
             <dl className="mt-3 space-y-3 text-sm">
               <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3">
                 <dt className="text-slate-500">Summary updated</dt>
-                <dd className="font-medium text-slate-900">{analytics.summary?.meta?.updatedAt ?? 'n/a'}</dd>
+                <dd className="font-medium text-slate-900">{analytics.summary?.meta?.updatedAt ? new Date(analytics.summary.meta.updatedAt).toLocaleString('ru-RU') : '\u2014'}</dd>
               </div>
               <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3">
                 <dt className="text-slate-500">Trends series</dt>
@@ -200,8 +171,8 @@ export function SummaryPage() {
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">Local fallback report</h2>
-          <p className="mt-0.5 text-sm text-slate-500">Legacy table view kept until every breakdown screen is migrated</p>
+          <h2 className="text-lg font-semibold text-slate-900">API report table</h2>
+          <p className="mt-0.5 text-sm text-slate-500">Таблица теперь использует backend breakdown по выбранной группировке</p>
         </div>
         <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1">
           {GROUP_OPTIONS.map(opt => (
@@ -220,7 +191,7 @@ export function SummaryPage() {
         </div>
       </div>
 
-      <SummaryTable title="SummaryReport" rows={rows} loading={loading} />
+      <SummaryTable title="SummaryReport" rows={rows} loading={analytics.loading} />
     </div>
   );
 }
