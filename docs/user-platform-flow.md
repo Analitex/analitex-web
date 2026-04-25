@@ -191,7 +191,7 @@ Example:
   },
   "startInitialSync": true,
   "initialSyncDays": 14,
-  "initialSyncKinds": ["orders", "sales", "stocks", "finance"]
+  "initialSyncKinds": ["catalog", "orders", "sales", "stocks", "finance"]
 }
 ```
 
@@ -208,6 +208,8 @@ For Ozon, the important credentials are:
 
 - `clientId`
 - `apiKey`
+- optionally `performanceClientId`
+- optionally `performanceClientSecret`
 
 Connect shop request:
 
@@ -218,11 +220,13 @@ Connect shop request:
   "displayName": "Ozon Main Shop",
   "credentials": {
     "clientId": "12345",
-    "apiKey": "OZON_SECRET"
+    "apiKey": "OZON_SECRET",
+    "performanceClientId": "seller.performance.12345",
+    "performanceClientSecret": "PERFORMANCE_SECRET"
   },
   "startInitialSync": true,
   "initialSyncDays": 14,
-  "initialSyncKinds": ["postings", "finance", "returns", "stocks"]
+  "initialSyncKinds": ["catalog", "postings", "finance", "returns", "stocks"]
 }
 ```
 
@@ -232,6 +236,13 @@ What happens next:
 2. credentials are validated against Ozon
 3. initial sync can be enqueued automatically
 4. background worker starts fetching data
+
+Credential rules:
+
+- seller API credentials remain required
+- performance credentials are optional
+- performance credentials must be sent as a pair
+- seller and performance data belong to the same Ozon shop connection
 
 ## 7. What User Sees After Connecting Shop
 
@@ -275,7 +286,7 @@ Example:
 {
   "dateFrom": "2026-01-01",
   "dateTo": "2026-04-18",
-  "syncKinds": ["finance", "sales", "orders", "stocks"]
+  "syncKinds": ["catalog", "finance", "sales", "orders", "stocks"]
 }
 ```
 
@@ -285,7 +296,7 @@ For Ozon:
 {
   "dateFrom": "2026-01-01",
   "dateTo": "2026-04-18",
-  "syncKinds": ["finance", "postings", "returns", "stocks"]
+  "syncKinds": ["catalog", "finance", "postings", "returns", "stocks"]
 }
 ```
 
@@ -293,6 +304,7 @@ Important product rule:
 
 - old-period sync is manager/owner triggered from the app
 - there is no automatic full historical backfill
+- `catalog` sync can be triggered separately to refresh shop product master data and filter dictionaries without waiting for new sales/orders activity
 
 ## 9. Invite Another User
 
@@ -377,6 +389,9 @@ Typical analytics calls:
 4. `POST /api/v1/analytics/trends`
 5. `POST /api/v1/analytics/breakdown`
 6. `POST /api/v1/analytics/explanations`
+
+Note:
+- for Ozon, seller-side organic funnel data now comes from a separate `analytics` sync kind and is stored independently from finance and Performance API data
 
 ## 11. Password Actions
 

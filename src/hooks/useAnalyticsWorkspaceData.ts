@@ -4,7 +4,19 @@ import { useReportMode } from '../context/ReportModeContext';
 import { usePlatform } from '../context/PlatformContext';
 import { apiRequest } from '../lib/api';
 
-type AnalyticsMetricKey = 'sales' | 'commission' | 'logistics' | 'storage' | 'returns' | 'ordersCount' | 'stockBalance';
+type AnalyticsMetricKey = string;
+
+type AnalyticsMetricRecord = Record<AnalyticsMetricKey, number>;
+type AnalyticsMetricComparisonRecord = Partial<
+  Record<
+    AnalyticsMetricKey,
+    {
+      previous?: number | null;
+      delta?: number | null;
+      deltaPercent?: number | null;
+    }
+  >
+>;
 
 type FilterOptionsResponse = {
   accounts?: { id: number; label?: string | null; marketplace?: string | null }[];
@@ -12,7 +24,7 @@ type FilterOptionsResponse = {
   brands?: { id: string; label?: string | null }[];
   categories?: { id: string; label?: string | null }[];
   groups?: { id: number; label?: string | null }[];
-  dateRange?: { dateFrom?: string; dateTo?: string };
+  dateRange?: { minDate?: string; maxDate?: string };
 };
 
 type MetricsCatalogResponse = {
@@ -20,20 +32,26 @@ type MetricsCatalogResponse = {
 };
 
 type SummaryResponse = {
-  metrics?: Partial<Record<AnalyticsMetricKey, number>>;
-  comparisons?: Partial<Record<AnalyticsMetricKey, { previous?: number; delta?: number; deltaPercent?: number }>>;
-  meta?: { updatedAt?: string; isPartial?: boolean };
+  metrics?: Partial<AnalyticsMetricRecord>;
+  comparisons?: AnalyticsMetricComparisonRecord;
+  meta?: {
+    updatedAt?: string;
+    isPartial?: boolean;
+    taxConfigured?: boolean | null;
+    productCostsConfigured?: boolean | null;
+    economicsConfigured?: boolean | null;
+  };
 };
 
 type TrendResponse = {
   grain?: 'Day' | 'Week' | 'Month';
-  series?: Array<{ date?: string; metrics?: Partial<Record<AnalyticsMetricKey, number>> }>;
+  series?: Array<{ date?: string; metrics?: Partial<AnalyticsMetricRecord> }>;
   dataState?: { isPartial?: boolean; lastCompleteDate?: string; updatedAt?: string };
 };
 
 type BreakdownRow = {
   dimension?: string | { id?: string; label?: string };
-  metrics?: Partial<Record<AnalyticsMetricKey, number>>;
+  metrics?: Partial<AnalyticsMetricRecord>;
 };
 
 type BreakdownResponse = {
@@ -45,7 +63,7 @@ type BreakdownResponse = {
 
 type ExplanationResponse = {
   metric?: string;
-  breakdown?: Array<{ label?: string; value?: number; percent?: number }>;
+  breakdown?: Array<{ key?: string; label?: string; amount?: number }>;
   lineage?: unknown;
 };
 
@@ -69,7 +87,38 @@ export interface AnalyticsWorkspaceData {
   error: string | null;
 }
 
-const DEFAULT_METRICS: AnalyticsMetricKey[] = ['sales', 'commission', 'logistics', 'storage', 'returns', 'ordersCount', 'stockBalance'];
+const DEFAULT_METRICS: AnalyticsMetricKey[] = [
+  'sales',
+  'commission',
+  'logistics',
+  'storage',
+  'returns',
+  'ordersCount',
+  'stockBalance',
+];
+
+const OVERVIEW_SUMMARY_METRICS: AnalyticsMetricKey[] = [
+  'sales',
+  'commission',
+  'logistics',
+  'storage',
+  'returns',
+  'ordersCount',
+  'stockBalance',
+];
+
+const DEFAULT_ANALYTICS_METRICS: AnalyticsMetricKey[] = [
+  ...DEFAULT_METRICS,
+  'profit',
+  'profitWithoutExpense',
+  'costOfSales',
+  'advertisingExpense',
+  'drr',
+  'drrByOrders',
+  'capitalizationByCost',
+  'capitalizationByPrice',
+  'userWarehouseStockBalance',
+];
 const ANALYTICS_CACHE_TTL_MS = 30_000;
 const analyticsRequestCache = new Map<string, { expiresAt: number; data: AnalyticsWorkspaceData }>();
 const analyticsInFlightRequests = new Map<string, Promise<AnalyticsWorkspaceData>>();
@@ -224,15 +273,20 @@ export function useAnalyticsWorkspaceData(options?: {
               } satisfies AnalyticsWorkspaceData;
             }
 
-            const metricKeys = includeMetricsCatalog
-              ? (
-                  ((await apiRequest<MetricsCatalogResponse>('/metadata/metrics', {
-                    token: session.accessToken,
-                  })).metrics ?? []) as { key?: string | null; label?: string | null }[]
-                )
-                  .map(item => item.key ?? item.label)
-                  .filter((item): item is string => Boolean(item))
-              : [...DEFAULT_METRICS];
+            const metricKeys = [
+              ...new Set(
+                (includeMetricsCatalog
+                  ? (
+                      ((await apiRequest<MetricsCatalogResponse>('/metadata/metrics', {
+                        token: session.accessToken,
+                      })).metrics ?? []) as { key?: string | null; label?: string | null }[]
+                    )
+                      .map(item => item.key ?? item.label)
+                      .filter((item): item is string => Boolean(item))
+                  : [...DEFAULT_METRICS]
+                ).concat(DEFAULT_METRICS),
+              ),
+            ];
 
             const accountIds = (filterOptions.accounts ?? [])
               .filter(account => {
@@ -272,7 +326,16 @@ export function useAnalyticsWorkspaceData(options?: {
               tags: filters.marketplace,
             };
 
-            const selectedMetrics = metricKeys.length > 0 ? metricKeys : DEFAULT_METRICS;
+            const analyticsBaseRequest = {
+              dateFrom: filters.dateStart,
+              dateTo: filters.dateEnd,
+              mode: reportMode === 'financial' ? 'Financial' : 'Management',
+              marketplaces: filters.marketplace,
+              filters: analyticsFilters,
+            };
+            const maybeAccountIds = accountIds.length > 0 ? { accountIds } : {};
+
+            const selectedMetrics = metricKeys.length > 0 ? metricKeys : DEFAULT_ANALYTICS_METRICS;
 
             const [summary, trends, breakdown, explanation] = await Promise.all([
               includeSummary
@@ -280,13 +343,9 @@ export function useAnalyticsWorkspaceData(options?: {
                     token: session.accessToken,
                     method: 'POST',
                     body: JSON.stringify({
-                      dateFrom: filters.dateStart,
-                      dateTo: filters.dateEnd,
-                      mode: reportMode === 'financial' ? 'Financial' : 'Management',
-                      accountIds,
-                      metrics: selectedMetrics,
-                      marketplaces: filters.marketplace,
-                      filters: analyticsFilters,
+                      ...analyticsBaseRequest,
+                      ...maybeAccountIds,
+                      metrics: OVERVIEW_SUMMARY_METRICS,
                     }),
                   })
                 : Promise.resolve(null),
@@ -295,13 +354,10 @@ export function useAnalyticsWorkspaceData(options?: {
                     token: session.accessToken,
                     method: 'POST',
                     body: JSON.stringify({
-                      dateFrom: filters.dateStart,
-                      dateTo: filters.dateEnd,
+                      ...analyticsBaseRequest,
+                      ...maybeAccountIds,
                       grain: 'Day',
-                      accountIds,
                       metrics: selectedMetrics.slice(0, 6),
-                      marketplaces: filters.marketplace,
-                      filters: analyticsFilters,
                     }),
                   })
                 : Promise.resolve(null),
@@ -310,16 +366,13 @@ export function useAnalyticsWorkspaceData(options?: {
                     token: session.accessToken,
                     method: 'POST',
                     body: JSON.stringify({
-                      dateFrom: filters.dateStart,
-                      dateTo: filters.dateEnd,
+                      ...analyticsBaseRequest,
+                      ...maybeAccountIds,
                       groupBy: breakdownGroupBy,
-                      accountIds,
                       metrics: selectedMetrics,
                       sort: { metric: 'sales', direction: 'Desc' },
                       page: 1,
                       limit: 25,
-                      marketplaces: filters.marketplace,
-                      filters: analyticsFilters,
                     }),
                   })
                 : Promise.resolve(null),
@@ -328,12 +381,9 @@ export function useAnalyticsWorkspaceData(options?: {
                     token: session.accessToken,
                     method: 'POST',
                     body: JSON.stringify({
-                      dateFrom: filters.dateStart,
-                      dateTo: filters.dateEnd,
-                      accountIds,
+                      ...analyticsBaseRequest,
+                      ...maybeAccountIds,
                       metric: 'sales',
-                      marketplaces: filters.marketplace,
-                      filters: analyticsFilters,
                     }),
                   })
                 : Promise.resolve(null),
@@ -343,7 +393,7 @@ export function useAnalyticsWorkspaceData(options?: {
               accountIds,
               metricsCatalog: metricKeys,
               filterOptions: filterOptions ?? null,
-              summary: summary ?? null,
+              summary,
               trends: trends ?? null,
               breakdown: breakdown ?? null,
               explanation: explanation ?? null,

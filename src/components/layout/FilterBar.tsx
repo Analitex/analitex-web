@@ -21,7 +21,8 @@ const REPORT_MODE_HELP = 'Управленческий режим показыв
 function getSkuOptions(skus: { id: string; sku: string; name: string }[]) {
   return skus.map(item => ({
     value: item.id,
-    label: `${item.sku} · ${item.name}`,
+    label: item.sku,
+    title: `${item.sku} · ${item.name}`,
     searchText: `${item.sku} ${item.name}`,
   }));
 }
@@ -57,7 +58,11 @@ export function FilterBar({
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
   const [isReportModeMenuOpen, setIsReportModeMenuOpen] = useState(false);
   const reportModeRef = useRef<HTMLDivElement | null>(null);
-  const supportsReportMode = currentPage === 'dashboard' || currentPage === 'summary';
+  const supportsReportMode =
+    currentPage === 'dashboard' ||
+    currentPage === 'summary' ||
+    currentPage === 'external-traffic' ||
+    currentPage === 'search-phrases';
 
   const hasActiveFilters =
     filters.marketplace.length > 0 ||
@@ -155,6 +160,7 @@ export function FilterBar({
             options={skuOptions}
             value={filters.sku}
             onChange={v => setFilters({ ...filters, sku: v })}
+            dropdownMaxHeightClassName="max-h-44"
           />
 
           {supportsReportMode && (
@@ -340,6 +346,7 @@ export function FilterBar({
               value={filters.sku}
               onChange={v => setFilters({ ...filters, sku: v })}
               fullWidth
+              dropdownMaxHeightClassName="max-h-44"
             />
           </div>
 

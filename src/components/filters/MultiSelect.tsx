@@ -8,6 +8,7 @@ export interface MultiSelectOption {
   optionKey?: string;
   searchText?: string;
   marketplace?: string;
+  title?: string;
 }
 
 interface MultiSelectProps {
@@ -18,6 +19,7 @@ interface MultiSelectProps {
   placeholder?: string;
   className?: string;
   fullWidth?: boolean;
+  dropdownMaxHeightClassName?: string;
 }
 
 export function MultiSelect({
@@ -28,6 +30,7 @@ export function MultiSelect({
   placeholder,
   className = '',
   fullWidth = false,
+  dropdownMaxHeightClassName = 'max-h-60',
 }: MultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -44,6 +47,7 @@ export function MultiSelect({
               optionKey: option.optionKey,
               searchText: (option.searchText ?? option.label).toLowerCase(),
               marketplace: option.marketplace,
+              title: option.title,
             }
       ),
     [options]
@@ -160,7 +164,7 @@ export function MultiSelect({
             </button>
           </div>
 
-          <div className="max-h-60 overflow-y-auto py-1">
+          <div className={`${dropdownMaxHeightClassName} overflow-y-auto py-1`}>
             {filteredOptions.length === 0 && (
               <div className="px-3 py-6 text-center text-sm text-slate-400">Ничего не найдено</div>
             )}
@@ -178,7 +182,7 @@ export function MultiSelect({
                   {value.includes(opt.value) && <Check size={10} className="text-white" />}
                 </div>
                 {opt.marketplace && <MarketplaceIcon marketplace={opt.marketplace} className="shrink-0" />}
-                <span className="truncate">{opt.label}</span>
+                <span className="truncate" title={opt.title ?? opt.label}>{opt.label}</span>
               </button>
             ))}
           </div>

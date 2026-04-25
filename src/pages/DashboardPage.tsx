@@ -374,37 +374,162 @@ export function DashboardPage() {
     includeExplanation: false,
   });
   const productReportingData = useProductReportingData({ accountIds: analytics.accountIds });
+  const reportingSummaryMetrics = useMemo<Record<string, number | null> | null>(() => {
+    const workspaceSummary = analytics.summary?.metrics ?? null;
+    const productsSummary = productReportingData.overview?.summary ?? null;
+    const reportingSummary = productReportingData.summary?.metrics ?? null;
+    if (!workspaceSummary && !productsSummary && !reportingSummary) {
+      return null;
+    }
+    return {
+      ...(workspaceSummary ?? {}),
+      ...(productsSummary ?? {}),
+      ...(reportingSummary ?? {}),
+    };
+  }, [analytics.summary?.metrics, productReportingData.overview?.summary, productReportingData.summary?.metrics]);
+  const reportingSummaryComparisons = productReportingData.summary?.comparisons ?? analytics.summary?.comparisons ?? null;
+  const daysInRange = useMemo(() => {
+    const start = new Date(filters.dateStart);
+    const end = new Date(filters.dateEnd);
+    const diff = end.getTime() - start.getTime();
+    return Math.max(1, Math.round(diff / (1000 * 60 * 60 * 24)) + 1);
+  }, [filters.dateEnd, filters.dateStart]);
+  const productMetricTotals = useMemo(() => {
+    return productReportingData.rows.reduce(
+      (acc, row) => {
+        const productMetrics = row.metrics ?? {};
+        acc.salesUnits += getMetricNumber(productMetrics, ['salesCount', 'salesUnits', 'orderedUnits']);
+        acc.sales += getMetricNumber(productMetrics, ['sales', 'revenue']);
+        acc.commission += getMetricNumber(productMetrics, ['commission']);
+        acc.logistics += getMetricNumber(productMetrics, ['logistics']);
+        acc.storage += getMetricNumber(productMetrics, ['storage']);
+        acc.profit += getMetricNumber(productMetrics, ['profit']);
+        acc.advertising += getMetricNumber(productMetrics, ['advertisingExpense', 'advertisingExpenseSum']);
+        acc.taxes += getMetricNumber(productMetrics, ['tax', 'taxes']);
+        acc.cogs += getMetricNumber(productMetrics, ['costOfSales']);
+        acc.inventoryValue += getMetricNumber(productMetrics, ['capitalizationByCost', 'userWarehouseCapitalizationByCost']);
+        acc.userWarehouseInventoryValue += getMetricNumber(productMetrics, ['userWarehouseCapitalizationByCost']);
+        acc.stockBalance += getMetricNumber(productMetrics, ['stockBalance']);
+        acc.orders += getMetricNumber(productMetrics, ['ordersCount', 'orders']);
+        acc.returnsUnits += getMetricNumber(productMetrics, ['returnsUnits', 'refunds']);
+        acc.returns += getMetricNumber(productMetrics, ['returns', 'returnsAmount']);
+        acc.totalPaid += getMetricNumber(productMetrics, ['totalPaid']);
+        return acc;
+      },
+      {
+        sales: 0,
+        salesUnits: 0,
+        orders: 0,
+        commission: 0,
+        logistics: 0,
+        storage: 0,
+        profit: 0,
+        advertising: 0,
+        taxes: 0,
+        cogs: 0,
+        inventoryValue: 0,
+        userWarehouseInventoryValue: 0,
+        stockBalance: 0,
+        returnsUnits: 0,
+        returns: 0,
+        totalPaid: 0,
+      }
+    );
+  }, [productReportingData.rows]);
   const metrics = useMemo<DashboardMetrics>(() => {
-    const summaryMetrics = analytics.summary?.metrics;
-    const comparisons = analytics.summary?.comparisons;
+    const summaryMetrics = reportingSummaryMetrics as Record<string, number | null> | null;
+    const comparisons = reportingSummaryComparisons;
 
     if (!summaryMetrics) {
       return EMPTY_DASHBOARD_METRICS;
     }
 
+    const revenueCurrent = Number(summaryMetrics?.realisation ?? summaryMetrics?.revenue ?? summaryMetrics?.sales ?? productMetricTotals.sales);
+    const revenuePrevious = Number(comparisons?.realisation?.previous ?? comparisons?.revenue?.previous ?? comparisons?.sales?.previous ?? revenueCurrent);
+    const ordersCurrent = Number(summaryMetrics?.ordersCount ?? productMetricTotals.orders);
+    const ordersPrevious = Number(comparisons?.ordersCount?.previous ?? ordersCurrent);
+    const salesUnitsCurrent = Number(summaryMetrics?.salesCount ?? summaryMetrics?.totalSales ?? summaryMetrics?.salesUnits ?? productMetricTotals.salesUnits ?? ordersCurrent);
+    const salesUnitsPrevious = Number(comparisons?.salesCount?.previous ?? comparisons?.totalSales?.previous ?? comparisons?.salesUnits?.previous ?? ordersPrevious);
+    const commissionCurrent = Number(summaryMetrics?.commission ?? productMetricTotals.commission);
+    const commissionPrevious = Number(comparisons?.commission?.previous ?? commissionCurrent);
+    const logisticsCurrent = Number(summaryMetrics?.logistics ?? productMetricTotals.logistics);
+    const logisticsPrevious = Number(comparisons?.logistics?.previous ?? logisticsCurrent);
+    const storageCurrent = Number(summaryMetrics?.storage ?? productMetricTotals.storage);
+    const storagePrevious = Number(comparisons?.storage?.previous ?? storageCurrent);
+    const returnsCurrent = Number(summaryMetrics?.returns ?? summaryMetrics?.returnsSum ?? summaryMetrics?.returnsAmount ?? productMetricTotals.returns);
+    const returnsPrevious = Number(comparisons?.returns?.previous ?? returnsCurrent);
+    const taxesCurrent = Number(summaryMetrics?.tax ?? summaryMetrics?.taxes ?? productMetricTotals.taxes);
+    const taxesPrevious = Number(comparisons?.tax?.previous ?? comparisons?.taxes?.previous ?? taxesCurrent);
+    const cogsCurrent = Number(summaryMetrics?.costOfSales ?? productMetricTotals.cogs);
+    const cogsPrevious = Number(comparisons?.costOfSales?.previous ?? cogsCurrent);
+    const advertisingCurrent = Number(summaryMetrics?.advertisingExpense ?? productMetricTotals.advertising);
+    const advertisingPrevious = Number(comparisons?.advertisingExpense?.previous ?? advertisingCurrent);
+    const fallbackProfitCurrent =
+      productMetricTotals.profit ||
+      (revenueCurrent - commissionCurrent - logisticsCurrent - storageCurrent - returnsCurrent - advertisingCurrent - taxesCurrent - cogsCurrent);
+    const fallbackProfitPrevious = revenuePrevious - commissionPrevious - logisticsPrevious - storagePrevious - returnsPrevious - advertisingPrevious - taxesPrevious - cogsPrevious;
+    const summaryProfitCurrent = findMetricNumber(summaryMetrics, ['profit', 'profitWithoutExpense']);
+    const summaryProfitPrevious = comparisons?.profit?.previous ?? comparisons?.profitWithoutExpense?.previous;
+    const profitCurrent = summaryProfitCurrent ?? fallbackProfitCurrent;
+    const profitPrevious = summaryProfitPrevious ?? fallbackProfitPrevious;
+    const avgSalePriceCurrent = salesUnitsCurrent > 0 ? revenueCurrent / salesUnitsCurrent : 0;
+    const avgSalePricePrevious = salesUnitsPrevious > 0 ? revenuePrevious / salesUnitsPrevious : avgSalePriceCurrent;
+    const profitPerUnitCurrent =
+      findMetricNumber(summaryMetrics, ['averageProfitPerPiece']) ??
+      (salesUnitsCurrent > 0 ? profitCurrent / salesUnitsCurrent : 0);
+    const profitPerUnitPrevious =
+      comparisons?.averageProfitPerPiece?.previous ??
+      (salesUnitsPrevious > 0 ? profitPrevious / salesUnitsPrevious : profitPerUnitCurrent);
+    const stockBalanceCurrent = Number(summaryMetrics?.stockBalance ?? summaryMetrics?.stock ?? productMetricTotals.stockBalance);
+    const stockBalancePrevious = Number(comparisons?.stockBalance?.previous ?? stockBalanceCurrent);
+    const inventoryValueCurrent = Number(summaryMetrics?.capitalizationByCost ?? summaryMetrics?.userWarehouseCapitalizationByCost ?? productMetricTotals.inventoryValue);
+    const inventoryValuePrevious = Number(comparisons?.capitalizationByCost?.previous ?? comparisons?.userWarehouseCapitalizationByCost?.previous ?? inventoryValueCurrent);
+    const avgDailySalesCurrent = salesUnitsCurrent > 0 ? salesUnitsCurrent / daysInRange : 0;
+    const avgDailySalesPrevious = salesUnitsPrevious > 0 ? salesUnitsPrevious / daysInRange : 0;
+    const inventoryTurnoverCurrent = avgDailySalesCurrent > 0 ? stockBalanceCurrent / avgDailySalesCurrent : 0;
+    const inventoryTurnoverPrevious = avgDailySalesPrevious > 0 ? stockBalancePrevious / avgDailySalesPrevious : inventoryTurnoverCurrent;
+    const drrSummaryCurrent = findMetricNumber(summaryMetrics, ['drr', 'drrSales']);
+    const drrSummaryPrevious = comparisons?.drr?.previous;
+    const drrCurrent = drrSummaryCurrent ?? (revenueCurrent > 0 ? (advertisingCurrent / revenueCurrent) * 100 : 0);
+    const drrPrevious = Number.isFinite(drrSummaryPrevious ?? NaN)
+      ? Number(drrSummaryPrevious ?? 0)
+      : revenuePrevious > 0
+        ? (advertisingPrevious / Math.max(revenuePrevious, 1)) * 100
+        : drrCurrent;
+    const buyoutRateCurrent = Number(summaryMetrics?.averageRedemption ?? (ordersCurrent > 0 ? (salesUnitsCurrent / ordersCurrent) * 100 : 0));
+    const buyoutRatePrevious = Number(comparisons?.averageRedemption?.previous ?? (ordersPrevious > 0 ? (salesUnitsPrevious / ordersPrevious) * 100 : buyoutRateCurrent));
+    const roiBaseCurrent = cogsCurrent + advertisingCurrent + commissionCurrent + logisticsCurrent + storageCurrent + taxesCurrent;
+    const roiBasePrevious = cogsPrevious + advertisingPrevious + commissionPrevious + logisticsPrevious + storagePrevious + taxesPrevious;
+    const fallbackRoiCurrent = roiBaseCurrent > 0 ? (profitCurrent / roiBaseCurrent) * 100 : 0;
+    const fallbackRoiPrevious = roiBasePrevious > 0 ? (profitPrevious / roiBasePrevious) * 100 : fallbackRoiCurrent;
+    const summaryRoiCurrent = findMetricNumber(summaryMetrics, ['roi']);
+    const summaryRoiPrevious = comparisons?.roi?.previous;
+    const roiCurrent = summaryRoiCurrent ?? fallbackRoiCurrent;
+    const roiPrevious = summaryRoiPrevious ?? fallbackRoiPrevious;
+
     return {
-      revenue: buildApiMetricValue(summaryMetrics.sales, comparisons?.sales),
-      orders: buildApiMetricValue(summaryMetrics.ordersCount, comparisons?.ordersCount),
-      sales: buildApiMetricValue(summaryMetrics.sales, comparisons?.sales),
-      profit: buildApiMetricValue((summaryMetrics.sales ?? 0) - (summaryMetrics.commission ?? 0) - (summaryMetrics.logistics ?? 0) - (summaryMetrics.storage ?? 0) - (summaryMetrics.returns ?? 0)),
-      roi: EMPTY_METRIC_VALUE,
-      buyoutRate: EMPTY_METRIC_VALUE,
-      logisticsCost: buildApiMetricValue(summaryMetrics.logistics, comparisons?.logistics),
-      adsSpend: EMPTY_METRIC_VALUE,
-      commission: buildApiMetricValue(summaryMetrics.commission, comparisons?.commission),
-      storageCost: buildApiMetricValue(summaryMetrics.storage, comparisons?.storage),
-      taxes: EMPTY_METRIC_VALUE,
-      returns: buildApiMetricValue(summaryMetrics.returns, comparisons?.returns),
-      cogs: EMPTY_METRIC_VALUE,
-      avgSalePrice: EMPTY_METRIC_VALUE,
-      profitPerUnit: EMPTY_METRIC_VALUE,
-      inventoryValue: EMPTY_METRIC_VALUE,
-      inventoryTurnover: EMPTY_METRIC_VALUE,
-      drr: EMPTY_METRIC_VALUE,
+      revenue: buildApiMetricValue(revenueCurrent, comparisons?.realisation ?? comparisons?.revenue ?? comparisons?.sales),
+      orders: buildApiMetricValue(ordersCurrent, comparisons?.ordersCount),
+      sales: buildDerivedMetricValue(salesUnitsCurrent, salesUnitsPrevious),
+      profit: buildDerivedMetricValue(profitCurrent, profitPrevious),
+      roi: buildDerivedMetricValue(roiCurrent, roiPrevious),
+      buyoutRate: buildDerivedMetricValue(buyoutRateCurrent, buyoutRatePrevious),
+      logisticsCost: buildApiMetricValue(logisticsCurrent, comparisons?.logistics),
+      adsSpend: buildDerivedMetricValue(advertisingCurrent, advertisingPrevious),
+      commission: buildApiMetricValue(commissionCurrent, comparisons?.commission),
+      storageCost: buildApiMetricValue(storageCurrent, comparisons?.storage),
+      taxes: buildDerivedMetricValue(taxesCurrent, taxesPrevious),
+      returns: buildApiMetricValue(returnsCurrent, comparisons?.returns),
+      cogs: buildDerivedMetricValue(cogsCurrent, cogsPrevious),
+      avgSalePrice: buildDerivedMetricValue(avgSalePriceCurrent, avgSalePricePrevious),
+      profitPerUnit: buildDerivedMetricValue(profitPerUnitCurrent, profitPerUnitPrevious),
+      inventoryValue: buildDerivedMetricValue(inventoryValueCurrent, inventoryValuePrevious),
+      inventoryTurnover: buildDerivedMetricValue(inventoryTurnoverCurrent, inventoryTurnoverPrevious),
+      drr: buildDerivedMetricValue(drrCurrent, drrPrevious),
     };
-  }, [analytics.summary?.comparisons, analytics.summary?.metrics]);
-  const hasLiveSummaryMetrics = Boolean(analytics.summary?.metrics);
-  const isMetricsLoading = analytics.loading && !hasLiveSummaryMetrics;
+  }, [daysInRange, productMetricTotals, reportingSummaryComparisons, reportingSummaryMetrics]);
+  const hasLiveSummaryMetrics = Boolean(reportingSummaryMetrics) || productReportingData.rows.length > 0;
+  const isMetricsLoading = (analytics.loading || productReportingData.loading) && !hasLiveSummaryMetrics;
   const showMetricPlaceholders = !isMetricsLoading && !hasLiveSummaryMetrics;
   const [isWidgetModalOpen, setIsWidgetModalOpen] = useState(false);
   const [isCreateMetricModalOpen, setIsCreateMetricModalOpen] = useState(false);
@@ -432,13 +557,23 @@ export function DashboardPage() {
   });
   const totalSalesCount = useMemo(() => records.reduce((s, r) => s + r.sales, 0), [records]);
   const revenueCurrent = metrics.revenue.current;
+  const productReportingMeta = productReportingData.summary?.meta ?? productReportingData.overview?.meta ?? null;
+  const productSummarySnapshot = productReportingData.summary?.metrics ?? productReportingData.overview?.summary ?? null;
   const widgetDocuments = useMemo(
     () => buildWidgetDocuments(records, revenueCurrent),
     [records, revenueCurrent]
   );
   const formulaMetricValues = useMemo(
-    () => buildFormulaMetricValues(metrics, records, prevRecords, totalValue),
-    [metrics, records, prevRecords, totalValue]
+    () =>
+      buildFormulaMetricValues(
+        metrics,
+        records,
+        prevRecords,
+        totalValue,
+        reportingSummaryMetrics,
+        reportingSummaryComparisons
+      ),
+    [metrics, prevRecords, records, reportingSummaryComparisons, reportingSummaryMetrics, totalValue]
   );
 
   const widgetDefs = useMemo<WidgetDefinition[]>(() => [
@@ -455,18 +590,26 @@ export function DashboardPage() {
     {
       id: 'metric-orders',
       title: 'Заказы',
-      metric: metrics.orders,
-      format: (v: number) => formatNumber(v),
-      description: 'Количество заказов',
+      metric: buildDerivedMetricValue(
+        Number(reportingSummaryMetrics?.orders ?? metrics.revenue.current),
+        Number(reportingSummaryComparisons?.orders?.previous ?? reportingSummaryMetrics?.orders ?? metrics.revenue.previous)
+      ),
+      format: (v: number) => `${formatCurrency(v)} / ${formatNumber(metrics.orders.current)} шт`,
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
+      description: 'Сумма заказов / количество',
       section: 'metrics',
       faq: 'Все оформленные заказы в выбранном периоде, даже если часть из них позже была отменена или возвращена.',
     },
     {
       id: 'metric-sales',
       title: 'Продажи',
-      metric: metrics.sales,
-      format: (v: number) => formatNumber(v),
-      description: 'Выкупленные единицы',
+      metric: buildDerivedMetricValue(
+        Number(reportingSummaryMetrics?.sales ?? reportingSummaryMetrics?.totalSales ?? metrics.revenue.current),
+        Number(reportingSummaryComparisons?.sales?.previous ?? reportingSummaryComparisons?.totalSales?.previous ?? reportingSummaryMetrics?.sales ?? metrics.revenue.previous)
+      ),
+      format: (v: number) => `${formatCurrency(v)} / ${formatNumber(metrics.sales.current)} шт`,
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
+      description: 'Сумма продаж / выкупленные единицы',
       section: 'metrics',
       faq: 'Фактически выкупленные единицы товара без отмен и возвратов.',
     },
@@ -976,10 +1119,10 @@ export function DashboardPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="text-sm font-semibold text-slate-900">Товарный отчет API</div>
-            <p className="mt-1 text-sm text-slate-500">Сводка и топ товаров из `POST /api/v1/reporting/products/overview`</p>
+            <p className="mt-1 text-sm text-slate-500">KPI из `POST /api/v1/reporting/products/summary`, топ товаров из `products/overview`</p>
           </div>
           <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            {productReportingData.loading ? 'Загрузка' : productReportingData.overview?.meta?.isPartial ? 'Частичные данные' : 'Готово'}
+            {productReportingData.loading ? 'Загрузка' : productReportingMeta?.isPartial ? 'Частичные данные' : 'Готово'}
           </div>
         </div>
         {productReportingData.error && (
@@ -992,14 +1135,29 @@ export function DashboardPage() {
             {productReportingData.rows.length.toLocaleString('ru-RU')} строк в таблице
           </span>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            Обновлено: {formatUpdatedAt(productReportingData.overview?.meta?.updatedAt)}
+            Обновлено: {formatUpdatedAt(productReportingMeta?.updatedAt)}
           </span>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
             Фильтр SKU: {filters.sku.length > 0 ? filters.sku.length : 'все'}
           </span>
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+            productReportingMeta?.taxConfigured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+          }`}>
+            Налоги: {productReportingMeta?.taxConfigured ? 'настроены' : 'нет настроек'}
+          </span>
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+            productReportingMeta?.productCostsConfigured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+          }`}>
+            Себестоимость: {productReportingMeta?.productCostsConfigured ? 'настроена' : 'нет настроек'}
+          </span>
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+            productReportingMeta?.economicsConfigured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+          }`}>
+            Экономика: {productReportingMeta?.economicsConfigured ? 'полная' : 'неполная'}
+          </span>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          {productReportingData.overview?.summary ? Object.entries(productReportingData.overview.summary).slice(0, 5).map(([label, value]) => (
+          {productSummarySnapshot ? Object.entries(productSummarySnapshot).slice(0, 5).map(([label, value]) => (
             <div key={label} className="rounded-2xl bg-slate-50 p-4">
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</div>
               <div className="mt-2 text-2xl font-semibold text-slate-950">
@@ -1823,76 +1981,209 @@ function buildFormulaMetricValues(
   metrics: DashboardMetrics,
   records: SalesRecord[],
   prevRecords: SalesRecord[],
-  inventoryValue: number
+  inventoryValue: number,
+  summaryMetrics: Record<string, number | null> | null = null,
+  summaryComparisons: Record<
+    string,
+    { previous?: number | null; delta?: number | null; deltaPercent?: number | null } | null
+  > | null = null
 ) {
-  const avgBeforeDiscountCurrent = averageOf(records, record => record.avg_price);
-  const avgBeforeDiscountPrevious = averageOf(prevRecords, record => record.avg_price);
+  const summaryMetric = (keys: string[], fallback: number) => {
+    const value = findMetricNumber(summaryMetrics, keys);
+    return value == null ? fallback : value;
+  };
+
+  const summaryPrevious = (keys: string[], fallback: number) => {
+    for (const key of keys) {
+      const previous = summaryComparisons?.[key]?.previous;
+      if (typeof previous === 'number' && Number.isFinite(previous)) {
+        return previous;
+      }
+      const delta = summaryComparisons?.[key]?.delta;
+      if (typeof delta === 'number' && Number.isFinite(delta) && typeof fallback === 'number' && Number.isFinite(fallback)) {
+        const current = summaryMetric([key], fallback);
+        return current - delta;
+      }
+    }
+    return fallback;
+  };
+
+  const avgBeforeDiscountCurrent = summaryMetric(['averagePriceBeforeSPP'], averageOf(records, record => record.avg_price));
+  const avgBeforeDiscountPrevious = summaryPrevious(['averagePriceBeforeSPP'], averageOf(prevRecords, record => record.avg_price));
+  const avgAfterSppCurrent = summaryMetric(['averagePriceAfterSPP'], metrics.avgSalePrice.current);
+  const avgAfterSppPrevious = summaryPrevious(['averagePriceAfterSPP'], metrics.avgSalePrice.previous);
+  const sales = summaryMetric(['salesCount', 'salesUnits', 'orderedUnits'], metrics.sales.current);
+  const salesPrevious = summaryPrevious(['salesCount', 'salesUnits', 'orderedUnits'], metrics.sales.previous);
+  const salesCurrentValue = metrics.revenue.current;
+  const salesPreviousValue = metrics.revenue.previous;
+  const returns = summaryMetric(['returns'], metrics.returns.current);
+  const returnsPrevious = summaryPrevious(['returns'], metrics.returns.previous);
+  const profitabilityCurrent = salesCurrentValue > 0 ? (metrics.profit.current / salesCurrentValue) * 100 : 0;
+  const profitabilityPrevious = salesPreviousValue > 0 ? (metrics.profit.previous / salesPreviousValue) * 100 : 0;
+  const averageProfitPerPieceCurrent = summaryMetric(['averageProfitPerPiece'], metrics.profitPerUnit.current);
+  const averageProfitPerPiecePrevious = summaryPrevious(['averageProfitPerPiece'], metrics.profitPerUnit.previous);
+  const gmroiCurrentSource = summaryMetric(['gmroi'], inventoryValue > 0 ? (metrics.profit.current / Math.max(inventoryValue, 1)) * 100 : 0);
+  const gmroiPreviousSource = summaryPrevious(['gmroi'], gmroiCurrentSource);
+  const gmroiCurrent = summaryMetric(['gmroi'], gmroiCurrentSource);
+  const gmroiPrevious = summaryMetric(['gmroi'], gmroiPreviousSource);
+  const gmroiYearCurrent = summaryMetric(['gmroiYear'], gmroiCurrent * 12);
+  const gmroiYearPrevious = summaryPrevious(['gmroiYear'], gmroiPrevious * 12);
+
+  const stockBalanceCurrent = summaryMetric(['stockBalance', 'userWarehouseStockBalance'], inventoryValue);
+  const stockBalancePrevious = summaryPrevious(['stockBalance', 'userWarehouseStockBalance'], stockBalanceCurrent * 0.9);
+  const stockBalanceInWhCurrent = summaryMetric(['stockBalanceInWh'], stockBalanceCurrent);
+  const stockBalanceInWayToClientCurrent = summaryMetric(['stockBalanceInWayToClient'], 0);
+  const stockBalanceInWayFromClientCurrent = summaryMetric(['stockBalanceInWayFromClient'], 0);
+  const stockBalanceInWhPrevious = summaryPrevious(['stockBalanceInWh'], stockBalanceInWhCurrent);
+  const stockBalanceInWayToClientPrevious = summaryPrevious(['stockBalanceInWayToClient'], stockBalanceInWayToClientCurrent);
+  const stockBalanceInWayFromClientPrevious = summaryPrevious(['stockBalanceInWayFromClient'], stockBalanceInWayFromClientCurrent);
+  const totalPaidCurrent = summaryMetric(['totalPaid'], metrics.profit.current);
+  const totalPaidPrevious = summaryPrevious(['totalPaid'], metrics.profit.previous);
+  const netMarketplaceRewardCurrent = summaryMetric(['netMarketplaceReward', 'wbFinalReward'], metrics.commission.current);
+  const netMarketplaceRewardPrevious = summaryPrevious(['netMarketplaceReward', 'wbFinalReward'], metrics.commission.previous);
+  const drrCurrent = summaryMetric(['drr', 'drrSales'], metrics.drr.current);
+  const drrPrevious = summaryPrevious(['drr', 'drrSales'], metrics.drr.previous);
+  const drrOrdersCurrent = summaryMetric(['drrByOrders', 'drrz', 'drrOrders'], drrCurrent);
+  const drrOrdersPrevious = summaryPrevious(['drrByOrders', 'drrz', 'drrOrders'], drrPrevious);
+  const drrSumCurrent = summaryMetric(['drrSum', 'drrTotal'], drrCurrent);
+  const drrSumPrevious = summaryPrevious(['drrSum', 'drrTotal'], drrPrevious);
+  const advertisingExpenseCurrent = summaryMetric(['advertisingExpense', 'advertisingExpenseSum'], metrics.adsSpend.current);
+  const advertisingExpensePrevious = summaryPrevious(['advertisingExpense', 'advertisingExpenseSum'], metrics.adsSpend.previous);
+  const advertisingExpenseBonusCurrent = summaryMetric(['advertisingExpenseBonus'], 0);
+  const advertisingExpenseBonusPrevious = summaryPrevious(['advertisingExpenseBonus'], advertisingExpenseBonusCurrent);
+  const costOfSalesCurrent = summaryMetric(['costOfSales'], salesCurrentValue - metrics.profit.current);
+  const costOfSalesPrevious = summaryPrevious(['costOfSales'], salesPreviousValue - metrics.profit.previous);
+  const commissionAcquiringCurrent = summaryMetric(['commissionAcquiring'], metrics.commission.current);
+  const commissionAcquiringPrevious = summaryPrevious(['commissionAcquiring'], metrics.commission.previous);
+  const nominalCommissionCurrent = summaryMetric(['nominalCommission'], metrics.commission.current);
+  const nominalCommissionPrevious = summaryPrevious(['nominalCommission'], metrics.commission.previous);
+  const finesCurrent = summaryMetric(['fines'], 0);
+  const finesPrevious = summaryPrevious(['fines'], finesCurrent);
+  const compensationCurrent = summaryMetric(['compensation'], 0);
+  const compensationPrevious = summaryPrevious(['compensation'], compensationCurrent);
+  const compensationForSubstitutedGoodsCurrent = summaryMetric(['compensationForSubstitutedGoods'], 0);
+  const compensationForSubstitutedGoodsPrevious = summaryPrevious(['compensationForSubstitutedGoods'], compensationForSubstitutedGoodsCurrent);
+  const reimbursementOfTransportationCostsCurrent = summaryMetric(['reimbursementOfTransportationCosts'], 0);
+  const reimbursementOfTransportationCostsPrevious = summaryPrevious(['reimbursementOfTransportationCosts'], reimbursementOfTransportationCostsCurrent);
+  const paymentForMarriageAndLostGoodsCurrent = summaryMetric(['paymentForMarriageAndLostGoods'], 0);
+  const paymentForMarriageAndLostGoodsPrevious = summaryPrevious(['paymentForMarriageAndLostGoods'], paymentForMarriageAndLostGoodsCurrent);
+  const drrBonusCurrent = summaryMetric(['drrBonus'], 0);
+  const drrBonusPrevious = summaryPrevious(['drrBonus'], drrBonusCurrent);
+  const acceptanceSumCurrent = summaryMetric(['acceptanceSum'], 0);
+  const acceptanceSumPrevious = summaryPrevious(['acceptanceSum'], acceptanceSumCurrent);
+  const otherDeductionCurrent = summaryMetric(['otherDeduction'], 0);
+  const otherDeductionPrevious = summaryPrevious(['otherDeduction'], otherDeductionCurrent);
+  const expenseCurrent = summaryMetric(
+    ['expense', 'operatingExpense'],
+    metrics.logisticsCost.current + metrics.adsSpend.current + metrics.commission.current + metrics.storageCost.current + metrics.taxes.current
+  );
+  const expensePrevious = summaryPrevious(
+    ['expense', 'operatingExpense'],
+    metrics.logisticsCost.previous + metrics.adsSpend.previous + metrics.commission.previous + metrics.storageCost.previous + metrics.taxes.previous
+  );
+  const capitalCostCurrent = summaryMetric(['capitalizationByCost', 'userWarehouseCapitalizationByCost'], inventoryValue);
+  const capitalCostPrevious = summaryPrevious(['capitalizationByCost', 'userWarehouseCapitalizationByCost'], capitalCostCurrent * 0.9);
+  const capitalPriceCurrent = summaryMetric(['capitalizationByPrice'], salesCurrentValue);
+  const capitalPricePrevious = summaryPrevious(['capitalizationByPrice'], capitalPriceCurrent * 0.9);
+  const userWarehouseStockBalanceCurrent = summaryMetric(['userWarehouseStockBalance'], stockBalanceCurrent);
+  const userWarehouseStockBalancePrevious = summaryPrevious(['userWarehouseStockBalance'], stockBalanceCurrent * 0.9);
+  const userWarehouseCapitalizationCurrent = summaryMetric(['userWarehouseCapitalizationByCost'], capitalCostCurrent);
+  const userWarehouseCapitalizationPrevious = summaryPrevious(['userWarehouseCapitalizationByCost'], capitalCostPrevious);
+  const profitWithoutExpenseCurrent = summaryMetric(['profitWithoutExpense'], metrics.profit.current);
+  const profitWithoutExpensePrevious = summaryPrevious(['profitWithoutExpense'], metrics.profit.previous);
+  const marginalityWithoutExpenseCurrent = summaryMetric(
+    ['marginalityWithoutExpense'],
+    salesCurrentValue > 0 ? (profitWithoutExpenseCurrent / salesCurrentValue) * 100 : 0
+  );
+  const marginalityWithoutExpensePrevious = summaryPrevious(
+    ['marginalityWithoutExpense'],
+    salesPreviousValue > 0 ? (profitWithoutExpensePrevious / Math.max(salesPreviousValue, 1)) * 100 : 0
+  );
+  const totalSalesCurrent = summaryMetric(['totalSales'], salesCurrentValue);
+  const totalSalesPrevious = summaryPrevious(['totalSales'], salesPreviousValue);
+  const returnsUnitsCurrent = summaryMetric(['returnsUnits', 'refunds'], 0);
+  const returnsUnitsPrevious = summaryPrevious(['returnsUnits', 'refunds'], 0);
+  const averageLogisticsCostCurrent = summaryMetric(
+    ['averageLogisticsCost'],
+    metrics.sales.current > 0 ? metrics.logisticsCost.current / metrics.sales.current : 0
+  );
+  const averageLogisticsCostPrevious = summaryPrevious(
+    ['averageLogisticsCost'],
+    metrics.sales.previous > 0 ? metrics.logisticsCost.previous / metrics.sales.previous : 0
+  );
+  const salesTurnoverCurrent = summaryMetric(['salesTurnover'], metrics.inventoryTurnover.current);
+  const salesTurnoverPrevious = summaryPrevious(['salesTurnover'], metrics.inventoryTurnover.previous);
+  const ordersTurnoverCurrent = summaryMetric(['ordersTurnover'], metrics.inventoryTurnover.current);
+  const ordersTurnoverPrevious = summaryPrevious(['ordersTurnover'], metrics.inventoryTurnover.previous);
 
   return {
-    averagePriceAfterSPP: { current: metrics.avgSalePrice.current, previous: metrics.avgSalePrice.previous },
+    averagePriceAfterSPP: { current: avgAfterSppCurrent, previous: avgAfterSppPrevious },
     averagePriceBeforeSPP: { current: avgBeforeDiscountCurrent, previous: avgBeforeDiscountPrevious },
     realisation: { current: metrics.revenue.current, previous: metrics.revenue.previous },
-    sales: { current: metrics.sales.current, previous: metrics.sales.previous },
-    toTransfer: { current: metrics.profit.current, previous: metrics.profit.previous },
-    returns: { current: metrics.returns.current, previous: metrics.returns.previous },
-    costOfSales: { current: metrics.revenue.current - metrics.profit.current, previous: metrics.revenue.previous - metrics.profit.previous },
-    fines: { current: 0, previous: 0 },
-    compensationForSubstitutedGoods: { current: 0, previous: 0 },
-    reimbursementOfTransportationCosts: { current: 0, previous: 0 },
-    paymentForMarriageAndLostGoods: { current: 0, previous: 0 },
-    averageLogisticsCost: {
-      current: metrics.sales.current > 0 ? metrics.logisticsCost.current / metrics.sales.current : 0,
-      previous: metrics.sales.previous > 0 ? metrics.logisticsCost.previous / metrics.sales.previous : 0,
-    },
+    sales: { current: sales, previous: salesPrevious },
+    toTransfer: { current: totalPaidCurrent, previous: totalPaidPrevious },
+    returns: { current: returns, previous: returnsPrevious },
+    costOfSales: { current: costOfSalesCurrent, previous: costOfSalesPrevious },
+    fines: { current: finesCurrent, previous: finesPrevious },
+    compensationForSubstitutedGoods: { current: compensationForSubstitutedGoodsCurrent, previous: compensationForSubstitutedGoodsPrevious },
+    reimbursementOfTransportationCosts: { current: reimbursementOfTransportationCostsCurrent, previous: reimbursementOfTransportationCostsPrevious },
+    paymentForMarriageAndLostGoods: { current: paymentForMarriageAndLostGoodsCurrent, previous: paymentForMarriageAndLostGoodsPrevious },
+    averageLogisticsCost: { current: averageLogisticsCostCurrent, previous: averageLogisticsCostPrevious },
     logistics: { current: metrics.logisticsCost.current, previous: metrics.logisticsCost.previous },
     storage: { current: metrics.storageCost.current, previous: metrics.storageCost.previous },
-    rejectionsAndReturns: { current: metrics.returns.current, previous: metrics.returns.previous },
-    totalSales: { current: metrics.sales.current, previous: metrics.sales.previous },
+    rejectionsAndReturns: { current: returnsUnitsCurrent, previous: returnsUnitsPrevious },
+    totalSales: { current: totalSalesCurrent, previous: totalSalesPrevious },
     averageRedemption: { current: metrics.buyoutRate.current, previous: metrics.buyoutRate.previous },
-    averageProfitPerPiece: { current: metrics.profitPerUnit.current, previous: metrics.profitPerUnit.previous },
+    averageProfitPerPiece: { current: averageProfitPerPieceCurrent, previous: averageProfitPerPiecePrevious },
     tax: { current: metrics.taxes.current, previous: metrics.taxes.previous },
     profit: { current: metrics.profit.current, previous: metrics.profit.previous },
-    profitWithoutExpense: { current: metrics.revenue.current, previous: metrics.revenue.previous },
+    profitWithoutExpense: { current: profitWithoutExpenseCurrent, previous: profitWithoutExpensePrevious },
     roi: { current: metrics.roi.current, previous: metrics.roi.previous },
-    profitability: { current: metrics.roi.current, previous: metrics.roi.previous },
+    profitability: { current: profitabilityCurrent, previous: profitabilityPrevious },
     marginality: {
       current: metrics.revenue.current > 0 ? (metrics.profit.current / metrics.revenue.current) * 100 : 0,
       previous: metrics.revenue.previous > 0 ? (metrics.profit.previous / metrics.revenue.previous) * 100 : 0,
     },
-    advertisingExpense: { current: metrics.adsSpend.current, previous: metrics.adsSpend.previous },
-    advertisingExpenseBonus: { current: 0, previous: 0 },
-    advertisingExpenseSum: { current: metrics.adsSpend.current, previous: metrics.adsSpend.previous },
-    drr: { current: metrics.drr.current, previous: metrics.drr.previous },
-    drrBonus: { current: 0, previous: 0 },
-    drrSum: { current: metrics.adsSpend.current, previous: metrics.adsSpend.previous },
-    drrz: { current: metrics.drr.current, previous: metrics.drr.previous },
-    acceptanceSum: { current: 0, previous: 0 },
-    otherDeduction: { current: 0, previous: 0 },
-    expense: {
-      current: metrics.logisticsCost.current + metrics.adsSpend.current + metrics.commission.current + metrics.storageCost.current + metrics.taxes.current,
-      previous: metrics.logisticsCost.previous + metrics.adsSpend.previous + metrics.commission.previous + metrics.storageCost.previous + metrics.taxes.previous,
+    advertisingExpense: { current: advertisingExpenseCurrent, previous: advertisingExpensePrevious },
+    advertisingExpenseBonus: { current: advertisingExpenseBonusCurrent, previous: advertisingExpenseBonusPrevious },
+    advertisingExpenseSum: { current: advertisingExpenseCurrent, previous: advertisingExpensePrevious },
+    drr: { current: drrCurrent, previous: drrPrevious },
+    drrBonus: { current: drrBonusCurrent, previous: drrBonusPrevious },
+    drrSum: { current: drrSumCurrent, previous: drrSumPrevious },
+    drrz: { current: drrOrdersCurrent, previous: drrOrdersPrevious },
+    acceptanceSum: { current: acceptanceSumCurrent, previous: acceptanceSumPrevious },
+    otherDeduction: { current: otherDeductionCurrent, previous: otherDeductionPrevious },
+    expense: { current: expenseCurrent, previous: expensePrevious },
+    orders: {
+      current: summaryMetric(['orders'], metrics.orders.current),
+      previous: summaryPrevious(['orders'], metrics.orders.previous),
     },
-    orders: { current: metrics.orders.current, previous: metrics.orders.previous },
     ordersCount: { current: metrics.orders.current, previous: metrics.orders.previous },
-    commission: { current: metrics.commission.current, previous: metrics.commission.previous },
-    compensation: { current: 0, previous: 0 },
-    wbFinalReward: { current: metrics.profit.current, previous: metrics.profit.previous },
-    totalPaid: { current: metrics.profit.current, previous: metrics.profit.previous },
-    stockBalance: { current: inventoryValue, previous: inventoryValue * 0.9 },
-    stockBalanceInWh: { current: inventoryValue, previous: inventoryValue * 0.9 },
-    stockBalanceInWayToClient: { current: 0, previous: 0 },
-    stockBalanceInWayFromClient: { current: 0, previous: 0 },
-    capitalizationByCost: { current: inventoryValue, previous: inventoryValue * 0.9 },
-    capitalizationByPrice: { current: metrics.revenue.current, previous: metrics.revenue.previous },
-    commissionAcquiring: { current: 0, previous: 0 },
-    nominalCommission: { current: metrics.commission.current, previous: metrics.commission.previous },
-    mpDiscount: { current: 0, previous: 0 },
-    refunds: { current: metrics.returns.current, previous: metrics.returns.previous },
+    commission: { current: summaryMetric(['commission'], metrics.commission.current), previous: summaryPrevious(['commission'], metrics.commission.previous) },
+    compensation: { current: compensationCurrent, previous: compensationPrevious },
+    wbFinalReward: { current: netMarketplaceRewardCurrent, previous: netMarketplaceRewardPrevious },
+    totalPaid: { current: totalPaidCurrent, previous: totalPaidPrevious },
+    stockBalance: { current: stockBalanceCurrent, previous: stockBalancePrevious },
+    stockBalanceInWh: { current: stockBalanceInWhCurrent, previous: stockBalanceInWhPrevious },
+    stockBalanceInWayToClient: { current: stockBalanceInWayToClientCurrent, previous: stockBalanceInWayToClientPrevious },
+    stockBalanceInWayFromClient: { current: stockBalanceInWayFromClientCurrent, previous: stockBalanceInWayFromClientPrevious },
+    capitalizationByCost: { current: capitalCostCurrent, previous: capitalCostPrevious },
+    capitalizationByPrice: { current: capitalPriceCurrent, previous: capitalPricePrevious },
+    commissionAcquiring: { current: commissionAcquiringCurrent, previous: commissionAcquiringPrevious },
+    nominalCommission: { current: nominalCommissionCurrent, previous: nominalCommissionPrevious },
+    mpDiscount: { current: summaryMetric(['mpDiscount'], 0), previous: summaryPrevious(['mpDiscount'], 0) },
+    refunds: { current: returnsUnitsCurrent, previous: returnsUnitsPrevious },
     daysCount: { current: records.length, previous: prevRecords.length },
-    userWarehouseStockBalance: { current: inventoryValue, previous: inventoryValue * 0.9 },
-    userWarehouseCapitalizationByCost: { current: inventoryValue, previous: inventoryValue * 0.9 },
-    gmroi: { current: metrics.roi.current, previous: metrics.roi.previous },
-    gmroiYear: { current: metrics.roi.current * 12, previous: metrics.roi.previous * 12 },
+    userWarehouseStockBalance: { current: userWarehouseStockBalanceCurrent, previous: userWarehouseStockBalancePrevious },
+    userWarehouseCapitalizationByCost: {
+      current: userWarehouseCapitalizationCurrent,
+      previous: userWarehouseCapitalizationPrevious,
+    },
+    gmroi: { current: gmroiCurrent, previous: gmroiPrevious },
+    gmroiYear: { current: gmroiYearCurrent, previous: gmroiYearPrevious },
+    salesTurnover: { current: salesTurnoverCurrent, previous: salesTurnoverPrevious },
+    ordersTurnover: { current: ordersTurnoverCurrent, previous: ordersTurnoverPrevious },
+    marginalityWithoutExpense: { current: marginalityWithoutExpenseCurrent, previous: marginalityWithoutExpensePrevious },
   };
 }
 
@@ -3474,6 +3765,26 @@ function getAnalyticsBarcode(row: AnalyticsTableRow) {
   return raw ? `20${raw.padStart(11, '0').slice(0, 11)}` : `20${row.id.replace(/\D/g, '').padStart(11, '0').slice(0, 11)}`;
 }
 
+function getMetricNumber(metrics: Record<string, number | null> | null | undefined, keys: string[]) {
+  for (const key of keys) {
+    const value = metrics?.[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return 0;
+}
+
+function findMetricNumber(metrics: Record<string, number | null> | null | undefined, keys: string[]) {
+  for (const key of keys) {
+    const value = metrics?.[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
 function buildAnalyticsRowsFromApi(
   rows: Array<{
     dimension?: {
@@ -3491,18 +3802,58 @@ function buildAnalyticsRowsFromApi(
   return rows.map((row, index) => {
     const metrics = row.metrics ?? {};
     const dimension = row.dimension ?? {};
-    const revenue = Number(metrics.sales ?? 0);
-    const sales = Number(metrics.ordersCount ?? 0);
-    const commission = Number(metrics.commission ?? 0);
-    const logistics = Number(metrics.logistics ?? 0);
-    const storage = Number(metrics.storage ?? 0);
-    const returns = Number(metrics.returns ?? 0);
-    const totalPaid = Number(metrics.totalPaid ?? 0);
-    const profit = Number(metrics.profit ?? revenue - commission - logistics - storage - returns);
-    const stockBalance = Number(metrics.stockBalance ?? 0);
-    const avgSalePrice = sales > 0 ? revenue / sales : 0;
-    const drr = revenue > 0 ? (logistics / revenue) * 100 : 0;
-
+    const revenue = getMetricNumber(metrics, ['realisation', 'revenue', 'sales']);
+    const salesUnits = getMetricNumber(metrics, ['salesCount', 'salesUnits', 'orderedUnits']);
+    const sales = getMetricNumber(metrics, ['sales', 'revenue']);
+    const ordersCount = getMetricNumber(metrics, ['ordersCount', 'orders']);
+    const commission = getMetricNumber(metrics, ['commission']);
+    const logistics = getMetricNumber(metrics, ['logistics']);
+    const storage = getMetricNumber(metrics, ['storage']);
+    const returns = getMetricNumber(metrics, ['returns', 'returnsUnits']);
+    const totalPaid = getMetricNumber(metrics, ['totalPaid']);
+    const taxes = getMetricNumber(metrics, ['tax', 'taxes']);
+    const advertisingExpense = getMetricNumber(metrics, ['advertisingExpense', 'advertisingExpenseSum']);
+    const costOfSales = getMetricNumber(metrics, ['costOfSales']);
+    const stockBalance = getMetricNumber(metrics, ['stockBalance']);
+    const stockBalanceOwn = getMetricNumber(metrics, ['userWarehouseStockBalance']);
+    const stockBalanceToClient = getMetricNumber(metrics, ['stockBalanceInWayToClient']);
+    const stockBalanceFromClient = getMetricNumber(metrics, ['stockBalanceInWayFromClient']);
+    const capitalizationByCost = getMetricNumber(metrics, ['capitalizationByCost', 'userWarehouseCapitalizationByCost']);
+    const capitalizationByRetail = getMetricNumber(metrics, ['capitalizationByPrice', 'stockBalanceValue']);
+    const capitalizationOwnWarehouse = getMetricNumber(metrics, ['userWarehouseCapitalizationByCost']);
+    const rejectionsAndReturns = getMetricNumber(metrics, ['rejectionsAndReturns', 'returnsUnits']);
+    const computedProfit =
+      findMetricNumber(metrics, ['profit']) ??
+      (revenue - commission - logistics - storage - returns - taxes - advertisingExpense - costOfSales);
+    const profitWithoutExpense = findMetricNumber(metrics, ['profitWithoutExpense']) ?? computedProfit;
+    const advertisingExpenseBonus = getMetricNumber(metrics, ['advertisingExpenseBonus']);
+    const drrBonus = getMetricNumber(metrics, ['drrBonus']);
+    const drrOrders = getMetricNumber(metrics, ['drrByOrders', 'drrOrders', 'drrz']);
+    const drr = findMetricNumber(metrics, ['drr', 'drrSales']) ?? (revenue > 0 ? (advertisingExpense / Math.max(revenue, 1)) * 100 : 0);
+    const drrTotal = findMetricNumber(metrics, ['drrTotal', 'drrSum']) ?? drr;
+    const marginalityWithoutExpense = findMetricNumber(metrics, ['marginalityWithoutExpense'])
+      ?? (revenue > 0 ? (profitWithoutExpense / revenue) * 100 : 0);
+    const operationalExpense = findMetricNumber(metrics, ['operationalExpense']) ?? (commission + logistics + storage + taxes);
+    const otherDeduction = getMetricNumber(metrics, ['otherDeduction']);
+    const wbFinalReward = getMetricNumber(metrics, ['netMarketplaceReward', 'wbFinalReward', 'totalPaid', 'commission']);
+    const compensation = getMetricNumber(metrics, ['compensation']);
+    const fines = getMetricNumber(metrics, ['fines']);
+    const acceptanceSum = getMetricNumber(metrics, ['acceptanceSum']);
+    const profit = computedProfit;
+    const avgSalePrice = findMetricNumber(metrics, ['averagePriceAfterSPP']) ?? (salesUnits > 0 ? revenue / salesUnits : 0);
+    const avgPriceBeforeDiscount = findMetricNumber(metrics, ['averagePriceBeforeSPP']) ?? avgSalePrice;
+    const buyoutRate =
+      findMetricNumber(metrics, ['averageRedemption', 'buyoutRate']) ??
+      (ordersCount > 0 ? (salesUnits / ordersCount) * 100 : 0);
+    const roi =
+      findMetricNumber(metrics, ['roi']) ??
+      (costOfSales + advertisingExpense + commission + logistics + storage + taxes > 0
+        ? (profit / (costOfSales + advertisingExpense + commission + logistics + storage + taxes)) * 100
+        : 0);
+    const gmroi =
+      findMetricNumber(metrics, ['gmroi']) ??
+      (capitalizationByCost > 0 ? (profit / capitalizationByCost) * 100 : 0);
+    const gmroiYear = findMetricNumber(metrics, ['gmroiYear']) ?? gmroi * 12;
     return {
       id: dimension.marketplaceArticle ?? dimension.vendorCode ?? dimension.productName ?? `product-${index + 1}`,
       photoLabel: dimension.productName ?? dimension.marketplaceArticle ?? `Товар ${index + 1}`,
@@ -3515,58 +3866,58 @@ function buildAnalyticsRowsFromApi(
       group: dimension.category ?? '—',
       marketplaceArticleId: dimension.marketplaceArticle ?? dimension.vendorCode ?? '—',
       avgCost: 0,
-      operationalExpense: commission + logistics + storage,
-      otherDeduction: 0,
-      avgPriceBeforeDiscount: avgSalePrice,
+      operationalExpense,
+      otherDeduction,
+      avgPriceBeforeDiscount,
       avgSalePrice,
       revenue,
-      turnoverSales: 0,
-      turnoverOrders: 0,
+      turnoverSales: getMetricNumber(metrics, ['salesTurnover']),
+      turnoverOrders: getMetricNumber(metrics, ['ordersTurnover']),
       sales,
       toTransfer: totalPaid,
       returns,
-      costOfSales: 0,
-      fines: 0,
-      ordersCount: sales,
+      costOfSales,
+      fines,
+      ordersCount,
       ordersAmount: revenue,
       commission,
-      wbFinalReward: totalPaid,
-      compensation: 0,
-      averageLogisticsCost: sales > 0 ? logistics / sales : 0,
-      capitalizationByCost: 0,
-      capitalizationByRetail: stockBalance * avgSalePrice,
-      capitalizationOwnWarehouse: 0,
-      gmroi: 0,
-      gmroiYear: 0,
+      wbFinalReward,
+      compensation,
+      averageLogisticsCost: findMetricNumber(metrics, ['averageLogisticsCost']) ?? (salesUnits > 0 ? logistics / salesUnits : 0),
+      capitalizationByCost,
+      capitalizationByRetail: capitalizationByRetail || stockBalance * avgSalePrice,
+      capitalizationOwnWarehouse: capitalizationOwnWarehouse,
+      gmroi,
+      gmroiYear,
       logisticsCost: logistics,
       storage,
-      rejectionsAndReturns: returns,
-      totalSales: sales,
-      buyoutRate: 0,
-      averageProfitPerPiece: sales > 0 ? profit / sales : 0,
-      taxes: 0,
-      taxBase: revenue - commission,
+      rejectionsAndReturns,
+      totalSales: getMetricNumber(metrics, ['totalSales', 'sales', 'revenue']),
+      buyoutRate,
+      averageProfitPerPiece: findMetricNumber(metrics, ['averageProfitPerPiece']) ?? (salesUnits > 0 ? profit / salesUnits : 0),
+      taxes,
+      taxBase: findMetricNumber(metrics, ['taxBase']) ?? (revenue - commission),
       profit,
-      profitWithoutExpense: profit,
-      roi: 0,
+      profitWithoutExpense,
+      roi,
       shareOfRevenue: 0,
       marginality: revenue > 0 ? (profit / revenue) * 100 : 0,
-      marginalityWithoutExpense: revenue > 0 ? (profit / revenue) * 100 : 0,
-      advertisingExpense: 0,
+      marginalityWithoutExpense,
+      advertisingExpense,
       drrSales: drr,
-      advertisingExpenseBonus: 0,
-      drrBonus: 0,
-      advertisingExpenseTotal: 0,
-      drrTotal: 0,
-      drrOrders: 0,
-      acceptanceSum: 0,
+      advertisingExpenseBonus,
+      drrBonus,
+      advertisingExpenseTotal: advertisingExpense,
+      drrTotal,
+      drrOrders,
+      acceptanceSum,
       abcProfit: '—',
       abcRevenue: '—',
       stockBalanceMP: stockBalance,
-      stockBalanceOwn: 0,
-      stockBalanceToClient: 0,
-      stockBalanceFromClient: 0,
-      salesUnits: sales,
+      stockBalanceOwn,
+      stockBalanceToClient,
+      stockBalanceFromClient,
+      salesUnits,
     } satisfies AnalyticsTableRow;
   });
 }

@@ -1,5 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { ProductDrilldownModal } from '../components/product/ProductDrilldownModal';
 import { useAnalyticsWorkspaceData } from '../hooks/useAnalyticsWorkspaceData';
+import { useProductDrilldownData } from '../hooks/useProductDrilldownData';
 import { useProductReportingData } from '../hooks/useProductReportingData';
 import { formatCurrency, formatPercent } from '../lib/calculations';
 import { DollarSign, TrendingDown, TrendingUp } from 'lucide-react';
@@ -106,8 +108,12 @@ export function FinancePage() {
     accountIds: analytics.accountIds,
     limit: 100,
   });
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedProductName, setSelectedProductName] = useState('');
+  const drilldown = useProductDrilldownData(selectedProductId, analytics.accountIds, Boolean(selectedProductId));
 
-  const summaryMetrics = analytics.summary?.metrics;
+  const summaryMetrics = productReporting.summary?.metrics ?? analytics.summary?.metrics;
+  const summaryMeta = productReporting.summary?.meta ?? analytics.summary?.meta ?? null;
   const revenue = Number(summaryMetrics?.sales ?? 0);
   const commission = Number(summaryMetrics?.commission ?? 0);
   const logistics = Number(summaryMetrics?.logistics ?? 0);
@@ -129,18 +135,22 @@ export function FinancePage() {
     );
   }, [productReporting.rows]);
 
-  const profit = aggregatedProductMetrics.profit || revenue - commission - logistics - storage - returns - aggregatedProductMetrics.advertising - aggregatedProductMetrics.taxes - aggregatedProductMetrics.other;
+  const advertising = Number(summaryMetrics?.advertisingExpense ?? aggregatedProductMetrics.advertising);
+  const taxes = Number(summaryMetrics?.tax ?? summaryMetrics?.taxes ?? aggregatedProductMetrics.taxes);
+  const otherExpenses = Number(summaryMetrics?.otherDeduction ?? aggregatedProductMetrics.other);
+  const fallbackProfit = aggregatedProductMetrics.profit || revenue - commission - logistics - storage - returns - advertising - taxes - otherExpenses;
+  const profit = Number(summaryMetrics?.profit ?? fallbackProfit);
   const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
   const hasData = Boolean(analytics.summary) || productReporting.rows.length > 0;
 
   const metrics: FinanceMetric[] = [
     { label: 'Выручка', value: revenue, pctOfRevenue: revenue > 0 ? 100 : 0, color: '#3b82f6', isPositive: true },
     { label: 'Логистика', value: -logistics, pctOfRevenue: revenue > 0 ? (logistics / revenue) * 100 : 0, color: '#f59e0b', isPositive: false },
-    { label: 'Реклама', value: -aggregatedProductMetrics.advertising, pctOfRevenue: revenue > 0 ? (aggregatedProductMetrics.advertising / revenue) * 100 : 0, color: '#8b5cf6', isPositive: false },
+    { label: 'Реклама', value: -advertising, pctOfRevenue: revenue > 0 ? (advertising / revenue) * 100 : 0, color: '#8b5cf6', isPositive: false },
     { label: 'Комиссия МП', value: -commission, pctOfRevenue: revenue > 0 ? (commission / revenue) * 100 : 0, color: '#ec4899', isPositive: false },
     { label: 'Хранение', value: -storage, pctOfRevenue: revenue > 0 ? (storage / revenue) * 100 : 0, color: '#14b8a6', isPositive: false },
-    { label: 'Налоги', value: -aggregatedProductMetrics.taxes, pctOfRevenue: revenue > 0 ? (aggregatedProductMetrics.taxes / revenue) * 100 : 0, color: '#ef4444', isPositive: false },
-    { label: 'Прочие расходы', value: -aggregatedProductMetrics.other, pctOfRevenue: revenue > 0 ? (aggregatedProductMetrics.other / revenue) * 100 : 0, color: '#94a3b8', isPositive: false },
+    { label: 'Налоги', value: -taxes, pctOfRevenue: revenue > 0 ? (taxes / revenue) * 100 : 0, color: '#ef4444', isPositive: false },
+    { label: 'Прочие расходы', value: -otherExpenses, pctOfRevenue: revenue > 0 ? (otherExpenses / revenue) * 100 : 0, color: '#94a3b8', isPositive: false },
     { label: 'Возвраты', value: -returns, pctOfRevenue: revenue > 0 ? (returns / revenue) * 100 : 0, color: '#fb7185', isPositive: false },
     { label: 'Чистая прибыль', value: profit, pctOfRevenue: revenue > 0 ? (profit / revenue) * 100 : 0, color: profit >= 0 ? '#10b981' : '#ef4444', isPositive: profit >= 0 },
   ];
@@ -199,6 +209,23 @@ export function FinancePage() {
       <div>
         <h1 className="text-xl font-bold text-slate-900">Финансы</h1>
         <p className="mt-0.5 text-sm text-slate-500">Структура доходов и расходов на основе live API</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+            summaryMeta?.taxConfigured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+          }`}>
+            Налоги: {summaryMeta?.taxConfigured ? 'настроены' : 'нет настроек'}
+          </span>
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+            summaryMeta?.productCostsConfigured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+          }`}>
+            Себестоимость: {summaryMeta?.productCostsConfigured ? 'настроена' : 'нет настроек'}
+          </span>
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+            summaryMeta?.economicsConfigured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+          }`}>
+            Экономика: {summaryMeta?.economicsConfigured ? 'полная' : 'неполная'}
+          </span>
+        </div>
       </div>
 
       {analytics.error && (
@@ -283,7 +310,14 @@ export function FinancePage() {
                 {topProducts.map(product => {
                   const productMargin = product.revenue > 0 ? (product.profit / product.revenue) * 100 : 0;
                   return (
-                    <tr key={product.id} className="hover:bg-slate-50">
+                    <tr
+                      key={product.id}
+                      onClick={() => {
+                        setSelectedProductId(product.id);
+                        setSelectedProductName(product.name);
+                      }}
+                      className="cursor-pointer hover:bg-slate-50"
+                    >
                       <td className="py-2.5 pr-4 font-medium text-slate-700">
                         <div className="max-w-[320px] whitespace-normal break-words">{product.name}</div>
                         <div className="mt-0.5 text-xs text-slate-400">{product.article}</div>
@@ -303,6 +337,17 @@ export function FinancePage() {
           </div>
         </div>
       )}
+
+      <ProductDrilldownModal
+        open={Boolean(selectedProductId)}
+        fallbackName={selectedProductName}
+        fallbackProductId={selectedProductId ?? ''}
+        drilldown={drilldown}
+        onClose={() => {
+          setSelectedProductId(null);
+          setSelectedProductName('');
+        }}
+      />
     </div>
   );
 }

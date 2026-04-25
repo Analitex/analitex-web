@@ -114,6 +114,13 @@ export function MetricCard({
     : badTrend
     ? 'bg-red-50 border-red-100'
     : 'bg-slate-50 border-slate-100';
+  const cardTone = metric.sparkline.length > 1
+    ? 'border-slate-200 bg-white'
+    : goodTrend
+    ? 'border-emerald-200 bg-emerald-50/55'
+    : badTrend
+    ? 'border-red-200 bg-red-50/55'
+    : 'border-slate-200 bg-slate-50/75';
 
   const deltaValue = metric.delta ?? 0;
   const deltaPercentValue = metric.deltaPercent ?? 0;
@@ -134,7 +141,7 @@ export function MetricCard({
             setIsDetailsOpen(true);
           }
         }}
-        className="relative w-full rounded-xl border border-slate-200 bg-white p-2.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+        className={`relative z-0 w-full rounded-xl border p-2.5 text-left transition-all duration-200 hover:z-[140] hover:-translate-y-0.5 hover:shadow-md focus-within:z-[140] ${cardTone}`}
       >
         {metric.sparkline.length > 1 && (
           <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl opacity-[0.16] transition-opacity">
@@ -164,7 +171,7 @@ export function MetricCard({
                 </button>
               )}
               {faq && (
-                <PassiveFloat label="FAQ" panelClassName="-left-2">
+                <PassiveFloat label="FAQ" panelClassName="right-0">
                   <Info size={14} />
                   <div className="min-w-[240px] max-w-[280px] text-sm leading-5 text-slate-600">{faq}</div>
                 </PassiveFloat>
@@ -317,16 +324,17 @@ function PassiveFloat({
   const [icon, content] = children;
 
   return (
-    <div className="group/tooltip relative z-20 flex shrink-0">
-      <div
-        className="cursor-help text-slate-400 transition-colors hover:text-slate-600"
+    <div className="group/tooltip relative z-[120] flex shrink-0">
+      <button
+        type="button"
+        className="cursor-help text-slate-400 transition-colors hover:text-slate-600 focus-visible:text-slate-600"
         aria-label={label}
-        title={label}
         onClick={event => event.stopPropagation()}
+        onMouseDown={event => event.stopPropagation()}
       >
         {icon}
-      </div>
-      <div className={`absolute top-full z-30 mt-2 hidden rounded-xl border border-slate-200 bg-white p-3 shadow-xl group-hover/tooltip:block ${panelClassName}`}>
+      </button>
+      <div className={`pointer-events-none absolute top-full z-[130] mt-1 max-w-[min(280px,calc(100vw-24px))] rounded-xl border border-slate-200 bg-white p-3 opacity-0 shadow-xl transition-opacity duration-150 group-hover/tooltip:pointer-events-auto group-hover/tooltip:opacity-100 group-focus-within/tooltip:pointer-events-auto group-focus-within/tooltip:opacity-100 ${panelClassName}`}>
         {content}
       </div>
     </div>
@@ -352,7 +360,7 @@ const ClickFloat = ({
   children: ReactNode;
   anchorRef: MutableRefObject<HTMLDivElement | null>;
 }) => (
-  <div ref={anchorRef} className="relative z-20 flex shrink-0">
+  <div ref={anchorRef} className="relative z-[120] flex shrink-0">
     <button
       type="button"
       onClick={event => {
@@ -366,7 +374,7 @@ const ClickFloat = ({
       {trigger}
     </button>
     {isOpen && (
-      <div className={`absolute top-full z-30 mt-2 rounded-xl border border-slate-200 bg-white p-3 shadow-xl ${panelClassName}`}>
+      <div className={`absolute top-full z-[130] mt-2 max-w-[min(340px,calc(100vw-24px))] rounded-xl border border-slate-200 bg-white p-3 shadow-xl ${panelClassName}`}>
         <div className="mb-2 flex justify-end">
           <button
             type="button"

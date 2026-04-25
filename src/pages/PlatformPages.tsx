@@ -34,6 +34,8 @@ import {
 } from '../lib/platformCatalog';
 import { apiRequest } from '../lib/api';
 
+const OVERVIEW_SUMMARY_METRICS = ['sales', 'commission', 'logistics', 'storage', 'returns', 'ordersCount', 'stockBalance'] as const;
+
 function Surface({ children }: { children: ReactNode }) {
   return <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">{children}</section>;
 }
@@ -902,7 +904,7 @@ export function AnalyticsWorkbenchPage() {
   type PreviewCustomMetricApiResponse = { isValid: boolean; value?: number | null; errors?: string[] | null; referencedMetrics?: string[] | null };
 
   const summaryRequest = useMemo(
-    () => ({ dateFrom, dateTo, mode, accountIds: [123456], metrics: [...METRICS_CATALOG] }),
+    () => ({ dateFrom, dateTo, mode, accountIds: [123456], metrics: [...OVERVIEW_SUMMARY_METRICS] }),
     [dateFrom, dateTo, mode]
   );
   const trendsRequest = useMemo(
@@ -997,7 +999,7 @@ export function AnalyticsWorkbenchPage() {
             token: session.accessToken,
             body: JSON.stringify(productOverviewRequest),
           }),
-          apiRequest<ProductRowsApiResponse>('/reporting/products', {
+          apiRequest<ProductRowsApiResponse>('/reporting/products/query', {
             method: 'POST',
             token: session.accessToken,
             body: JSON.stringify(productTableRequest),

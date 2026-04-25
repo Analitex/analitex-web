@@ -11,7 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { MarketplaceBadge } from '../components/common/MarketplaceIcon';
-import { usePlatform, type OrganizationMember, type SyncRun } from '../context/PlatformContext';
+import { usePlatform, type MarketplaceConnection, type OrganizationMember, type SyncRun } from '../context/PlatformContext';
 import { apiRequest } from '../lib/api';
 import { SETTINGS_TABS, type SettingsTabId } from './settingsConfig';
 
@@ -25,16 +25,6 @@ interface ProfileState {
   phone: string;
 }
 
-interface Shop {
-  id: string;
-  name: string;
-  marketplace: string;
-  legalEntity: string;
-  inn: string;
-  status: string;
-  syncedAt: string;
-}
-
 interface QuarterConfig {
   taxRate: string;
   vatRate: string;
@@ -46,6 +36,15 @@ interface TaxConfig {
   includeCostAsExpense: boolean;
   quarters: QuarterConfig[];
 }
+
+type MarketplaceFinanceSettingsResponse = {
+  marketplaceConnectionId: string;
+  accountId: number;
+  taxEnabled: boolean;
+  taxRatePercent: number;
+  taxSystem?: string | null;
+  updatedAt: string;
+};
 
 interface CustomMetric {
   id: string;
@@ -61,7 +60,8 @@ type SyncRunApiResponse = {
   syncKind?: string | null;
   dateFrom: string;
   dateTo: string;
-  requestedAt: string;
+  requestedAt?: string;
+  enqueuedAt?: string;
   status: string | number;
   error?: string | null;
   attemptCount: number;
@@ -99,36 +99,6 @@ const DEFAULT_PROFILE: ProfileState = {
   phone: '+7 (999) 123-45-67',
 };
 
-const SHOPS: Shop[] = [
-  {
-    id: 'shop-ozon-home',
-    name: 'Aurora Home',
-    marketplace: 'Ozon',
-    legalEntity: 'ООО Аурора Трейд',
-    inn: '7704123456',
-    status: 'Синхронизация активна',
-    syncedAt: '17 апреля 2026, 15:20',
-  },
-  {
-    id: 'shop-wb-sport',
-    name: 'Aurora Sport',
-    marketplace: 'Wildberries',
-    legalEntity: 'ИП Иванова А.А.',
-    inn: '667812345678',
-    status: 'Требуется проверка токена',
-    syncedAt: '17 апреля 2026, 14:55',
-  },
-  {
-    id: 'shop-ym-main',
-    name: 'Aurora Market',
-    marketplace: 'Яндекс Маркет',
-    legalEntity: 'ООО Аурора Трейд',
-    inn: '7704123456',
-    status: 'Синхронизация активна',
-    syncedAt: '17 апреля 2026, 15:05',
-  },
-];
-
 const MONTH_LABELS = [
   ['Январь', 'Февраль', 'Март'],
   ['Апрель', 'Май', 'Июнь'],
@@ -156,6 +126,72 @@ function createDefaultTaxConfig(): TaxConfig {
   };
 }
 
+function mapFinanceTaxSystemToMode(taxSystem?: string | null): TaxModeId {
+  switch ((taxSystem ?? '').toLowerCase()) {
+    case 'usn_income_expense':
+    case 'usn_income_expense_fixed_vat':
+      return 'usn-income-expense-fixed-vat';
+    case 'usn_income_expense_vat_22':
+      return 'usn-income-expense-vat-22';
+    case 'ip_osno':
+      return 'ip-osno';
+    case 'ooo_osno':
+      return 'ooo-osno';
+    case 'usn_income':
+    default:
+      return 'usn-income';
+  }
+}
+
+function mapTaxModeToFinanceTaxSystem(mode: TaxModeId) {
+  switch (mode) {
+    case 'usn-income-expense-fixed-vat':
+      return 'usn_income_expense_fixed_vat';
+    case 'usn-income-expense-vat-22':
+      return 'usn_income_expense_vat_22';
+    case 'ip-osno':
+      return 'ip_osno';
+    case 'ooo-osno':
+      return 'ooo_osno';
+    case 'usn-income':
+    default:
+      return 'usn_income';
+  }
+}
+
+function buildTaxConfigFromFinanceSettings(settings?: MarketplaceFinanceSettingsResponse | null): TaxConfig {
+  const base = createDefaultTaxConfig();
+  if (!settings) return base;
+
+  const taxRate = settings.taxEnabled ? String(settings.taxRatePercent ?? 0) : '';
+  const mappedMode = mapFinanceTaxSystemToMode(settings.taxSystem);
+
+  return {
+    taxMode: mappedMode,
+    includeCostAsExpense: TAX_MODES.find(mode => mode.id === mappedMode)?.supportsCostExpense ?? false,
+    quarters: base.quarters.map(quarter => ({
+      ...quarter,
+      taxRate,
+      vatRate: '',
+      months: quarter.months.map(month => ({
+        ...month,
+        taxRate,
+        vatRate: '',
+      })),
+    })),
+  };
+}
+
+function getEffectiveTaxRate(config: TaxConfig) {
+  for (const quarter of config.quarters) {
+    if (quarter.taxRate.trim()) return Number(quarter.taxRate);
+    for (const month of quarter.months) {
+      if (month.taxRate.trim()) return Number(month.taxRate);
+    }
+  }
+  return 0;
+}
+
 function getSyncProgressColor(status: SyncRun['status']) {
   switch (status) {
     case 'Succeeded':
@@ -181,6 +217,8 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
   const {
     session,
     customMetrics,
+    connections,
+    selectedOrganizationId,
     loadSettingsTabData,
     logout,
     updateProfile,
@@ -207,46 +245,15 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordNotice, setPasswordNotice] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<number>(TAX_YEARS[0]);
-  const [selectedShopId, setSelectedShopId] = useState<string>(SHOPS[0].id);
+  const [selectedShopId, setSelectedShopId] = useState<string>('');
   const [settingsTabLoading, setSettingsTabLoading] = useState<SettingsTabId | null>(null);
+  const [taxSettingsLoading, setTaxSettingsLoading] = useState(false);
+  const [taxSettingsSaving, setTaxSettingsSaving] = useState(false);
+  const [taxSettingsNotice, setTaxSettingsNotice] = useState<string | null>(null);
+  const [taxSettingsError, setTaxSettingsError] = useState<string | null>(null);
+  const [loadedFinanceSettingsKeys, setLoadedFinanceSettingsKeys] = useState<Record<string, boolean>>({});
   const [taxConfigs, setTaxConfigs] = useState<Record<string, Record<number, TaxConfig>>>(() => {
-    const initialState: Record<string, Record<number, TaxConfig>> = {};
-
-    SHOPS.forEach(shop => {
-      initialState[shop.id] = {};
-      TAX_YEARS.forEach(year => {
-        initialState[shop.id][year] = createDefaultTaxConfig();
-      });
-    });
-
-    initialState['shop-ozon-home'][2026] = {
-      taxMode: 'usn-income-expense-fixed-vat',
-      includeCostAsExpense: true,
-      quarters: [
-        {
-          taxRate: '15',
-          vatRate: '10',
-          months: [
-            { label: 'Январь', taxRate: '15', vatRate: '10' },
-            { label: 'Февраль', taxRate: '15', vatRate: '10' },
-            { label: 'Март', taxRate: '15', vatRate: '10' },
-          ],
-        },
-        {
-          taxRate: '15',
-          vatRate: '10',
-          months: [
-            { label: 'Апрель', taxRate: '15', vatRate: '10' },
-            { label: 'Май', taxRate: '15', vatRate: '10' },
-            { label: 'Июнь', taxRate: '15', vatRate: '10' },
-          ],
-        },
-        createDefaultQuarter(MONTH_LABELS[2]),
-        createDefaultQuarter(MONTH_LABELS[3]),
-      ],
-    };
-
-    return initialState;
+    return {};
   });
 
   useEffect(() => {
@@ -279,11 +286,74 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
     };
   }, [activeTab, loadSettingsTabData]);
 
-  const selectedShop = useMemo(
-    () => SHOPS.find(shop => shop.id === selectedShopId) ?? SHOPS[0],
-    [selectedShopId]
+  const taxShops = useMemo(
+    () => connections.filter(connection => connection.organizationId === selectedOrganizationId),
+    [connections, selectedOrganizationId]
   );
-  const currentTaxConfig = taxConfigs[selectedShop.id][selectedYear];
+
+  useEffect(() => {
+    if (taxShops.length === 0) {
+      setSelectedShopId('');
+      return;
+    }
+    setSelectedShopId(current => (current && taxShops.some(shop => shop.id === current) ? current : taxShops[0].id));
+  }, [taxShops]);
+
+  useEffect(() => {
+    if (taxShops.length === 0) return;
+    setTaxConfigs(current => {
+      const next = { ...current };
+      taxShops.forEach(shop => {
+        if (!next[shop.id]) {
+          next[shop.id] = {};
+        }
+        TAX_YEARS.forEach(year => {
+          if (!next[shop.id][year]) {
+            next[shop.id][year] = createDefaultTaxConfig();
+          }
+        });
+      });
+      return next;
+    });
+  }, [taxShops]);
+
+  useEffect(() => {
+    if (activeTab !== 'taxes' || !session?.accessToken || !selectedShopId || loadedFinanceSettingsKeys[selectedShopId]) return;
+
+    let cancelled = false;
+    setTaxSettingsLoading(true);
+    setTaxSettingsError(null);
+
+    void apiRequest<MarketplaceFinanceSettingsResponse>(`/config/marketplace-connections/${selectedShopId}/finance-settings`, {
+      token: session.accessToken,
+    })
+      .then(response => {
+        if (cancelled) return;
+        const nextConfig = buildTaxConfigFromFinanceSettings(response ?? null);
+        setTaxConfigs(current => ({
+          ...current,
+          [selectedShopId]: Object.fromEntries(TAX_YEARS.map(year => [year, nextConfig])) as Record<number, TaxConfig>,
+        }));
+        setLoadedFinanceSettingsKeys(current => ({ ...current, [selectedShopId]: true }));
+      })
+      .catch(error => {
+        if (cancelled) return;
+        setTaxSettingsError(error instanceof Error ? error.message : 'Не удалось загрузить налоговые настройки.');
+      })
+      .finally(() => {
+        if (!cancelled) setTaxSettingsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, loadedFinanceSettingsKeys, selectedShopId, session?.accessToken]);
+
+  const selectedShop = useMemo(
+    () => taxShops.find(shop => shop.id === selectedShopId) ?? taxShops[0] ?? null,
+    [selectedShopId, taxShops]
+  );
+  const currentTaxConfig = selectedShop ? (taxConfigs[selectedShop.id]?.[selectedYear] ?? createDefaultTaxConfig()) : createDefaultTaxConfig();
   const currentTaxMode = TAX_MODES.find(mode => mode.id === currentTaxConfig.taxMode) ?? TAX_MODES[0];
   const updateProfileField = (field: keyof ProfileState, value: string) => {
     setProfile(current => ({ ...current, [field]: value }));
@@ -357,13 +427,40 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
   };
 
   const updateTaxConfig = (updater: (config: TaxConfig) => TaxConfig) => {
+    if (!selectedShop) return;
     setTaxConfigs(current => ({
       ...current,
       [selectedShop.id]: {
         ...current[selectedShop.id],
-        [selectedYear]: updater(current[selectedShop.id][selectedYear]),
+        [selectedYear]: updater(current[selectedShop.id]?.[selectedYear] ?? createDefaultTaxConfig()),
       },
     }));
+  };
+
+  const saveTaxSettings = async () => {
+    if (!session?.accessToken || !selectedShop) return;
+
+    setTaxSettingsSaving(true);
+    setTaxSettingsNotice(null);
+    setTaxSettingsError(null);
+
+    try {
+      const taxRatePercent = getEffectiveTaxRate(currentTaxConfig);
+      await apiRequest<MarketplaceFinanceSettingsResponse>(`/config/marketplace-connections/${selectedShop.id}/finance-settings`, {
+        method: 'PUT',
+        token: session.accessToken,
+        body: JSON.stringify({
+          taxEnabled: taxRatePercent > 0,
+          taxRatePercent,
+          taxSystem: mapTaxModeToFinanceTaxSystem(currentTaxConfig.taxMode),
+        }),
+      });
+      setTaxSettingsNotice('Налоговые настройки сохранены. Текущий API пока хранит ставку и режим на уровне кабинета.');
+    } catch (error) {
+      setTaxSettingsError(error instanceof Error ? error.message : 'Не удалось сохранить налоговые настройки.');
+    } finally {
+      setTaxSettingsSaving(false);
+    }
   };
 
   const applyQuarterValues = (quarterIndex: number, field: 'taxRate' | 'vatRate', value: string) => {
@@ -480,12 +577,17 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
 
           {activeTab === 'taxes' && (
             <TaxesTab
+              shops={taxShops}
               selectedYear={selectedYear}
               onYearChange={setSelectedYear}
               selectedShopId={selectedShopId}
               onShopChange={setSelectedShopId}
               currentTaxConfig={currentTaxConfig}
               currentTaxMode={currentTaxMode}
+              isLoading={taxSettingsLoading}
+              isSaving={taxSettingsSaving}
+              notice={taxSettingsNotice}
+              error={taxSettingsError}
               onTaxModeChange={value =>
                 updateTaxConfig(config => ({
                   ...config,
@@ -502,6 +604,7 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
               }
               onQuarterChange={applyQuarterValues}
               onMonthChange={updateMonthValue}
+              onSave={saveTaxSettings}
             />
           )}
 
@@ -753,8 +856,11 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
   const [apiToken, setApiToken] = useState('');
   const [clientId, setClientId] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [performanceClientId, setPerformanceClientId] = useState('');
+  const [performanceClientSecret, setPerformanceClientSecret] = useState('');
   const [startInitialSync, setStartInitialSync] = useState(true);
   const [connectNotice, setConnectNotice] = useState<string | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
   const [isMarketplaceMenuOpen, setIsMarketplaceMenuOpen] = useState(false);
 
   const openSyncModal = (shopId: string, shopName: string) => {
@@ -828,7 +934,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
           attemptCount: item.attemptCount,
           maxAttempts: item.maxAttempts,
           nextAttemptAt: item.nextAttemptAt ?? undefined,
-          enqueuedAt: item.requestedAt,
+          enqueuedAt: item.enqueuedAt ?? item.requestedAt ?? new Date().toISOString(),
         }))
       );
     } catch (error) {
@@ -877,7 +983,10 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={() => setIsMarketplaceMenuOpen(current => !current)}
+                    onClick={() => {
+                      setConnectError(null);
+                      setIsMarketplaceMenuOpen(current => !current);
+                    }}
                     className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-sm text-slate-900 outline-none transition-colors hover:border-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                   >
                     <div className="flex items-center gap-3">
@@ -938,7 +1047,32 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                     <div className="mb-2 text-sm font-medium text-slate-600">API Key</div>
                     <input
                       value={apiKey}
-                      onChange={event => setApiKey(event.target.value)}
+                      onChange={event => {
+                        setApiKey(event.target.value);
+                        setConnectError(null);
+                      }}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    />
+                  </label>
+                  <label className="block">
+                    <div className="mb-2 text-sm font-medium text-slate-600">Performance Client ID (необязательно)</div>
+                    <input
+                      value={performanceClientId}
+                      onChange={event => {
+                        setPerformanceClientId(event.target.value);
+                        setConnectError(null);
+                      }}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    />
+                  </label>
+                  <label className="block">
+                    <div className="mb-2 text-sm font-medium text-slate-600">Performance Client Secret (необязательно)</div>
+                    <input
+                      value={performanceClientSecret}
+                      onChange={event => {
+                        setPerformanceClientSecret(event.target.value);
+                        setConnectError(null);
+                      }}
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                     />
                   </label>
@@ -966,12 +1100,29 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                 <button
                   type="button"
                   onClick={() => {
+                    const trimmedPerformanceClientId = performanceClientId.trim();
+                    const trimmedPerformanceClientSecret = performanceClientSecret.trim();
+                    if ((trimmedPerformanceClientId && !trimmedPerformanceClientSecret) || (!trimmedPerformanceClientId && trimmedPerformanceClientSecret)) {
+                      setConnectError('Для Ozon performance credentials нужно заполнить оба поля: Client ID и Client Secret.');
+                      return;
+                    }
+
+                    setConnectError(null);
                     connectShop({
                       marketplace,
                       displayName: displayName.trim() || undefined,
                       credentials:
                         marketplace === 'Ozon'
-                          ? { clientId: clientId.trim(), apiKey: apiKey.trim() }
+                          ? {
+                              clientId: clientId.trim(),
+                              apiKey: apiKey.trim(),
+                              ...(trimmedPerformanceClientId && trimmedPerformanceClientSecret
+                                ? {
+                                    performanceClientId: trimmedPerformanceClientId,
+                                    performanceClientSecret: trimmedPerformanceClientSecret,
+                                  }
+                                : {}),
+                            }
                           : { apiToken: apiToken.trim() },
                       startInitialSync,
                       initialSyncDays: 14,
@@ -986,6 +1137,8 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                     setApiToken('');
                     setClientId('');
                     setApiKey('');
+                    setPerformanceClientId('');
+                    setPerformanceClientSecret('');
                   }}
                   className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
                 >
@@ -1001,6 +1154,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
               </div>
             </div>
           </div>
+          {connectError && <div className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{connectError}</div>}
           {connectNotice && <div className="mt-4 rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-800">{connectNotice}</div>}
         </div>
       )}
@@ -1569,28 +1723,54 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
 }
 
 function TaxesTab({
+  shops,
   selectedYear,
   onYearChange,
   selectedShopId,
   onShopChange,
   currentTaxConfig,
   currentTaxMode,
+  isLoading,
+  isSaving,
+  notice,
+  error,
   onTaxModeChange,
   onCostExpenseToggle,
   onQuarterChange,
   onMonthChange,
+  onSave,
 }: {
+  shops: MarketplaceConnection[];
   selectedYear: number;
   onYearChange: (year: number) => void;
   selectedShopId: string;
   onShopChange: (shopId: string) => void;
   currentTaxConfig: TaxConfig;
   currentTaxMode: (typeof TAX_MODES)[number];
+  isLoading: boolean;
+  isSaving: boolean;
+  notice: string | null;
+  error: string | null;
   onTaxModeChange: (mode: TaxModeId) => void;
   onCostExpenseToggle: () => void;
   onQuarterChange: (quarterIndex: number, field: 'taxRate' | 'vatRate', value: string) => void;
   onMonthChange: (quarterIndex: number, monthIndex: number, field: 'taxRate' | 'vatRate', value: string) => void;
+  onSave: () => void;
 }) {
+  if (shops.length === 0) {
+    return (
+      <section className="space-y-6">
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="text-sm font-medium text-blue-600">Налоги</div>
+          <h2 className="mt-1 text-2xl font-semibold text-slate-900">Настройка налоговых режимов</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+            Подключите хотя бы один кабинет, чтобы настроить налоговые параметры и использовать бизнес-метрики в отчетах.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="space-y-6">
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -1600,7 +1780,8 @@ function TaxesTab({
             <h2 className="mt-1 text-2xl font-semibold text-slate-900">Настройка налоговых режимов</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
               Режим налогообложения выбирается на кабинет на год. Налоговую ставку и НДС можно задавать по кварталу
-              и уточнять по месяцам внутри квартала.
+              и уточнять по месяцам внутри квартала. Текущий API пока сохраняет режим и ставку на уровне кабинета,
+              поэтому помесячная сетка здесь выступает как подготовленная форма для будущего расширения контракта.
             </p>
           </div>
 
@@ -1630,9 +1811,9 @@ function TaxesTab({
                     onChange={event => onShopChange(event.target.value)}
                     className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500"
                   >
-                    {SHOPS.map(shop => (
+                    {shops.map(shop => (
                       <option key={shop.id} value={shop.id}>
-                        {shop.name}
+                        {shop.displayName}
                       </option>
                     ))}
                   </select>
@@ -1700,11 +1881,23 @@ function TaxesTab({
             </div>
             <button
               type="button"
+              onClick={onSave}
+              disabled={isSaving}
               className="inline-flex shrink-0 items-center justify-center rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
             >
-              Сохранить все
+              {isSaving ? 'Сохранение...' : 'Сохранить все'}
             </button>
           </div>
+
+          {isLoading && (
+            <div className="mb-3 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+              <Loader2 size={16} className="animate-spin text-blue-600" />
+              Загружаем налоговые настройки кабинета...
+            </div>
+          )}
+
+          {notice && <div className="mb-3 rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-800">{notice}</div>}
+          {error && <div className="mb-3 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
 
           <div className="-mx-6 overflow-x-auto px-6 pb-2">
             <div className="flex min-w-max gap-2">

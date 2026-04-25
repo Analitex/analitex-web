@@ -256,79 +256,91 @@ export function DateRangePicker({ start, end, onChange, className = '', fullWidt
 
       {open && (
         <div
-          className={`absolute top-full left-0 mt-2 z-50 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl ${
-            fullWidth ? 'w-full min-w-0' : 'w-[calc(100vw-32px)] max-w-[980px]'
+          className={`absolute top-full left-0 mt-2 z-50 max-h-[calc(100vh-140px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl ${
+            fullWidth ? 'w-full min-w-0' : 'w-max max-w-[calc(100vw-32px)]'
           }`}
         >
-          <div className="flex flex-col border-b border-slate-200 xl:flex-row">
-            <div className="border-b border-slate-200 p-4 xl:flex-1 xl:border-b-0 xl:border-r xl:px-5 xl:pb-3 xl:pt-4">
-              <div className="flex flex-col gap-6 xl:flex-row">
-                <MonthPanel
-                  month={firstMonth}
-                  weeks={firstMonthDays}
-                  onPrev={() => setVisibleMonth(current => addMonths(current, -1))}
-                  onSelect={handleDaySelect}
-                  rangeStart={localStart}
-                  rangeEnd={localEnd}
-                  showPrev
-                />
-                <MonthPanel
-                  month={secondMonth}
-                  weeks={secondMonthDays}
-                  onNext={() => setVisibleMonth(current => addMonths(current, 1))}
-                  onSelect={handleDaySelect}
-                  rangeStart={localStart}
-                  rangeEnd={localEnd}
-                  showNext
-                />
+          <div className="border-b border-slate-200 px-4 py-4 sm:px-5">
+            <div className="flex flex-wrap gap-2">
+              {QUICK_RANGES.map(preset => {
+                const range = preset.getRange();
+                const presetStart = formatIsoDate(range.start);
+                const presetEnd = formatIsoDate(range.end);
+                const isActive = rangesEqual(localStart, localEnd, presetStart, presetEnd);
+
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => applyPreset(preset)}
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors sm:text-sm ${
+                      isActive
+                        ? 'border-blue-200 bg-blue-50 text-blue-700 ring-1 ring-blue-500/40'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-3 inline-block max-w-full rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <label className="space-y-1 sm:w-[168px]">
+                  <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">От</span>
+                  <input
+                    value={startInput}
+                    onChange={event => syncInput(event.target.value, 'start')}
+                    placeholder="дд.мм.гггг"
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-blue-300"
+                  />
+                </label>
+                <label className="space-y-1 sm:w-[168px]">
+                  <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">До</span>
+                  <input
+                    value={endInput}
+                    onChange={event => syncInput(event.target.value, 'end')}
+                    placeholder="дд.мм.гггг"
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-blue-300"
+                  />
+                </label>
               </div>
             </div>
+          </div>
 
-            <div className="w-full xl:w-80">
-              <div className="flex flex-wrap gap-2 px-5 pb-3 pt-4">
-                {QUICK_RANGES.map(preset => {
-                  const range = preset.getRange();
-                  const presetStart = formatIsoDate(range.start);
-                  const presetEnd = formatIsoDate(range.end);
-                  const isActive = rangesEqual(localStart, localEnd, presetStart, presetEnd);
-
-                  return (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => applyPreset(preset)}
-                      className={`rounded-lg border px-4 py-2 text-sm transition-colors ${
-                        isActive
-                          ? 'border-blue-200 bg-blue-50 text-blue-700 ring-1 ring-blue-500/40'
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="px-5 pb-5">
-                <div className="mb-2 pl-1 text-sm font-medium text-slate-700">Период</div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                    <input
-                      value={startInput}
-                      onChange={event => syncInput(event.target.value, 'start')}
-                      placeholder="дд.мм.гггг"
-                      className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-blue-300"
-                    />
-                    <div className="text-slate-300">—</div>
-                    <input
-                      value={endInput}
-                      onChange={event => syncInput(event.target.value, 'end')}
-                      placeholder="дд.мм.гггг"
-                      className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-blue-300"
-                    />
-                  </div>
-                </div>
-              </div>
+          <div className="border-b border-slate-200 p-4 xl:px-5 xl:pb-3 xl:pt-4">
+            <div className="xl:hidden">
+              <MonthPanel
+                month={firstMonth}
+                weeks={firstMonthDays}
+                onPrev={() => setVisibleMonth(current => addMonths(current, -1))}
+                onNext={() => setVisibleMonth(current => addMonths(current, 1))}
+                onSelect={handleDaySelect}
+                rangeStart={localStart}
+                rangeEnd={localEnd}
+                showPrev
+                showNext
+              />
+            </div>
+            <div className="hidden xl:flex xl:flex-row xl:gap-6">
+              <MonthPanel
+                month={firstMonth}
+                weeks={firstMonthDays}
+                onPrev={() => setVisibleMonth(current => addMonths(current, -1))}
+                onSelect={handleDaySelect}
+                rangeStart={localStart}
+                rangeEnd={localEnd}
+                showPrev
+              />
+              <MonthPanel
+                month={secondMonth}
+                weeks={secondMonthDays}
+                onNext={() => setVisibleMonth(current => addMonths(current, 1))}
+                onSelect={handleDaySelect}
+                rangeStart={localStart}
+                rangeEnd={localEnd}
+                showNext
+              />
             </div>
           </div>
 
@@ -336,11 +348,11 @@ export function DateRangePicker({ start, end, onChange, className = '', fullWidt
             <div className="text-xs text-slate-500">
               {localStart && localEnd ? `${formatInputDate(localStart)} - ${formatInputDate(localEnd)}` : 'Выберите диапазон'}
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 type="button"
                 onClick={resetDraft}
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 sm:w-auto"
               >
                 Сбросить
               </button>
@@ -348,7 +360,7 @@ export function DateRangePicker({ start, end, onChange, className = '', fullWidt
                 type="button"
                 onClick={apply}
                 disabled={isApplyDisabled}
-                className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
                 Готово
               </button>

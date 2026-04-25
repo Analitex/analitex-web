@@ -10,6 +10,8 @@ import { DashboardPage } from './pages/DashboardPage';
 import { SummaryPage } from './pages/SummaryPage';
 import { FinancePage } from './pages/FinancePage';
 import { InventoryPage } from './pages/InventoryPage';
+import { ExternalTrafficPage } from './pages/ExternalTrafficPage';
+import { SearchPhrasesPage } from './pages/SearchPhrasesPage';
 import { PlanFactPage } from './pages/PlanFactPage';
 import { AIInsightsPage } from './pages/AllInsightPage';
 import { PublicAuthPage } from './pages/PublicAuthPage';
@@ -35,6 +37,8 @@ type MainPage =
   | 'summary'
   | 'finance'
   | 'inventory'
+  | 'external-traffic'
+  | 'search-phrases'
   | 'planfact'
   | 'ai'
   | 'settings'
@@ -82,6 +86,10 @@ function normalizeMainPage(pathname: string): MainPage {
       return 'finance';
     case '/inventory':
       return 'inventory';
+    case '/external-traffic':
+      return 'external-traffic';
+    case '/search-phrases':
+      return 'search-phrases';
     case '/planfact':
       return 'planfact';
     case '/ai':
@@ -136,6 +144,10 @@ function pathForRoute(route: RouteState) {
       return '/finance';
     case 'inventory':
       return '/inventory';
+    case 'external-traffic':
+      return '/external-traffic';
+    case 'search-phrases':
+      return '/search-phrases';
     case 'planfact':
       return '/planfact';
     case 'ai':
@@ -165,10 +177,12 @@ function isDevPage(page: Page): page is DevPage {
 function isMainPage(page: Page): page is Exclude<MainPage, 'login' | 'register'> {
   return (
     page === 'dashboard' ||
-    page === 'summary' ||
-    page === 'finance' ||
-    page === 'inventory' ||
-    page === 'planfact' ||
+      page === 'summary' ||
+      page === 'finance' ||
+      page === 'inventory' ||
+      page === 'external-traffic' ||
+      page === 'search-phrases' ||
+      page === 'planfact' ||
     page === 'ai' ||
     page === 'settings' ||
     page === 'accept-invite' ||
@@ -319,6 +333,8 @@ function AppRouter() {
       route.page === 'summary' ||
       route.page === 'finance' ||
       route.page === 'inventory' ||
+      route.page === 'external-traffic' ||
+      route.page === 'search-phrases' ||
       route.page === 'planfact' ||
       route.page === 'ai');
   const analyticsWorkspace = useAnalyticsWorkspaceData({
@@ -560,6 +576,10 @@ function AppRouter() {
         return <FinancePage />;
       case 'inventory':
         return <InventoryPage />;
+      case 'external-traffic':
+        return <ExternalTrafficPage />;
+      case 'search-phrases':
+        return <SearchPhrasesPage />;
       case 'planfact':
         return <PlanFactPage />;
       case 'ai':

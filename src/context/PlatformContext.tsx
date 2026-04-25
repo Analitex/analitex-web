@@ -63,6 +63,7 @@ export interface SyncRun {
   maxAttempts: number;
   nextAttemptAt?: string;
   enqueuedAt: string;
+  requestedByUserId?: string;
 }
 
 export interface CustomMetric {
@@ -249,6 +250,13 @@ type ApiConnection = {
   latestSyncRun?: ApiSyncRun | null;
 };
 
+type ApiConnectionValidationResult = {
+  isValid?: boolean;
+  externalAccountId?: string | null;
+  externalAccountName?: string | null;
+  error?: string | null;
+};
+
 type ApiSyncRun = {
   id: string;
   marketplaceConnectionId?: string;
@@ -265,6 +273,8 @@ type ApiSyncRun = {
   progressMessage?: string | null;
   startedAt?: string;
   finishedAt?: string | null;
+  requestedByUserId?: string | null;
+  enqueuedAt?: string | null;
   canRetry?: boolean;
   canCancel?: boolean;
 };
@@ -417,6 +427,7 @@ function mapSyncRun(syncRun: ApiSyncRun): SyncRun {
     dateFrom: syncRun.dateFrom ?? '',
     dateTo: syncRun.dateTo ?? '',
     syncKinds: syncRun.syncKind ? [String(syncRun.syncKind)] : [],
+    requestedByUserId: syncRun.requestedByUserId ?? undefined,
     progressPercent: Number(syncRun.progressPercent ?? 0),
     progressMessage: syncRun.progressMessage ?? '',
     error: syncRun.error ?? undefined,
@@ -425,7 +436,7 @@ function mapSyncRun(syncRun: ApiSyncRun): SyncRun {
     attemptCount: Number(syncRun.attemptCount ?? 0),
     maxAttempts: Number(syncRun.maxAttempts ?? 0),
     nextAttemptAt: syncRun.nextAttemptAt ?? undefined,
-    enqueuedAt: syncRun.requestedAt ?? new Date().toISOString(),
+    enqueuedAt: syncRun.requestedAt ?? syncRun.enqueuedAt ?? new Date().toISOString(),
   };
 }
 
@@ -454,6 +465,32 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
   const [apiError, setApiError] = useState<string | null>(null);
   const [connectors, setConnectors] = useState<MarketplaceConnectorDefinition[]>(CONNECTOR_CATALOG as MarketplaceConnectorDefinition[]);
+
+  const refreshOrganizationConnections = useCallback(
+    async (organizationId: string) => {
+      if (!session?.accessToken || !organizationId) return [] as MarketplaceConnection[];
+
+      const connectionsResponse = await apiRequest<ApiConnection[]>(`/organizations/${organizationId}/marketplace-connections`, {
+        token: session.accessToken,
+      });
+      const mappedConnections = (connectionsResponse ?? []).map(mapConnection);
+      setConnections(current => {
+        const remaining = current.filter(connection => connection.organizationId !== organizationId);
+        return [...mappedConnections, ...remaining];
+      });
+      setSyncRuns(current => {
+        const connectionIds = new Set(mappedConnections.map(connection => connection.id));
+        const remaining = current.filter(run => !connectionIds.has(run.connectionId));
+        const nextRuns = (connectionsResponse ?? [])
+          .map(connection => connection.latestSyncRun)
+          .filter((run): run is ApiSyncRun => Boolean(run))
+          .map(mapSyncRun);
+        return [...nextRuns, ...remaining].sort((left, right) => Date.parse(right.enqueuedAt) - Date.parse(left.enqueuedAt));
+      });
+      return mappedConnections;
+    },
+    [session?.accessToken]
+  );
 
   const refreshConnectionSyncRuns = useCallback(
     async (connectionId: string) => {
@@ -896,7 +933,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       validationState: 'Validated',
     };
     setConnections(current => [optimisticConnection, ...current]);
-    void apiRequest<{ connection: ApiConnection; validation: unknown; initialSync?: { syncRunIds?: string[]; enqueuedAt: string } }>('/marketplace-connections/connect-shop', {
+    void apiRequest<{ connection: ApiConnection; validation: ApiConnectionValidationResult; initialSync?: { syncRunIds?: string[]; enqueuedAt: string } }>('/marketplace-connections/connect-shop', {
       method: 'POST',
       token: session?.accessToken,
       body: JSON.stringify({
@@ -912,7 +949,9 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       .then(response => {
         const nextConnection = mapConnection(response.connection);
         setConnections(current => [nextConnection, ...current.filter(item => item.id !== optimisticConnection.id)]);
-        void refreshConnectionSyncRuns(nextConnection.id).catch(() => {});
+        if (response.initialSync?.syncRunIds?.length) {
+          void refreshConnectionSyncRuns(nextConnection.id).catch(() => {});
+        }
         recordAction({
           kind: 'connection',
           title: 'Connected marketplace shop',
@@ -924,12 +963,15 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
   };
 
   const validateConnection = async (connectionId: string) => {
-    const response = await apiRequest<ApiConnection>(`/marketplace-connections/${connectionId}/validate`, {
+    await apiRequest<void>(`/marketplace-connections/${connectionId}/validate`, {
       method: 'POST',
       token: session?.accessToken,
     });
-    const nextConnection = mapConnection(response);
-    setConnections(current => current.map(connection => (connection.id === nextConnection.id ? nextConnection : connection)));
+    const refreshedConnections = await refreshOrganizationConnections(selectedOrganizationId);
+    const nextConnection = refreshedConnections.find(connection => connection.id === connectionId);
+    if (!nextConnection) {
+      throw new ApiError('Validated connection was not returned by the backend.', 500);
+    }
     recordAction({
       kind: 'connection',
       title: 'Validated connection',

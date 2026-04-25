@@ -152,6 +152,8 @@ export type Page =
   | 'summary'
   | 'finance'
   | 'inventory'
+  | 'external-traffic'
+  | 'search-phrases'
   | 'planfact'
   | 'ai';
 

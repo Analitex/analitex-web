@@ -51,7 +51,7 @@ export function Layout({
         isMobileOpen={isMobileNavOpen}
         onMobileClose={() => setIsMobileNavOpen(false)}
       />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-visible">
         <FilterBar
           currentPage={currentPage}
           brands={brands}
@@ -61,7 +61,7 @@ export function Layout({
           skus={skus}
           onOpenMobileNav={() => setIsMobileNavOpen(true)}
         />
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto">
           {children}
         </main>
       </div>

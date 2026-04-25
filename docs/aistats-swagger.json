@@ -6,6 +6,66 @@
     "version": "v1"
   },
   "paths": {
+    "/api/v1/reporting/external-traffic/history": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingExternalTrafficHistoryEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalTrafficHistoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalTrafficHistoryResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/external-traffic/query": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingExternalTrafficQueryEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalTrafficReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalTrafficReportResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/reporting/products/metric-breakdowns": {
       "post": {
         "tags": [
@@ -229,6 +289,126 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProductStockSourcesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/products/summary": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingProductSummaryEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductMetricSummaryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductMetricSummaryResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/products/traffic-history": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingProductTrafficHistoryEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductTrafficHistoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductTrafficHistoryResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/search-phrases/history": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingSearchPhraseHistoryEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchPhraseHistoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchPhraseHistoryResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/search-phrases/query": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingSearchPhrasesQueryEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchPhraseReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchPhraseReportResponse"
                 }
               }
             }
@@ -1444,6 +1624,114 @@
         }
       }
     },
+    "/api/v1/config/marketplace-connections/{connectionId}/finance-settings": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsConfigGetMarketplaceFinanceSettingsEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceFinanceSettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsConfigUpsertMarketplaceFinanceSettingsEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertMarketplaceFinanceSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceFinanceSettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/config/marketplace-connections/{connectionId}/product-costs": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsConfigGetMarketplaceProductCostsEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceProductCostsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsConfigReplaceMarketplaceProductCostsEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceMarketplaceProductCostsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceProductCostsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/v1/analytics/breakdown": {
       "post": {
         "tags": [
@@ -2186,8 +2474,50 @@
           "fields": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/DimensionFieldDefinitionResponse"
             },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DimensionFieldDefinitionResponse": {
+        "required": [
+          "key",
+          "label",
+          "role",
+          "type"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "nullable": true
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "role": {
+            "type": "string",
+            "nullable": true
+          },
+          "filterable": {
+            "type": "boolean"
+          },
+          "sortable": {
+            "type": "boolean"
+          },
+          "valueSource": {
+            "type": "string",
+            "nullable": true
+          },
+          "temporalKind": {
+            "type": "string",
             "nullable": true
           }
         },
@@ -2355,6 +2685,324 @@
         },
         "additionalProperties": false
       },
+      "ExternalTrafficDimension": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceName": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceType": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceKey": {
+            "type": "string",
+            "nullable": true
+          },
+          "vendorTag": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExternalTrafficHistoryPoint": {
+        "required": [
+          "clicks",
+          "date",
+          "expense",
+          "ordersAmount",
+          "ordersCount",
+          "visits"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "visits": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "clicks": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ordersCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ordersAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "expense": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExternalTrafficHistoryRequest": {
+        "required": [
+          "dateFrom",
+          "dateTo"
+        ],
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ReportingMode"
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceKey"
+            },
+            "nullable": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticsFilters"
+          },
+          "sourceKey": {
+            "type": "string",
+            "nullable": true
+          },
+          "vendorTag": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExternalTrafficHistoryResponse": {
+        "required": [
+          "meta",
+          "query",
+          "scope",
+          "series"
+        ],
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScope"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QueryContext"
+          },
+          "dimension": {
+            "$ref": "#/components/schemas/ExternalTrafficDimension"
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExternalTrafficHistoryPoint"
+            },
+            "nullable": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExternalTrafficReportPagination": {
+        "required": [
+          "limit",
+          "page",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExternalTrafficReportRequest": {
+        "required": [
+          "dateFrom",
+          "dateTo"
+        ],
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ReportingMode"
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceKey"
+            },
+            "nullable": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticsFilters"
+          },
+          "sort": {
+            "$ref": "#/components/schemas/ExternalTrafficReportSort"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExternalTrafficReportResponse": {
+        "required": [
+          "meta",
+          "pagination",
+          "query",
+          "rows",
+          "scope",
+          "summary"
+        ],
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScope"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QueryContext"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExternalTrafficReportRow"
+            },
+            "nullable": true
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ExternalTrafficReportSummary"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/ExternalTrafficReportPagination"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExternalTrafficReportRow": {
+        "required": [
+          "dimension",
+          "metrics"
+        ],
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "$ref": "#/components/schemas/ExternalTrafficDimension"
+          },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double",
+              "nullable": true
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExternalTrafficReportSort": {
+        "type": "object",
+        "properties": {
+          "metric": {
+            "type": "string",
+            "nullable": true
+          },
+          "direction": {
+            "$ref": "#/components/schemas/SortDirection"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExternalTrafficReportSummary": {
+        "required": [
+          "page",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double",
+              "nullable": true
+            },
+            "nullable": true
+          },
+          "page": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double",
+              "nullable": true
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "FilterOptionsRequest": {
         "required": [
           "dateFrom",
@@ -2384,6 +3032,9 @@
               "$ref": "#/components/schemas/MarketplaceKey"
             },
             "nullable": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticsFilters"
           }
         },
         "additionalProperties": false
@@ -2739,6 +3390,51 @@
           "apiKey": {
             "type": "string",
             "nullable": true
+          },
+          "performanceClientId": {
+            "type": "string",
+            "nullable": true
+          },
+          "performanceClientSecret": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceFinanceSettingsResponse": {
+        "required": [
+          "accountId",
+          "marketplaceConnectionId",
+          "taxEnabled",
+          "taxRatePercent",
+          "taxSystem",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "marketplaceConnectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "accountId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "taxEnabled": {
+            "type": "boolean"
+          },
+          "taxRatePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "taxSystem": {
+            "type": "string",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
           }
         },
         "additionalProperties": false
@@ -2750,6 +3446,101 @@
         ],
         "type": "integer",
         "format": "int32"
+      },
+      "MarketplaceProductCostItemResponse": {
+        "required": [
+          "costPerUnit",
+          "currencyCode",
+          "id",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "vendorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "marketplaceArticle": {
+            "type": "string",
+            "nullable": true
+          },
+          "productName": {
+            "type": "string",
+            "nullable": true
+          },
+          "costPerUnit": {
+            "type": "number",
+            "format": "double"
+          },
+          "currencyCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceProductCostUpsertItem": {
+        "required": [
+          "costPerUnit"
+        ],
+        "type": "object",
+        "properties": {
+          "vendorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "marketplaceArticle": {
+            "type": "string",
+            "nullable": true
+          },
+          "productName": {
+            "type": "string",
+            "nullable": true
+          },
+          "costPerUnit": {
+            "type": "number",
+            "format": "double"
+          },
+          "currencyCode": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceProductCostsResponse": {
+        "required": [
+          "accountId",
+          "items",
+          "marketplaceConnectionId"
+        ],
+        "type": "object",
+        "properties": {
+          "marketplaceConnectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "accountId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceProductCostItemResponse"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
       },
       "MarketplaceSyncArtifactResponse": {
         "required": [
@@ -3399,6 +4190,72 @@
         },
         "additionalProperties": false
       },
+      "ProductMetricCardDefinition": {
+        "required": [
+          "id",
+          "primaryMetric",
+          "title"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "primaryMetric": {
+            "type": "string",
+            "nullable": true
+          },
+          "secondaryMetric": {
+            "type": "string",
+            "nullable": true
+          },
+          "ratioMetric": {
+            "type": "string",
+            "nullable": true
+          },
+          "hint": {
+            "type": "string",
+            "nullable": true
+          },
+          "group": {
+            "type": "string",
+            "nullable": true
+          },
+          "order": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMetricComparison": {
+        "required": [
+          "delta",
+          "deltaPercent",
+          "previous"
+        ],
+        "type": "object",
+        "properties": {
+          "previous": {
+            "type": "number",
+            "format": "double"
+          },
+          "delta": {
+            "type": "number",
+            "format": "double"
+          },
+          "deltaPercent": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
       "ProductMetricDefinition": {
         "required": [
           "enableColumnFilter",
@@ -3585,6 +4442,90 @@
         },
         "additionalProperties": false
       },
+      "ProductMetricSummaryRequest": {
+        "required": [
+          "dateFrom",
+          "dateTo"
+        ],
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ReportingMode"
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceKey"
+            },
+            "nullable": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticsFilters"
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMetricSummaryResponse": {
+        "required": [
+          "comparisons",
+          "meta",
+          "metrics",
+          "query",
+          "scope"
+        ],
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScope"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QueryContext"
+          },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double",
+              "nullable": true
+            },
+            "nullable": true
+          },
+          "comparisons": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ProductMetricComparison"
+            },
+            "nullable": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "additionalProperties": false
+      },
       "ProductMetricsCatalogResponse": {
         "required": [
           "metrics"
@@ -3595,6 +4536,20 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProductMetricDefinition"
+            },
+            "nullable": true
+          },
+          "cards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductMetricCardDefinition"
+            },
+            "nullable": true
+          },
+          "dimensionFields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DimensionFieldDefinitionResponse"
             },
             "nullable": true
           }
@@ -3779,6 +4734,12 @@
           "limit": {
             "type": "integer",
             "format": "int32"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true,
+            "writeOnly": true
           }
         },
         "additionalProperties": false
@@ -4197,6 +5158,174 @@
         },
         "additionalProperties": false
       },
+      "ProductTrafficHistoryPoint": {
+        "required": [
+          "cancellations",
+          "convToCart",
+          "convToCartPdp",
+          "convToCartSearch",
+          "date",
+          "deliveredUnits",
+          "hitsToCart",
+          "hitsToCartPdp",
+          "hitsToCartSearch",
+          "hitsView",
+          "hitsViewPdp",
+          "hitsViewSearch",
+          "orderedUnits",
+          "positionCategory",
+          "returnsUnits",
+          "sessionView",
+          "sessionViewPdp",
+          "sessionViewSearch"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "orderedUnits": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "deliveredUnits": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "returnsUnits": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "cancellations": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hitsViewSearch": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hitsViewPdp": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hitsView": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hitsToCartSearch": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hitsToCartPdp": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hitsToCart": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sessionViewSearch": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sessionViewPdp": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sessionView": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "convToCartSearch": {
+            "type": "number",
+            "format": "double"
+          },
+          "convToCartPdp": {
+            "type": "number",
+            "format": "double"
+          },
+          "convToCart": {
+            "type": "number",
+            "format": "double"
+          },
+          "positionCategory": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductTrafficHistoryRequest": {
+        "required": [
+          "dateFrom",
+          "dateTo"
+        ],
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ReportingMode"
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceKey"
+            },
+            "nullable": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticsFilters"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductTrafficHistoryResponse": {
+        "required": [
+          "meta",
+          "query",
+          "scope",
+          "series"
+        ],
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScope"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QueryContext"
+          },
+          "product": {
+            "$ref": "#/components/schemas/ProductDimension"
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductTrafficHistoryPoint"
+            },
+            "nullable": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "additionalProperties": false
+      },
       "QueryContext": {
         "type": "object",
         "properties": {
@@ -4272,6 +5401,19 @@
         },
         "additionalProperties": false
       },
+      "ReplaceMarketplaceProductCostsRequest": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceProductCostUpsertItem"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "ReportingMode": {
         "enum": [
           0,
@@ -4324,12 +5466,379 @@
           },
           "isPartial": {
             "type": "boolean"
+          },
+          "taxConfigured": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "productCostsConfigured": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "economicsConfigured": {
+            "type": "boolean",
+            "nullable": true
           }
         },
         "additionalProperties": false
       },
       "RevokeInvitationRequest": {
         "type": "object",
+        "additionalProperties": false
+      },
+      "SearchPhraseDimension": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "campaignId": {
+            "type": "string",
+            "nullable": true
+          },
+          "campaignName": {
+            "type": "string",
+            "nullable": true
+          },
+          "phrase": {
+            "type": "string",
+            "nullable": true
+          },
+          "phraseType": {
+            "type": "string",
+            "nullable": true
+          },
+          "category": {
+            "type": "string",
+            "nullable": true
+          },
+          "placement": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchPhraseHistoryPoint": {
+        "required": [
+          "clicks",
+          "cpc",
+          "ctr",
+          "date",
+          "drr",
+          "expense",
+          "impressions",
+          "ordersAmount",
+          "ordersCount"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "impressions": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "clicks": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ordersCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ordersAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "expense": {
+            "type": "number",
+            "format": "double"
+          },
+          "ctr": {
+            "type": "number",
+            "format": "double"
+          },
+          "cpc": {
+            "type": "number",
+            "format": "double"
+          },
+          "drr": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchPhraseHistoryRequest": {
+        "required": [
+          "dateFrom",
+          "dateTo"
+        ],
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ReportingMode"
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceKey"
+            },
+            "nullable": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticsFilters"
+          },
+          "campaignId": {
+            "type": "string",
+            "nullable": true
+          },
+          "phrase": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchPhraseHistoryResponse": {
+        "required": [
+          "meta",
+          "query",
+          "scope",
+          "series"
+        ],
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScope"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QueryContext"
+          },
+          "dimension": {
+            "$ref": "#/components/schemas/SearchPhraseDimension"
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchPhraseHistoryPoint"
+            },
+            "nullable": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchPhraseReportPagination": {
+        "required": [
+          "limit",
+          "page",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchPhraseReportRequest": {
+        "required": [
+          "dateFrom",
+          "dateTo"
+        ],
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ReportingMode"
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceKey"
+            },
+            "nullable": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticsFilters"
+          },
+          "campaignIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "phraseTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "sort": {
+            "$ref": "#/components/schemas/SearchPhraseReportSort"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchPhraseReportResponse": {
+        "required": [
+          "meta",
+          "pagination",
+          "query",
+          "rows",
+          "scope",
+          "summary"
+        ],
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScope"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QueryContext"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchPhraseReportRow"
+            },
+            "nullable": true
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SearchPhraseReportSummary"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/SearchPhraseReportPagination"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchPhraseReportRow": {
+        "required": [
+          "dimension",
+          "metrics"
+        ],
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "$ref": "#/components/schemas/SearchPhraseDimension"
+          },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double",
+              "nullable": true
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchPhraseReportSort": {
+        "type": "object",
+        "properties": {
+          "metric": {
+            "type": "string",
+            "nullable": true
+          },
+          "direction": {
+            "$ref": "#/components/schemas/SortDirection"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchPhraseReportSummary": {
+        "required": [
+          "page",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double",
+              "nullable": true
+            },
+            "nullable": true
+          },
+          "page": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double",
+              "nullable": true
+            },
+            "nullable": true
+          }
+        },
         "additionalProperties": false
       },
       "SortDirection": {
@@ -4700,6 +6209,23 @@
             "nullable": true
           },
           "phone": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpsertMarketplaceFinanceSettingsRequest": {
+        "type": "object",
+        "properties": {
+          "taxEnabled": {
+            "type": "boolean"
+          },
+          "taxRatePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "taxSystem": {
             "type": "string",
             "nullable": true
           }

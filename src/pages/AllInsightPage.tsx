@@ -279,7 +279,7 @@ export function AIInsightsPage() {
                 {(analytics.explanation.breakdown ?? []).slice(0, 5).map((item, index) => (
                   <div key={`${item.label ?? 'item'}-${index}`} className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3 text-sm">
                     <div className="font-medium text-slate-900">{item.label ?? `Item ${index + 1}`}</div>
-                    <div className="text-slate-700">{Number.isFinite(item.value ?? NaN) ? Number(item.value).toLocaleString('ru-RU') : '0'}</div>
+                    <div className="text-slate-700">{Number.isFinite(item.amount ?? NaN) ? Number(item.amount).toLocaleString('ru-RU') : '0'}</div>
                   </div>
                 ))}
               </div>

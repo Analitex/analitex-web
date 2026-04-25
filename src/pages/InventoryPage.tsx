@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
+import { ProductDrilldownModal } from '../components/product/ProductDrilldownModal';
 import { useFilters } from '../context/FilterContext';
 import { useAnalyticsWorkspaceData } from '../hooks/useAnalyticsWorkspaceData';
+import { useProductDrilldownData } from '../hooks/useProductDrilldownData';
 import { useProductReportingData } from '../hooks/useProductReportingData';
 import { formatCurrency, formatNumber } from '../lib/calculations';
 import { AlertTriangle, Package, Search, TrendingDown } from 'lucide-react';
@@ -63,6 +65,9 @@ export function InventoryPage() {
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<keyof InventorySummary>('inventoryValue');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedProductName, setSelectedProductName] = useState('');
+  const drilldown = useProductDrilldownData(selectedProductId, analytics.accountIds, Boolean(selectedProductId));
 
   const summaries = useMemo<InventorySummary[]>(() => {
     const days = getDaysInRange(filters.dateStart, filters.dateEnd);
@@ -232,7 +237,14 @@ export function InventoryPage() {
                 </tr>
               ) : (
                 filtered.map(item => (
-                  <tr key={item.productId} className={`transition-colors hover:bg-slate-50 ${item.totalStock === 0 ? 'opacity-50' : ''}`}>
+                  <tr
+                    key={item.productId}
+                    onClick={() => {
+                      setSelectedProductId(item.productId);
+                      setSelectedProductName(item.productName);
+                    }}
+                    className={`cursor-pointer transition-colors hover:bg-slate-50 ${item.totalStock === 0 ? 'opacity-50' : ''}`}
+                  >
                     <td className="px-4 py-3">
                       <div className="font-medium text-slate-800">{item.productName}</div>
                       <div className="text-xs text-slate-400">{item.sku} · {item.brand || 'Без бренда'} · {item.category || 'Без категории'}</div>
@@ -257,6 +269,17 @@ export function InventoryPage() {
           </table>
         </div>
       </div>
+
+      <ProductDrilldownModal
+        open={Boolean(selectedProductId)}
+        fallbackName={selectedProductName}
+        fallbackProductId={selectedProductId ?? ''}
+        drilldown={drilldown}
+        onClose={() => {
+          setSelectedProductId(null);
+          setSelectedProductName('');
+        }}
+      />
     </div>
   );
 }
