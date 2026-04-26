@@ -25,10 +25,6 @@ import {
   METRICS_CATALOG,
   RECOMMENDED_LOAD_SEQUENCE,
   RECOMMENDED_PRODUCT_LOAD_SEQUENCE,
-  SAMPLE_BREAKDOWN_RESPONSE,
-  SAMPLE_EXPLANATION_RESPONSE,
-  SAMPLE_SUMMARY_RESPONSE,
-  SAMPLE_TRENDS_RESPONSE,
   PRODUCT_REPORT_METRICS_CATALOG,
   WEB_API_ROUTES,
 } from '../lib/platformCatalog';
@@ -103,12 +99,6 @@ type ProductDetailsApiResponse = {
   breakdown?: unknown[];
   meta?: unknown;
 };
-
-const PRODUCT_REPORTING_SAMPLE_FILTERS = {
-  productIds: ['558517903'],
-  brandIds: [],
-  categoryIds: [],
-} as const;
 
 export function PlatformHomePage({ onNavigate }: { onNavigate: (page: Page) => void }) {
   const cards = [
@@ -878,14 +868,14 @@ export function AnalyticsWorkbenchPage() {
   const [grain, setGrain] = useState<'Day' | 'Week' | 'Month'>('Day');
   const [groupBy, setGroupBy] = useState<'Product' | 'Brand' | 'Category' | 'Account' | 'Marketplace' | 'Date' | 'Week' | 'Month'>('Product');
   const [metric, setMetric] = useState('sales');
-  const [summaryResponse, setSummaryResponse] = useState<unknown>(SAMPLE_SUMMARY_RESPONSE);
-  const [trendsResponse, setTrendsResponse] = useState<unknown>(SAMPLE_TRENDS_RESPONSE);
-  const [breakdownResponse, setBreakdownResponse] = useState<unknown>(SAMPLE_BREAKDOWN_RESPONSE);
-  const [explanationsResponse, setExplanationsResponse] = useState<unknown>(SAMPLE_EXPLANATION_RESPONSE);
+  const [summaryResponse, setSummaryResponse] = useState<unknown>(null);
+  const [trendsResponse, setTrendsResponse] = useState<unknown>(null);
+  const [breakdownResponse, setBreakdownResponse] = useState<unknown>(null);
+  const [explanationsResponse, setExplanationsResponse] = useState<unknown>(null);
   const [metricsResponse, setMetricsResponse] = useState<string[]>([...METRICS_CATALOG]);
   const [dimensionsResponse, setDimensionsResponse] = useState<string[]>([...DIMENSIONS_CATALOG]);
-  const [validateResponse, setValidateResponse] = useState<unknown>({ isValid: true, errors: [], referencedMetrics: ['sales', 'commission', 'logistics'] });
-  const [previewResponse, setPreviewResponse] = useState<unknown>({ isValid: true, value: 0.84, errors: [], referencedMetrics: ['sales', 'commission', 'logistics'] });
+  const [validateResponse, setValidateResponse] = useState<unknown>(null);
+  const [previewResponse, setPreviewResponse] = useState<unknown>(null);
   const [productMetricsResponse, setProductMetricsResponse] = useState<string[]>([]);
   const [productOverviewResponse, setProductOverviewResponse] = useState<ProductOverviewApiResponse | null>(null);
   const [productRowsResponse, setProductRowsResponse] = useState<ProductRowsApiResponse | null>(null);
@@ -903,27 +893,19 @@ export function AnalyticsWorkbenchPage() {
   type ValidateCustomMetricApiResponse = { isValid: boolean; errors?: string[] | null; referencedMetrics?: string[] | null };
   type PreviewCustomMetricApiResponse = { isValid: boolean; value?: number | null; errors?: string[] | null; referencedMetrics?: string[] | null };
 
-  const summaryRequest = useMemo(
-    () => ({ dateFrom, dateTo, mode, accountIds: [123456], metrics: [...OVERVIEW_SUMMARY_METRICS] }),
-    [dateFrom, dateTo, mode]
-  );
-  const trendsRequest = useMemo(
-    () => ({ dateFrom, dateTo, grain, accountIds: [123456], metrics: METRICS_CATALOG.slice(0, 6) }),
-    [dateFrom, dateTo, grain]
-  );
+  const summaryRequest = useMemo(() => ({ dateFrom, dateTo, mode, metrics: [...OVERVIEW_SUMMARY_METRICS] }), [dateFrom, dateTo, mode]);
+  const trendsRequest = useMemo(() => ({ dateFrom, dateTo, grain, metrics: METRICS_CATALOG.slice(0, 6) }), [dateFrom, dateTo, grain]);
   const breakdownRequest = useMemo(
-    () => ({ dateFrom, dateTo, groupBy, accountIds: [123456], metrics: [...METRICS_CATALOG], sort: { metric: 'sales', direction: 'Desc' }, page: 1, limit: 50 }),
+    () => ({ dateFrom, dateTo, groupBy, metrics: [...METRICS_CATALOG], sort: { metric: 'sales', direction: 'Desc' }, page: 1, limit: 50 }),
     [dateFrom, dateTo, groupBy]
   );
-  const explanationRequest = useMemo(() => ({ dateFrom, dateTo, accountIds: [123456], metric }), [dateFrom, dateTo, metric]);
-  const customMetricValidation = useMemo(() => ({ formula: '(sales - commission - logistics) / sales', sampleMetrics: { sales: 100000, commission: 12000, logistics: 4500 } }), []);
+  const explanationRequest = useMemo(() => ({ dateFrom, dateTo, metric }), [dateFrom, dateTo, metric]);
+  const customMetricValidation = useMemo(() => ({ formula: '(sales - commission - logistics) / sales' }), []);
   const productSummaryMetrics = PRODUCT_REPORT_METRICS_CATALOG;
   const productOverviewRequest = useMemo(() => ({
     dateFrom,
     dateTo,
     mode,
-    accountIds: [123456],
-    filters: PRODUCT_REPORTING_SAMPLE_FILTERS,
     summaryMetrics: productSummaryMetrics.slice(0, 5),
     topProductMetrics: productSummaryMetrics.slice(0, 4),
     topProductsSortMetric: productSortMetric,
@@ -934,8 +916,6 @@ export function AnalyticsWorkbenchPage() {
     dateFrom,
     dateTo,
     mode,
-    accountIds: [123456],
-    filters: PRODUCT_REPORTING_SAMPLE_FILTERS,
     metrics: productSummaryMetrics,
     sort: { metric: productSortMetric, direction: productSortDirection },
     page: productPage,
@@ -945,8 +925,6 @@ export function AnalyticsWorkbenchPage() {
     dateFrom,
     dateTo,
     mode,
-    accountIds: [123456],
-    filters: PRODUCT_REPORTING_SAMPLE_FILTERS,
     metric: productMetric,
   }), [dateFrom, dateTo, mode, productMetric]);
 

@@ -869,8 +869,117 @@ Frontend usage:
 - use `POST /api/v1/reporting/products/overview` for top-products and overview payloads
 - use `POST /api/v1/reporting/products/margin-top` for top margin/profit-share widgets
 - use `POST /api/v1/reporting/products/margin-categories` for top margin/profit-share category widgets
+- use `POST /api/v1/reporting/products/revenue-structure` for revenue-structure/waterfall widgets
 - use `POST /api/v1/reporting/products/query` for the table
 - when comparing against TrueStats, make sure frontend URL parameters such as `dateStart`/`dateEnd` are converted to API request fields `dateFrom`/`dateTo`; otherwise the backend will use whatever request dates the web app sends
+
+### `POST /api/v1/reporting/products/revenue-structure`
+
+Backend-owned revenue structure endpoint.
+
+Purpose:
+- provide one stable contract for waterfall / revenue-structure widgets
+- keep accounting semantics, signs, labels, and manager-facing explanations in the backend
+- avoid forcing the frontend to reconstruct revenue structure from summary and detail endpoints
+- use AiStats taxonomy instead of copying external product labels
+
+Request:
+
+```json
+{
+  "dateFrom": "2026-04-13",
+  "dateTo": "2026-04-19",
+  "mode": "Financial",
+  "accountIds": [123456],
+  "marketplaces": ["Wildberries"],
+  "filters": {
+    "productIds": [],
+    "brandIds": [],
+    "categoryIds": []
+  }
+}
+```
+
+Response shape:
+- `scope`
+- `query`
+- `realisation`
+- `sales`
+- `items[]`
+  - `key`
+  - `label`
+  - `effect`: `expense`, `income`, or `profit`
+  - `amount`
+  - `shareOfRealisationPercent`
+  - `managerDescription`
+  - `sourceMetrics[]`
+- `breakdowns`
+  - dictionary of grouped detail arrays keyed by stable group key
+- `meta`
+
+Current `items[]` taxonomy:
+- `marketplace_discount`
+  - label: `Marketplace discount`
+  - manager description: marketplace-funded customer discount and marketplace wallet/co-investment impact; bridges realisation before marketplace discounts to actual seller sales
+  - source metrics: `marketplaceDiscount`
+- `cost_of_sales`
+  - label: `Cost of sales`
+  - manager description: configured product cost, fulfillment cost, and VAT cost multiplied by sold units
+  - source metrics: `costOfSales`
+- `profit`
+  - label: `Profit`
+  - manager description: final profit after marketplace expenses, advertising, configured cost of sales, and configured tax
+  - source metrics: `profit`
+- `logistics`
+  - label: `Logistics`
+  - manager description: marketplace logistics costs for delivery, return, cancellation, and logistics correction operations
+  - source metrics: `logistics`
+- `tax`
+  - label: `Tax`
+  - manager description: configured tax calculated from the selected marketplace/account tax policy
+  - source metrics: `tax`
+- `commission`
+  - label: `Commission`
+  - manager description: net marketplace commission after marketplace discount and acquiring decomposition where available
+  - source metrics: `commission`
+- `advertising`
+  - label: `Advertising`
+  - manager description: marketplace advertising spend attributed to the selected reporting scope
+  - source metrics: `advertisingExpense`
+- `other_marketplace_expenses`
+  - label: `Other marketplace expenses`
+  - manager description: storage, paid acceptance, fines, and other deductions minus marketplace compensations
+  - source metrics: `storage`, `acceptanceSum`, `fines`, `otherDeduction`, `compensation`
+
+Current `breakdowns` groups:
+- `commission`
+  - `nominal_commission`
+  - `marketplace_discount`
+  - `acquiring`
+- `logistics`
+  - `logistics_total`
+  - future raw WB/Ozon logistics taxonomy can add stable subkeys such as delivery, return, cancellation, and correction groups without changing `items[]`
+- `stockBalance`
+  - `marketplace_warehouse_stock`
+  - `in_way_to_customer`
+  - `in_way_from_customer`
+- `otherMarketplaceExpenses`
+  - `storage`
+  - `paid_acceptance`
+  - `fines`
+  - `other_deduction`
+  - `compensation`
+- `costOfSales`
+- `tax`
+- `capitalization`
+- `marketplaceReward`
+
+Frontend usage:
+- render `items[]` as the main revenue-structure/waterfall blocks
+- use `shareOfRealisationPercent` directly for percentage labels
+- use `managerDescription` in tooltips/help text
+- use `breakdowns` for drawers, popovers, or expandable rows
+- do not hardcode accounting formulas or signs in the frontend
 
 ### `POST /api/v1/reporting/products/margin-top`
 

@@ -197,6 +197,33 @@ type ProductRowsResponse = {
   meta?: ResponseMeta | null;
 };
 
+type ProductRevenueStructureResponse = {
+  realisation?: number | null;
+  sales?: number | null;
+  items?: Array<{
+    key?: string | null;
+    label?: string | null;
+    labelRu?: string | null;
+    effect?: string | null;
+    amount?: number | null;
+    shareOfRealisationPercent?: number | null;
+    managerDescription?: string | null;
+    sourceMetrics?: string[] | null;
+  }> | null;
+  breakdowns?: Record<
+    string,
+    Array<{
+      key?: string | null;
+      label?: string | null;
+      labelRu?: string | null;
+      amount?: number | null;
+      managerDescription?: string | null;
+      sourceMetrics?: string[] | null;
+    }>
+  > | null;
+  meta?: ResponseMeta | null;
+};
+
 type ProductMarginDimension = {
   id?: string | null;
   label?: string | null;
@@ -267,6 +294,8 @@ type ProductMetricDefinition = NonNullable<ProductMetricsCatalogResponse['metric
 export interface ProductReportingData {
   summary: ProductSummaryResponse | null;
   overview: ProductOverviewResponse | null;
+  tableSummary: ProductRowsResponse['summary'] | null;
+  revenueStructure: ProductRevenueStructureResponse | null;
   marginTop: ProductMarginResponse | null;
   marginCategories: ProductMarginResponse | null;
   rows: ProductReportingRow[];
@@ -297,6 +326,8 @@ export function useProductReportingData(options?: {
   const [state, setState] = useState<ProductReportingData>({
     summary: null,
     overview: null,
+    tableSummary: null,
+    revenueStructure: null,
     marginTop: null,
     marginCategories: null,
     rows: [],
@@ -322,6 +353,8 @@ export function useProductReportingData(options?: {
       setState({
         summary: null,
         overview: null,
+        tableSummary: null,
+        revenueStructure: null,
         marginTop: null,
         marginCategories: null,
         rows: [],
@@ -364,7 +397,7 @@ export function useProductReportingData(options?: {
         const selectedMetrics = metricsCatalog.length > 0 ? metricsCatalog : [...PRODUCT_REPORT_METRICS_CATALOG];
         const overviewMetrics = preferMetrics(SUMMARY_PRIORITY_METRICS, selectedMetrics);
 
-        const [summary, overview, table] = await Promise.all([
+        const [summary, overview, table, revenueStructure] = await Promise.all([
           apiRequest<ProductSummaryResponse>('/reporting/products/summary', {
             method: 'POST',
             token: session.accessToken,
@@ -396,6 +429,11 @@ export function useProductReportingData(options?: {
               limit,
             }),
           }),
+          apiRequest<ProductRevenueStructureResponse>('/reporting/products/revenue-structure', {
+            method: 'POST',
+            token: session.accessToken,
+            body: JSON.stringify(baseRequest),
+          }),
         ]);
 
         if (cancelled) return;
@@ -403,6 +441,8 @@ export function useProductReportingData(options?: {
         setState(current => ({
           summary: summary ?? null,
           overview: overview ?? null,
+          tableSummary: table.summary ?? null,
+          revenueStructure: revenueStructure ?? null,
           marginTop: current.marginTop,
           marginCategories: current.marginCategories,
           rows: table.rows ?? [],
@@ -418,6 +458,8 @@ export function useProductReportingData(options?: {
         setState({
           summary: null,
           overview: null,
+          tableSummary: null,
+          revenueStructure: null,
           marginTop: null,
           marginCategories: null,
           rows: [],

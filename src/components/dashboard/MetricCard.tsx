@@ -21,6 +21,7 @@ interface MetricCardProps {
   title: string;
   metric: MetricValue;
   format: (v: number) => string;
+  formatPrevious?: (v: number) => string;
   formatDelta?: (v: number) => string;
   invertColors?: boolean;
   unit?: string;
@@ -76,6 +77,7 @@ export function MetricCard({
   title,
   metric,
   format,
+  formatPrevious,
   formatDelta,
   invertColors = false,
   unit,
@@ -143,6 +145,7 @@ export function MetricCard({
     ? 'border-red-200 bg-red-50/55'
     : 'border-slate-200 bg-slate-50/75';
 
+  const previousFormat = formatPrevious ?? format;
   const deltaValue = metric.delta ?? 0;
   const deltaPercentValue = metric.deltaPercent ?? 0;
   const deltaStr = formatDelta
@@ -252,7 +255,7 @@ export function MetricCard({
         <div className="relative flex items-center gap-2">
           <div className="min-w-0 shrink">
             <div className="truncate text-xs font-semibold text-slate-600 sm:text-sm">
-              <FormattedValue value={format(metric.previous)} />
+              <FormattedValue value={previousFormat(metric.previous)} />
             </div>
           </div>
           <div className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/80 bg-white px-2.5 py-1 text-[11px] font-bold shadow-sm ring-1 ring-slate-200/80 sm:text-xs ${trendColor}`}>
@@ -306,7 +309,7 @@ export function MetricCard({
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Предыдущее значение</div>
                   <div className="mt-2 text-base font-semibold text-slate-900">
-                    <FormattedValue value={format(metric.previous)} />
+                    <FormattedValue value={previousFormat(metric.previous)} />
                   </div>
                 </div>
               </div>

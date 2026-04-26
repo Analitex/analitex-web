@@ -1,16 +1,37 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFilters } from '../context/FilterContext';
 import { useReportMode } from '../context/ReportModeContext';
-import { useSalesData } from '../hooks/useSalesData';
-import { useInventoryData } from '../hooks/useInventoryData';
 import { useAnalyticsWorkspaceData } from '../hooks/useAnalyticsWorkspaceData';
 import { useProductReportingData } from '../hooks/useProductReportingData';
-import { MarketplaceBadge } from '../components/common/MarketplaceIcon';
+import { MarketplaceIcon } from '../components/common/MarketplaceIcon';
 import { MetricCard } from '../components/dashboard/MetricCard';
 import { MarginLeaderboardCard, type MarginLeaderboardRow } from '../components/dashboard/MarginLeaderboardCard';
-import { buildMetricValue, formatCurrency, formatNumber, sumRecords } from '../lib/calculations';
-import { Activity, ArrowDownWideNarrow, ArrowUpWideNarrow, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, GripVertical, Info, Search, Settings2, TrendingUp, X } from 'lucide-react';
-import type { DashboardMetrics, MetricValue, Product, SalesRecord } from '../types';
+import { RevenueStructureAccordion, type RevenueStructureRow } from '../components/dashboard/RevenueStructureAccordion';
+import { SectionAlias } from '../components/dashboard/DashboardSectionMeta';
+import {
+  AnalyticsTableRowView,
+  ProductImageThumb,
+  getAnalyticsColumnWidth,
+  type AnalyticsColumnDefinition,
+  type AnalyticsTableRow,
+} from '../components/dashboard/AnalyticsTableRowView';
+import { formatCurrency, formatNumber } from '../lib/calculations';
+import {
+  buildAnalyticsRowsFromApi,
+  formatAnalyticsCell,
+  getAnalyticsBarcode,
+  getAnalyticsComparableValue,
+  getAnalyticsExportValue,
+} from '../lib/dashboardAnalytics';
+import {
+  buildCustomMetricValue,
+  buildFormulaMetricValues,
+  describeCustomMetricFormula,
+  formatCustomMetricDelta,
+  formatCustomMetricValue,
+} from '../lib/dashboardMetrics';
+import { Activity, ArrowDownWideNarrow, ArrowUpWideNarrow, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, GripVertical, Pin, Search, Settings2, TrendingUp, X } from 'lucide-react';
+import type { MetricValue } from '../types';
 
 const WIDGET_PROFILES_STORAGE_KEY = 'dashboard-widget-profiles';
 const DEFAULT_WIDGET_PROFILE_ID = 'default-profile';
@@ -86,7 +107,7 @@ const AVAILABLE_FORMULA_METRICS = [
   { label: 'ДРР', value: 'drr' },
   { label: 'ДРР с бонусного счета', value: 'drrBonus' },
   { label: 'ДРР сумма', value: 'drrSum' },
-  { label: 'ДРР по заказам', value: 'drrz' },
+  { label: 'ДРР по заказам', value: 'drrByOrders' },
   { label: 'Платная приемка', value: 'acceptanceSum' },
   { label: 'Прочие удержания', value: 'otherDeduction' },
   { label: 'Операционные расходы', value: 'expense' },
@@ -94,7 +115,7 @@ const AVAILABLE_FORMULA_METRICS = [
   { label: 'Количество всех заказов', value: 'ordersCount' },
   { label: 'Комиссия', value: 'commission' },
   { label: 'Компенсация', value: 'compensation' },
-  { label: 'Итоговое вознаграждение ВБ', value: 'wbFinalReward' },
+  { label: 'Итоговое вознаграждение ВБ', value: 'netMarketplaceReward' },
   { label: 'Итого к оплате', value: 'totalPaid' },
   { label: 'Остатки на складах МП', value: 'stockBalance' },
   { label: 'Остатки на складах WB (за вычетом в пути)', value: 'stockBalanceInWh' },
@@ -118,8 +139,9 @@ interface WidgetDefinition {
   title: string;
   description: string;
   section: 'metrics' | 'details';
-  metric?: DashboardMetrics[keyof DashboardMetrics];
+  metric?: MetricValue;
   format?: (v: number) => string;
+  formatPrevious?: (v: number) => string;
   formatDelta?: (v: number) => string;
   invertColors?: boolean;
   faq?: string;
@@ -148,69 +170,10 @@ interface CustomMetric {
   unit: string;
 }
 
-interface RevenueStructureRow {
-  label: string;
-  value: number;
-  percent: number;
-  color: string;
-}
-
-function buildApiMetricValue(
-  current: number | null | undefined,
-  comparison?: { previous?: number | null; delta?: number | null; deltaPercent?: number | null },
-  fallback?: MetricValue
-): MetricValue {
-  if (!Number.isFinite(current ?? NaN)) {
-    return fallback ?? buildMetricValue(0, 0, []);
-  }
-
-  const currentValue = Number(current ?? 0);
-  const previousValue = Number.isFinite(comparison?.previous ?? NaN)
-    ? Number(comparison?.previous ?? 0)
-    : currentValue - Number(comparison?.delta ?? 0);
-  const deltaValue = Number.isFinite(comparison?.delta ?? NaN)
-    ? Number(comparison?.delta ?? 0)
-    : currentValue - previousValue;
-  const deltaPercentValue = Number.isFinite(comparison?.deltaPercent ?? NaN)
-    ? Number(comparison?.deltaPercent ?? 0)
-    : previousValue !== 0
-      ? (deltaValue / Math.abs(previousValue)) * 100
-      : 0;
-
-  return {
-    current: currentValue,
-    previous: previousValue,
-    delta: deltaValue,
-    deltaPercent: deltaPercentValue,
-    trend: deltaValue > 0 ? 'up' : deltaValue < 0 ? 'down' : 'neutral',
-    sparkline: fallback?.sparkline ?? [],
-  };
-}
 
 const ANALYTICS_TABLE_SETTINGS_KEY = 'dashboard-analytics-table-settings';
 const FINANCIAL_TOTAL_PAID_WIDGET_ID = 'metric-total-paid';
 const EMPTY_METRIC_VALUE: MetricValue = { current: 0, previous: 0, delta: 0, deltaPercent: 0, trend: 'neutral', sparkline: [] };
-const EMPTY_DASHBOARD_METRICS: DashboardMetrics = {
-  revenue: EMPTY_METRIC_VALUE,
-  orders: EMPTY_METRIC_VALUE,
-  sales: EMPTY_METRIC_VALUE,
-  profit: EMPTY_METRIC_VALUE,
-  roi: EMPTY_METRIC_VALUE,
-  buyoutRate: EMPTY_METRIC_VALUE,
-  logisticsCost: EMPTY_METRIC_VALUE,
-  adsSpend: EMPTY_METRIC_VALUE,
-  commission: EMPTY_METRIC_VALUE,
-  storageCost: EMPTY_METRIC_VALUE,
-  taxes: EMPTY_METRIC_VALUE,
-  returns: EMPTY_METRIC_VALUE,
-  cogs: EMPTY_METRIC_VALUE,
-  avgSalePrice: EMPTY_METRIC_VALUE,
-  profitPerUnit: EMPTY_METRIC_VALUE,
-  inventoryValue: EMPTY_METRIC_VALUE,
-  inventoryTurnover: EMPTY_METRIC_VALUE,
-  drr: EMPTY_METRIC_VALUE,
-};
-
 type AnalyticsGroupBy = 'product';
 type AnalyticsSortDirection = 'asc' | 'desc';
 
@@ -229,98 +192,21 @@ interface FloatingMenuPosition {
   left: number;
 }
 
-interface AnalyticsTableRow {
-  id: string;
-  photoLabel: string;
-  articleLabel: string;
-  productName: string;
-  marketplace: string;
-  store: string;
-  brand: string;
-  category: string;
-  group: string;
-  marketplaceArticleId: string;
-  avgCost: number;
-  operationalExpense: number;
-  otherDeduction: number;
-  avgPriceBeforeDiscount: number;
-  avgSalePrice: number;
-  revenue: number;
-  turnoverSales: number;
-  turnoverOrders: number;
-  sales: number;
-  toTransfer: number;
-  returns: number;
-  costOfSales: number;
-  fines: number;
-  ordersCount: number;
-  ordersAmount: number;
-  commission: number;
-  wbFinalReward: number;
-  compensation: number;
-  averageLogisticsCost: number;
-  capitalizationByCost: number;
-  capitalizationByRetail: number;
-  capitalizationOwnWarehouse: number;
-  gmroi: number;
-  gmroiYear: number;
-  logisticsCost: number;
-  storage: number;
-  rejectionsAndReturns: number;
-  totalSales: number;
-  buyoutRate: number;
-  averageProfitPerPiece: number;
-  taxes: number;
-  taxBase: number;
-  profit: number;
-  profitWithoutExpense: number;
-  roi: number;
-  shareOfRevenue: number;
-  marginality: number;
-  marginalityWithoutExpense: number;
-  advertisingExpense: number;
-  drrSales: number;
-  advertisingExpenseBonus: number;
-  drrBonus: number;
-  advertisingExpenseTotal: number;
-  drrTotal: number;
-  drrOrders: number;
-  acceptanceSum: number;
-  abcProfit: string;
-  abcRevenue: string;
-  stockBalanceMP: number;
-  stockBalanceOwn: number;
-  stockBalanceToClient: number;
-  stockBalanceFromClient: number;
-  salesUnits: number;
-}
-
-interface AnalyticsColumnDefinition {
-  id: keyof AnalyticsTableRow | 'photo' | 'article';
-  label: string;
-  align?: 'left' | 'right';
-  sticky?: 'photo' | 'article';
-  render?: (row: AnalyticsTableRow) => ReactNode;
-  exportValue?: (row: AnalyticsTableRow) => string | number;
-}
-
 const ANALYTICS_COLUMNS: AnalyticsColumnDefinition[] = [
-  { id: 'photo', label: 'Фото', sticky: 'photo', render: row => <MetricLegendThumb label={row.photoLabel} color={getMarketplaceColor(row.marketplace)} /> },
+  { id: 'photo', label: 'Фото', sticky: 'photo', render: row => <ProductImageThumb row={row} /> },
   {
     id: 'article',
     label: 'Артикул',
     sticky: 'article',
     render: row => (
-      <div className="min-w-[220px] whitespace-normal break-words">
-        <a href={`#${row.id}`} className="font-medium leading-5 text-slate-800 underline-offset-2 hover:text-blue-600 hover:underline">{row.productName}</a>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-          <MarketplaceBadge marketplace={row.marketplace} compact className="border-transparent bg-slate-100" />
-          <span className="break-all">{row.articleLabel}</span>
-        </div>
+      <div className="flex min-w-[170px] max-w-[210px] items-start gap-2 whitespace-normal break-words">
+        <MarketplaceIcon marketplace={row.marketplace} className="mt-0.5 h-4 w-4 shrink-0" />
+        <a href={`#${row.id}`} className="line-clamp-2 font-medium leading-4 text-slate-800 underline-offset-2 hover:text-blue-600 hover:underline">{row.productName}</a>
       </div>
     ),
     exportValue: row => row.productName,
   },
+  { id: 'toTransfer', label: 'Итого к оплате', align: 'right', sticky: 'payment', unit: '₽' },
   { id: 'store', label: 'Магазин' },
   { id: 'brand', label: 'Бренд' },
   { id: 'category', label: 'Категория' },
@@ -328,69 +214,75 @@ const ANALYTICS_COLUMNS: AnalyticsColumnDefinition[] = [
   {
     id: 'marketplaceArticleId',
     label: 'Артикул маркетплейса',
-    render: row => <a href={`#mp-${row.marketplaceArticleId}`} className="text-blue-600 hover:underline">{row.marketplaceArticleId}</a>,
+    render: row => <a href={`#mp-${row.marketplaceArticleId}`} className="break-all leading-5 text-blue-600 hover:underline">{row.marketplaceArticleId}</a>,
     exportValue: row => row.marketplaceArticleId,
   },
-  { id: 'avgCost', label: 'Средняя себестоимость', align: 'right' },
-  { id: 'operationalExpense', label: 'Операционные расходы', align: 'right' },
-  { id: 'otherDeduction', label: 'Прочие удержания', align: 'right' },
-  { id: 'avgPriceBeforeDiscount', label: 'Средн. цена до скидок МП', align: 'right' },
-  { id: 'avgSalePrice', label: 'Средн. цена продажи', align: 'right' },
-  { id: 'revenue', label: 'Реализация (сумма продаж до СПП)', align: 'right' },
-  { id: 'turnoverSales', label: 'Оборачиваемость по прод.', align: 'right' },
-  { id: 'turnoverOrders', label: 'Оборачиваемость по зак.', align: 'right' },
-  { id: 'sales', label: 'Продажи', align: 'right' },
-  { id: 'toTransfer', label: 'К перечислению', align: 'right' },
-  { id: 'returns', label: 'Возвраты', align: 'right' },
-  { id: 'costOfSales', label: 'Себестоимость продаж', align: 'right' },
-  { id: 'fines', label: 'Штрафы', align: 'right' },
-  { id: 'ordersCount', label: 'Заказы шт.', align: 'right' },
-  { id: 'ordersAmount', label: 'Заказы ₽', align: 'right' },
-  { id: 'commission', label: 'Комиссия', align: 'right' },
-  { id: 'wbFinalReward', label: 'Итоговое вознаграждение ВБ', align: 'right' },
-  { id: 'compensation', label: 'Компенсация', align: 'right' },
-  { id: 'averageLogisticsCost', label: 'Ср. стоимость логистики', align: 'right' },
-  { id: 'capitalizationByCost', label: 'Капитализация по себеc.', align: 'right' },
-  { id: 'capitalizationByRetail', label: 'Капитализация по розн.', align: 'right' },
-  { id: 'capitalizationOwnWarehouse', label: 'Капитализ. на моих складах', align: 'right' },
-  { id: 'gmroi', label: 'GMROI', align: 'right' },
-  { id: 'gmroiYear', label: 'Годовой GMROI', align: 'right' },
-  { id: 'logisticsCost', label: 'Стоимость логистики', align: 'right' },
-  { id: 'storage', label: 'Хранение', align: 'right' },
-  { id: 'rejectionsAndReturns', label: 'Количество отказов + возвраты', align: 'right' },
-  { id: 'totalSales', label: 'Всего продаж', align: 'right' },
-  { id: 'buyoutRate', label: 'Процент выкупа', align: 'right' },
-  { id: 'averageProfitPerPiece', label: 'Средняя прибыль на 1 шт', align: 'right' },
-  { id: 'taxes', label: 'Налоги', align: 'right' },
-  { id: 'taxBase', label: 'Налоговая база', align: 'right' },
-  { id: 'profit', label: 'Прибыль', align: 'right' },
-  { id: 'profitWithoutExpense', label: 'Прибыль без опер. расх.', align: 'right' },
-  { id: 'roi', label: 'ROI', align: 'right' },
-  { id: 'shareOfRevenue', label: 'Доля в общей выручке', align: 'right' },
-  { id: 'marginality', label: 'Маржинальность', align: 'right' },
-  { id: 'marginalityWithoutExpense', label: 'Маржинальность без опер. расх.', align: 'right' },
-  { id: 'advertisingExpense', label: 'Расходы на рекламу', align: 'right' },
-  { id: 'drrSales', label: 'ДРР по продажам, %', align: 'right' },
-  { id: 'advertisingExpenseBonus', label: 'Расходы на рекламу с бонусов', align: 'right' },
-  { id: 'drrBonus', label: 'ДРР бонусов', align: 'right' },
-  { id: 'advertisingExpenseTotal', label: 'Общие расходы на рекламу', align: 'right' },
-  { id: 'drrTotal', label: 'Общая ДРР', align: 'right' },
-  { id: 'drrOrders', label: 'ДРР по заказам, %', align: 'right' },
-  { id: 'acceptanceSum', label: 'Платная приемка', align: 'right' },
+  { id: 'avgCost', label: 'Средняя себестоимость', align: 'right', unit: '₽' },
+  { id: 'operationalExpense', label: 'Операционные расходы', align: 'right', unit: '₽' },
+  { id: 'otherDeduction', label: 'Прочие удержания', align: 'right', unit: '₽' },
+  { id: 'avgPriceBeforeDiscount', label: 'Средн. цена до скидок МП', align: 'right', unit: '₽' },
+  { id: 'avgSalePrice', label: 'Средн. цена продажи', align: 'right', unit: '₽' },
+  { id: 'realisation', label: 'Реализация (сумма продаж до СПП)', align: 'right', unit: '₽' },
+  { id: 'turnoverSales', label: 'Оборачиваемость по прод.', align: 'right', unit: 'дн.' },
+  { id: 'turnoverOrders', label: 'Оборачиваемость по зак.', align: 'right', unit: 'дн.' },
+  { id: 'sales', label: 'Продажи', align: 'right', unit: '₽' },
+  { id: 'returns', label: 'Возвраты', align: 'right', unit: '₽' },
+  { id: 'costOfSales', label: 'Себестоимость продаж', align: 'right', unit: '₽' },
+  { id: 'fines', label: 'Штрафы', align: 'right', unit: '₽' },
+  { id: 'ordersCount', label: 'Заказы', align: 'right', unit: 'шт.' },
+  { id: 'ordersAmount', label: 'Заказы', align: 'right', unit: '₽' },
+  { id: 'commission', label: 'Комиссия', align: 'right', unit: '₽' },
+  { id: 'netMarketplaceReward', label: 'Итоговое вознаграждение ВБ', align: 'right', unit: '₽' },
+  { id: 'compensation', label: 'Компенсация', align: 'right', unit: '₽' },
+  { id: 'averageLogisticsCost', label: 'Ср. стоимость логистики', align: 'right', unit: '₽' },
+  { id: 'capitalizationByCost', label: 'Капитализация по себеc.', align: 'right', unit: '₽' },
+  { id: 'capitalizationByRetail', label: 'Капитализация по розн.', align: 'right', unit: '₽' },
+  { id: 'capitalizationOwnWarehouse', label: 'Капитализ. на моих складах', align: 'right', unit: '₽' },
+  { id: 'gmroi', label: 'GMROI', align: 'right', unit: '%' },
+  { id: 'gmroiYear', label: 'Годовой GMROI', align: 'right', unit: '%' },
+  { id: 'logisticsCost', label: 'Стоимость логистики', align: 'right', unit: '₽' },
+  { id: 'storage', label: 'Хранение', align: 'right', unit: '₽' },
+  { id: 'rejectionsAndReturns', label: 'Количество отказов + возвраты', align: 'right', unit: 'шт.' },
+  { id: 'totalSales', label: 'Всего продаж', align: 'right', unit: 'шт.' },
+  { id: 'buyoutRate', label: 'Процент выкупа', align: 'right', unit: '%' },
+  { id: 'averageProfitPerPiece', label: 'Средняя прибыль на 1 шт', align: 'right', unit: '₽' },
+  { id: 'tax', label: 'Налоги', align: 'right', unit: '₽' },
+  { id: 'taxBase', label: 'Налоговая база', align: 'right', unit: '₽' },
+  { id: 'profit', label: 'Прибыль', align: 'right', unit: '₽' },
+  { id: 'profitWithoutExpense', label: 'Прибыль без опер. расх.', align: 'right', unit: '₽' },
+  { id: 'roi', label: 'ROI', align: 'right', unit: '%' },
+  { id: 'shareOfRevenue', label: 'Доля в общей выручке', align: 'right', unit: '%' },
+  { id: 'marginality', label: 'Маржинальность', align: 'right', unit: '%' },
+  { id: 'marginalityWithoutExpense', label: 'Маржинальность без опер. расх.', align: 'right', unit: '%' },
+  { id: 'advertisingExpense', label: 'Расходы на рекламу', align: 'right', unit: '₽' },
+  { id: 'drr', label: 'ДРР по продажам', align: 'right', unit: '%' },
+  { id: 'advertisingExpenseBonus', label: 'Расходы на рекламу с бонусов', align: 'right', unit: '₽' },
+  { id: 'drrBonus', label: 'ДРР бонусов', align: 'right', unit: '%' },
+  { id: 'advertisingExpenseTotal', label: 'Общие расходы на рекламу', align: 'right', unit: '₽' },
+  { id: 'drrTotal', label: 'Общая ДРР', align: 'right', unit: '%' },
+  { id: 'drrByOrders', label: 'ДРР по заказам', align: 'right', unit: '%' },
+  { id: 'acceptanceSum', label: 'Платная приемка', align: 'right', unit: '₽' },
   { id: 'abcProfit', label: 'ABC-анализ по чистой прибыли' },
   { id: 'abcRevenue', label: 'ABC-анализ по выручке' },
-  { id: 'stockBalanceMP', label: 'Остатки на складах МП, шт', align: 'right' },
-  { id: 'stockBalanceOwn', label: 'Остатки на моих складах, шт', align: 'right' },
-  { id: 'stockBalanceToClient', label: 'Остатки в пути к клиенту, шт', align: 'right' },
-  { id: 'stockBalanceFromClient', label: 'Остатки в пути от клиента, шт', align: 'right' },
-  { id: 'salesUnits', label: 'Продажи в штуках', align: 'right' },
+  { id: 'stockBalanceMP', label: 'Остатки на складах МП', align: 'right', unit: 'шт.' },
+  { id: 'stockBalanceOwn', label: 'Остатки на моих складах', align: 'right', unit: 'шт.' },
+  { id: 'stockBalanceToClient', label: 'Остатки в пути к клиенту', align: 'right', unit: 'шт.' },
+  { id: 'stockBalanceFromClient', label: 'Остатки в пути от клиента', align: 'right', unit: 'шт.' },
+  { id: 'salesCount', label: 'Продажи в штуках', align: 'right', unit: 'шт.' },
 ];
+
+const DEFAULT_PINNED_ANALYTICS_COLUMN_IDS = ['photo', 'article', 'toTransfer'];
+const PINNED_ANALYTICS_COLUMN_IDS = DEFAULT_PINNED_ANALYTICS_COLUMN_IDS;
+const ANALYTICS_TABLE_PINNING_VERSION = 1;
+const MAX_PINNED_ANALYTICS_COLUMNS = 4;
+
+function getDefaultAnalyticsColumnIds() {
+  return ANALYTICS_COLUMNS.map(column => String(column.id));
+}
 
 export function DashboardPage() {
   const { filters } = useFilters();
   const { reportMode } = useReportMode();
-  const { records, prevRecords, products, loading } = useSalesData(filters);
-  const { totalValue } = useInventoryData(filters, products);
   const analytics = useAnalyticsWorkspaceData({
     includeTrends: false,
     includeBreakdown: false,
@@ -418,148 +310,6 @@ export function DashboardPage() {
     };
   }, [analytics.summary?.metrics, productReportingData.overview?.summary, productReportingData.summary?.metrics]);
   const reportingSummaryComparisons = productReportingData.summary?.comparisons ?? analytics.summary?.comparisons ?? null;
-  const daysInRange = useMemo(() => {
-    const start = new Date(filters.dateStart);
-    const end = new Date(filters.dateEnd);
-    const diff = end.getTime() - start.getTime();
-    return Math.max(1, Math.round(diff / (1000 * 60 * 60 * 24)) + 1);
-  }, [filters.dateEnd, filters.dateStart]);
-  const productMetricTotals = useMemo(() => {
-    return productReportingData.rows.reduce(
-      (acc, row) => {
-        const productMetrics = row.metrics ?? {};
-        acc.salesUnits += getMetricNumber(productMetrics, ['salesCount', 'salesUnits', 'orderedUnits']);
-        acc.sales += getMetricNumber(productMetrics, ['sales', 'revenue']);
-        acc.commission += getMetricNumber(productMetrics, ['commission']);
-        acc.logistics += getMetricNumber(productMetrics, ['logistics']);
-        acc.storage += getMetricNumber(productMetrics, ['storage']);
-        acc.profit += getMetricNumber(productMetrics, ['profit']);
-        acc.advertising += getMetricNumber(productMetrics, ['advertisingExpense', 'advertisingExpenseSum']);
-        acc.taxes += getMetricNumber(productMetrics, ['tax', 'taxes']);
-        acc.cogs += getMetricNumber(productMetrics, ['costOfSales']);
-        acc.inventoryValue += getMetricNumber(productMetrics, ['capitalizationByCost', 'userWarehouseCapitalizationByCost']);
-        acc.userWarehouseInventoryValue += getMetricNumber(productMetrics, ['userWarehouseCapitalizationByCost']);
-        acc.stockBalance += getMetricNumber(productMetrics, ['stockBalance']);
-        acc.orders += getMetricNumber(productMetrics, ['ordersCount', 'orders']);
-        acc.returnsUnits += getMetricNumber(productMetrics, ['returnsUnits', 'refunds']);
-        acc.returns += getMetricNumber(productMetrics, ['returns', 'returnsAmount']);
-        acc.totalPaid += getMetricNumber(productMetrics, ['totalPaid']);
-        return acc;
-      },
-      {
-        sales: 0,
-        salesUnits: 0,
-        orders: 0,
-        commission: 0,
-        logistics: 0,
-        storage: 0,
-        profit: 0,
-        advertising: 0,
-        taxes: 0,
-        cogs: 0,
-        inventoryValue: 0,
-        userWarehouseInventoryValue: 0,
-        stockBalance: 0,
-        returnsUnits: 0,
-        returns: 0,
-        totalPaid: 0,
-      }
-    );
-  }, [productReportingData.rows]);
-  const metrics = useMemo<DashboardMetrics>(() => {
-    const summaryMetrics = reportingSummaryMetrics as Record<string, number | null> | null;
-    const comparisons = reportingSummaryComparisons;
-
-    if (!summaryMetrics) {
-      return EMPTY_DASHBOARD_METRICS;
-    }
-
-    const revenueCurrent = Number(summaryMetrics?.realisation ?? summaryMetrics?.revenue ?? summaryMetrics?.sales ?? productMetricTotals.sales);
-    const revenuePrevious = Number(comparisons?.realisation?.previous ?? comparisons?.revenue?.previous ?? comparisons?.sales?.previous ?? revenueCurrent);
-    const ordersCurrent = Number(summaryMetrics?.ordersCount ?? productMetricTotals.orders);
-    const ordersPrevious = Number(comparisons?.ordersCount?.previous ?? ordersCurrent);
-    const salesUnitsCurrent = Number(summaryMetrics?.salesCount ?? summaryMetrics?.totalSales ?? summaryMetrics?.salesUnits ?? productMetricTotals.salesUnits ?? ordersCurrent);
-    const salesUnitsPrevious = Number(comparisons?.salesCount?.previous ?? comparisons?.totalSales?.previous ?? comparisons?.salesUnits?.previous ?? ordersPrevious);
-    const commissionCurrent = Number(summaryMetrics?.commission ?? productMetricTotals.commission);
-    const commissionPrevious = Number(comparisons?.commission?.previous ?? commissionCurrent);
-    const logisticsCurrent = Number(summaryMetrics?.logistics ?? productMetricTotals.logistics);
-    const logisticsPrevious = Number(comparisons?.logistics?.previous ?? logisticsCurrent);
-    const storageCurrent = Number(summaryMetrics?.storage ?? productMetricTotals.storage);
-    const storagePrevious = Number(comparisons?.storage?.previous ?? storageCurrent);
-    const returnsCurrent = Number(summaryMetrics?.returns ?? summaryMetrics?.returnsSum ?? summaryMetrics?.returnsAmount ?? productMetricTotals.returns);
-    const returnsPrevious = Number(comparisons?.returns?.previous ?? returnsCurrent);
-    const taxesCurrent = Number(summaryMetrics?.tax ?? summaryMetrics?.taxes ?? productMetricTotals.taxes);
-    const taxesPrevious = Number(comparisons?.tax?.previous ?? comparisons?.taxes?.previous ?? taxesCurrent);
-    const cogsCurrent = Number(summaryMetrics?.costOfSales ?? productMetricTotals.cogs);
-    const cogsPrevious = Number(comparisons?.costOfSales?.previous ?? cogsCurrent);
-    const advertisingCurrent = Number(summaryMetrics?.advertisingExpense ?? productMetricTotals.advertising);
-    const advertisingPrevious = Number(comparisons?.advertisingExpense?.previous ?? advertisingCurrent);
-    const fallbackProfitCurrent =
-      productMetricTotals.profit ||
-      (revenueCurrent - commissionCurrent - logisticsCurrent - storageCurrent - returnsCurrent - advertisingCurrent - taxesCurrent - cogsCurrent);
-    const fallbackProfitPrevious = revenuePrevious - commissionPrevious - logisticsPrevious - storagePrevious - returnsPrevious - advertisingPrevious - taxesPrevious - cogsPrevious;
-    const summaryProfitCurrent = findMetricNumber(summaryMetrics, ['profit', 'profitWithoutExpense']);
-    const summaryProfitPrevious = comparisons?.profit?.previous ?? comparisons?.profitWithoutExpense?.previous;
-    const profitCurrent = summaryProfitCurrent ?? fallbackProfitCurrent;
-    const profitPrevious = summaryProfitPrevious ?? fallbackProfitPrevious;
-    const avgSalePriceCurrent = salesUnitsCurrent > 0 ? revenueCurrent / salesUnitsCurrent : 0;
-    const avgSalePricePrevious = salesUnitsPrevious > 0 ? revenuePrevious / salesUnitsPrevious : avgSalePriceCurrent;
-    const profitPerUnitCurrent =
-      findMetricNumber(summaryMetrics, ['averageProfitPerPiece']) ??
-      (salesUnitsCurrent > 0 ? profitCurrent / salesUnitsCurrent : 0);
-    const profitPerUnitPrevious =
-      comparisons?.averageProfitPerPiece?.previous ??
-      (salesUnitsPrevious > 0 ? profitPrevious / salesUnitsPrevious : profitPerUnitCurrent);
-    const stockBalanceCurrent = Number(summaryMetrics?.stockBalance ?? summaryMetrics?.stock ?? productMetricTotals.stockBalance);
-    const stockBalancePrevious = Number(comparisons?.stockBalance?.previous ?? stockBalanceCurrent);
-    const stockBalanceOverallCurrent = Number(summaryMetrics?.stockBalanceOverall ?? stockBalanceCurrent);
-    const stockBalanceOverallPrevious = Number(comparisons?.stockBalanceOverall?.previous ?? stockBalanceOverallCurrent);
-    const inventoryValueCurrent = Number(summaryMetrics?.capitalizationByCost ?? summaryMetrics?.userWarehouseCapitalizationByCost ?? productMetricTotals.inventoryValue);
-    const inventoryValuePrevious = Number(comparisons?.capitalizationByCost?.previous ?? comparisons?.userWarehouseCapitalizationByCost?.previous ?? inventoryValueCurrent);
-    const avgDailySalesCurrent = salesUnitsCurrent > 0 ? salesUnitsCurrent / daysInRange : 0;
-    const avgDailySalesPrevious = salesUnitsPrevious > 0 ? salesUnitsPrevious / daysInRange : 0;
-    const inventoryTurnoverCurrent = avgDailySalesCurrent > 0 ? stockBalanceOverallCurrent / avgDailySalesCurrent : 0;
-    const inventoryTurnoverPrevious = avgDailySalesPrevious > 0 ? stockBalanceOverallPrevious / avgDailySalesPrevious : inventoryTurnoverCurrent;
-    const drrSummaryCurrent = findMetricNumber(summaryMetrics, ['drr', 'drrSales']);
-    const drrSummaryPrevious = comparisons?.drr?.previous;
-    const drrCurrent = drrSummaryCurrent ?? (revenueCurrent > 0 ? (advertisingCurrent / revenueCurrent) * 100 : 0);
-    const drrPrevious = Number.isFinite(drrSummaryPrevious ?? NaN)
-      ? Number(drrSummaryPrevious ?? 0)
-      : revenuePrevious > 0
-        ? (advertisingPrevious / Math.max(revenuePrevious, 1)) * 100
-        : drrCurrent;
-    const buyoutRateCurrent = Number(summaryMetrics?.averageRedemption ?? (ordersCurrent > 0 ? (salesUnitsCurrent / ordersCurrent) * 100 : 0));
-    const buyoutRatePrevious = Number(comparisons?.averageRedemption?.previous ?? (ordersPrevious > 0 ? (salesUnitsPrevious / ordersPrevious) * 100 : buyoutRateCurrent));
-    const roiBaseCurrent = cogsCurrent + advertisingCurrent + commissionCurrent + logisticsCurrent + storageCurrent + taxesCurrent;
-    const roiBasePrevious = cogsPrevious + advertisingPrevious + commissionPrevious + logisticsPrevious + storagePrevious + taxesPrevious;
-    const fallbackRoiCurrent = roiBaseCurrent > 0 ? (profitCurrent / roiBaseCurrent) * 100 : 0;
-    const fallbackRoiPrevious = roiBasePrevious > 0 ? (profitPrevious / roiBasePrevious) * 100 : fallbackRoiCurrent;
-    const summaryRoiCurrent = findMetricNumber(summaryMetrics, ['roi']);
-    const summaryRoiPrevious = comparisons?.roi?.previous;
-    const roiCurrent = summaryRoiCurrent ?? fallbackRoiCurrent;
-    const roiPrevious = summaryRoiPrevious ?? fallbackRoiPrevious;
-
-    return {
-      revenue: buildApiMetricValue(revenueCurrent, comparisons?.realisation ?? comparisons?.revenue ?? comparisons?.sales),
-      orders: buildApiMetricValue(ordersCurrent, comparisons?.ordersCount),
-      sales: buildDerivedMetricValue(salesUnitsCurrent, salesUnitsPrevious),
-      profit: buildDerivedMetricValue(profitCurrent, profitPrevious),
-      roi: buildDerivedMetricValue(roiCurrent, roiPrevious),
-      buyoutRate: buildDerivedMetricValue(buyoutRateCurrent, buyoutRatePrevious),
-      logisticsCost: buildApiMetricValue(logisticsCurrent, comparisons?.logistics),
-      adsSpend: buildDerivedMetricValue(advertisingCurrent, advertisingPrevious),
-      commission: buildApiMetricValue(commissionCurrent, comparisons?.commission),
-      storageCost: buildApiMetricValue(storageCurrent, comparisons?.storage),
-      taxes: buildDerivedMetricValue(taxesCurrent, taxesPrevious),
-      returns: buildApiMetricValue(returnsCurrent, comparisons?.returns),
-      cogs: buildDerivedMetricValue(cogsCurrent, cogsPrevious),
-      avgSalePrice: buildDerivedMetricValue(avgSalePriceCurrent, avgSalePricePrevious),
-      profitPerUnit: buildDerivedMetricValue(profitPerUnitCurrent, profitPerUnitPrevious),
-      inventoryValue: buildDerivedMetricValue(inventoryValueCurrent, inventoryValuePrevious),
-      inventoryTurnover: buildDerivedMetricValue(inventoryTurnoverCurrent, inventoryTurnoverPrevious),
-      drr: buildDerivedMetricValue(drrCurrent, drrPrevious),
-    };
-  }, [daysInRange, productMetricTotals, reportingSummaryComparisons, reportingSummaryMetrics]);
   const hasLiveSummaryMetrics = Boolean(reportingSummaryMetrics) || productReportingData.rows.length > 0;
   const isMetricsLoading = analytics.loading || productReportingData.loading;
   const showMetricPlaceholders = !isMetricsLoading && !hasLiveSummaryMetrics;
@@ -587,24 +337,13 @@ export function DashboardPage() {
       return [];
     }
   });
-  const totalSalesCount = useMemo(() => records.reduce((s, r) => s + r.sales, 0), [records]);
-  const revenueCurrent = metrics.revenue.current;
-  const widgetDocuments = useMemo(
-    () => buildWidgetDocuments(records, revenueCurrent),
-    [records, revenueCurrent]
-  );
   const formulaMetricValues = useMemo(
     () =>
       buildFormulaMetricValues(
-        metrics,
-        records,
-        prevRecords,
-        totalValue,
         reportingSummaryMetrics,
-        reportingSummaryComparisons,
-        daysInRange
+        reportingSummaryComparisons
       ),
-    [daysInRange, metrics, prevRecords, records, reportingSummaryComparisons, reportingSummaryMetrics, totalValue]
+    [reportingSummaryComparisons, reportingSummaryMetrics]
   );
   const productMetricTooltips = useMemo(() => {
     const byMetric = new Map<string, string>();
@@ -645,16 +384,17 @@ export function DashboardPage() {
   const widgetDefs = useMemo<WidgetDefinition[]>(() => {
     const getFormulaMetric = (key: keyof typeof formulaMetricValues) =>
       formulaMetricValues[key] ?? { current: 0, previous: 0 };
-    const metricValue = (key: keyof typeof formulaMetricValues) => {
-      const value = getFormulaMetric(key);
-      return buildDerivedMetricValue(value.current, value.previous);
-    };
+    const metricValue = (key: keyof typeof formulaMetricValues) => formulaMetricValues[key] ?? EMPTY_METRIC_VALUE;
     const moneyShare = (key: keyof typeof formulaMetricValues) => (value: number) => {
       const revenue = Math.max(getFormulaMetric('realisation').current, 1);
       return `${formatCurrency(value)} / ${((getFormulaMetric(key).current / revenue) * 100).toFixed(2)}%`;
     };
     const moneyUnit = (key: keyof typeof formulaMetricValues) => (value: number) =>
       `${formatCurrency(value)} / ${formatNumber(getFormulaMetric(key).current)} шт`;
+    const moneyRatio = (ratioKey: keyof typeof formulaMetricValues) => (value: number) =>
+      `${formatCurrency(value)} / ${getFormulaMetric(ratioKey).current.toFixed(2)}%`;
+    const previousMoneyRatio = (ratioKey: keyof typeof formulaMetricValues) => (value: number) =>
+      `${formatCurrency(value)} / ${getFormulaMetric(ratioKey).previous.toFixed(2)}%`;
     const percent = (value: number) => `${value.toFixed(2)}%`;
     const deltaMoney = (value: number) => `${value >= 0 ? '+' : ''}${formatCurrency(value)}`;
     const deltaPercent = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(2)} п.п.`;
@@ -727,7 +467,7 @@ export function DashboardPage() {
     {
       id: 'metric-wb-final-reward',
       title: 'Вознаграждение ВБ',
-      metric: metricValue('wbFinalReward'),
+      metric: metricValue('netMarketplaceReward'),
       format: formatCurrency,
       formatDelta: deltaMoney,
       invertColors: true,
@@ -765,19 +505,18 @@ export function DashboardPage() {
       description: 'Логистика, ₽/%',
       faq: tooltip(['logistics'], 'Логистика, ₽/%'),
       section: 'metrics',
-      documents: widgetDocuments.logistics,
     },
     {
       id: 'metric-ads-drr',
       title: 'Реклама / ДРР',
       metric: metricValue('advertisingExpense'),
-      format: (v: number) => `${formatCurrency(v)} / ${formulaMetricValues.drr.current.toFixed(2)}%`,
+      format: moneyRatio('drr'),
+      formatPrevious: previousMoneyRatio('drr'),
       formatDelta: deltaMoney,
       invertColors: true,
       description: 'Реклама / ДРР, ₽/%',
-      faq: tooltip(['advertisingExpense', 'drr'], 'Реклама / ДРР, ₽/%'),
+      faq: tooltip(['advertisingExpense', 'drr'], 'Реклама / ДРР, ₽/%', ['advertisingDrr']),
       section: 'metrics',
-      documents: widgetDocuments.ads,
     },
     {
       id: 'metric-storage',
@@ -789,7 +528,6 @@ export function DashboardPage() {
       description: 'Хранение, ₽/%',
       faq: tooltip(['storage'], 'Хранение, ₽/%'),
       section: 'metrics',
-      documents: widgetDocuments.storage,
     },
     {
       id: 'metric-acceptance',
@@ -842,7 +580,7 @@ export function DashboardPage() {
       formatDelta: deltaMoney,
       invertColors: true,
       description: 'Операционные расходы, ₽/%',
-      faq: tooltip(['expense', 'operatingExpense'], 'Операционные расходы, ₽/%'),
+      faq: tooltip(['expense'], 'Операционные расходы, ₽/%'),
       section: 'metrics',
     },
     {
@@ -862,6 +600,7 @@ export function DashboardPage() {
       metric: metricValue('taxBase'),
       format: formatCurrency,
       formatDelta: deltaMoney,
+      invertColors: true,
       description: 'Налоговая База, ₽',
       faq: tooltip(['taxBase'], 'Налоговая База, ₽'),
       section: 'metrics',
@@ -876,7 +615,6 @@ export function DashboardPage() {
       description: 'Комиссия, ₽/%',
       faq: tooltip(['commission'], 'Комиссия, ₽/%'),
       section: 'metrics',
-      documents: widgetDocuments.commission,
     },
     {
       id: 'metric-average-price-before-spp',
@@ -1012,11 +750,12 @@ export function DashboardPage() {
       id: 'metric-ads-drr-orders',
       title: 'Реклама / ДРРз',
       metric: metricValue('advertisingExpense'),
-      format: (v: number) => `${formatCurrency(v)} / ${formulaMetricValues.drrz.current.toFixed(2)}%`,
+      format: moneyRatio('drrByOrders'),
+      formatPrevious: previousMoneyRatio('drrByOrders'),
       formatDelta: deltaMoney,
       invertColors: true,
       description: 'Реклама/ДРРз, ₽/%',
-      faq: tooltip(['advertisingExpense', 'drrByOrders'], 'Реклама/ДРРз, ₽/%'),
+      faq: tooltip(['advertisingExpense', 'drrByOrders'], 'Реклама/ДРРз, ₽/%', ['advertisingDrrByOrders']),
       section: 'metrics',
     },
     {
@@ -1089,7 +828,7 @@ export function DashboardPage() {
       };
     }),
   ];
-  }, [widgetDocuments, customMetrics, formulaMetricValues, productMetricTooltips]);
+  }, [customMetrics, formulaMetricValues, productMetricTooltips]);
 
   const availableWidgetDefs = useMemo(
     () => widgetDefs,
@@ -1195,29 +934,38 @@ export function DashboardPage() {
     () => buildAnalyticsRowsFromApi(productReportingData.rows),
     [productReportingData.rows]
   );
+  const apiAnalyticsTotalRow = useMemo(() => {
+    const total = productReportingData.tableSummary?.total;
+    if (!total) return null;
+    return buildAnalyticsRowsFromApi([
+      {
+        dimension: {
+          productName: 'Итого за период',
+          marketplaceArticle: 'total-period',
+        },
+        metrics: total,
+      },
+    ])[0] ?? null;
+  }, [productReportingData.tableSummary?.total]);
   const topMarginArticles = useMemo(
     () =>
       productReportingData.marginTop
         ? buildMarginLeaderboardRowsFromApi(productReportingData.marginTop, 'product')
-        : apiAnalyticsRows.length > 0
-          ? buildTopMarginArticlesFromApi(apiAnalyticsRows)
-          : buildTopMarginArticles(records, products),
-    [apiAnalyticsRows, productReportingData.marginTop, products, records]
+        : [],
+    [productReportingData.marginTop]
   );
   const topMarginCategories = useMemo(
     () =>
       productReportingData.marginCategories
         ? buildMarginLeaderboardRowsFromApi(productReportingData.marginCategories, 'category')
-        : apiAnalyticsRows.length > 0
-          ? buildTopMarginCategoriesFromApi(apiAnalyticsRows)
-          : buildTopMarginCategories(records, products),
-    [apiAnalyticsRows, productReportingData.marginCategories, products, records]
+        : [],
+    [productReportingData.marginCategories]
   );
   const visibleTopMarginArticles =
     productReportingData.marginTop || articleMarginLimit === 'all' ? topMarginArticles : topMarginArticles.slice(0, articleMarginLimit);
   const visibleTopMarginCategories =
     productReportingData.marginCategories || categoryMarginLimit === 'all' ? topMarginCategories : topMarginCategories.slice(0, categoryMarginLimit);
-  const totalMarginProfit = Math.max(Number(reportingSummaryMetrics?.profit ?? productMetricTotals.profit), 0);
+  const totalMarginProfit = Math.max(Number(reportingSummaryMetrics?.profit ?? 0), 0);
   const articleMarginRemainder = useMemo(
     () => buildMarginLeaderboardRemainder(topMarginArticles, visibleTopMarginArticles.length, totalMarginProfit, productReportingData.marginTop),
     [productReportingData.marginTop, topMarginArticles, totalMarginProfit, visibleTopMarginArticles.length]
@@ -1228,12 +976,12 @@ export function DashboardPage() {
   );
   const revenueStructureItems = useMemo(
     () => {
-      if (productReportingData.overview?.summary) {
-        return buildRevenueStructureItemsFromApi(productReportingData.overview.summary);
+      if (productReportingData.revenueStructure?.items) {
+        return buildRevenueStructureItemsFromApi(productReportingData.revenueStructure.items);
       }
-      return buildRevenueStructureItems(records, products);
+      return [];
     },
-    [productReportingData.overview?.summary, products, records]
+    [productReportingData.revenueStructure?.items]
   );
   const orderedWidgetDefs = orderWidgetDefinitions(availableWidgetDefs, draftWidgetIds);
   const filteredWidgetDefs = orderedWidgetDefs.filter(widget => {
@@ -1438,7 +1186,7 @@ export function DashboardPage() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Оцифровка
-            <span className="text-sm font-medium text-slate-500"> {totalSalesCount.toLocaleString('ru-RU')} продаж</span>
+            <span className="text-sm font-medium text-slate-500"> Product reporting API</span>
           </h1>
         </div>
       </div>
@@ -1461,7 +1209,7 @@ export function DashboardPage() {
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 text-xs text-slate-500 bg-white border border-slate-200 rounded-lg px-3 py-2">
             <Activity size={13} className="text-emerald-500" />
-            <span>Обновлено только что</span>
+            <span>Данные из API</span>
           </div>
           <button
             type="button"
@@ -1567,6 +1315,7 @@ export function DashboardPage() {
                 title={def.title}
                 metric={def.metric!}
                 format={def.format!}
+                formatPrevious={def.formatPrevious}
                 formatDelta={def.formatDelta}
                 invertColors={def.invertColors}
                 isLoading={isMetricsLoading && isVisible}
@@ -1624,7 +1373,7 @@ export function DashboardPage() {
 
       {(productReportingData.rows.length > 0 || productReportingData.loading || productReportingData.error) && (
         <div className="mt-6">
-          <AnalyticsDataSection rows={buildAnalyticsRowsFromApi(productReportingData.rows)} loading={productReportingData.loading} error={productReportingData.error} />
+          <AnalyticsDataSection rows={apiAnalyticsRows} totalRow={apiAnalyticsTotalRow} loading={productReportingData.loading} error={productReportingData.error} />
         </div>
       )}
 
@@ -2348,407 +2097,54 @@ function getVariableTone(index: number) {
   return tones[index % tones.length];
 }
 
-function buildFormulaMetricValues(
-  metrics: DashboardMetrics,
-  records: SalesRecord[],
-  prevRecords: SalesRecord[],
-  inventoryValue: number,
-  summaryMetrics: Record<string, number | null> | null = null,
-  summaryComparisons: Record<
-    string,
-    { previous?: number | null; delta?: number | null; deltaPercent?: number | null } | null
-  > | null = null,
-  daysInRange = 1
-) {
-  const summaryMetric = (keys: string[], fallback: number) => {
-    const value = findMetricNumber(summaryMetrics, keys);
-    return value == null ? fallback : value;
+function buildRevenueStructureItemsFromApi(items: Array<{
+  key?: string | null;
+  label?: string | null;
+  labelRu?: string | null;
+  effect?: string | null;
+  amount?: number | null;
+  shareOfRealisationPercent?: number | null;
+  managerDescription?: string | null;
+}>) {
+  return normalizeRevenueStructureItems(items);
+}
+
+function normalizeRevenueStructureItems(items: Array<{
+  key?: string | null;
+  label?: string | null;
+  labelRu?: string | null;
+  effect?: string | null;
+  amount?: number | null;
+  shareOfRealisationPercent?: number | null;
+  managerDescription?: string | null;
+}>): RevenueStructureRow[] {
+  return items
+    .filter(item => item.key || item.labelRu || item.label)
+    .map((item, index) => ({
+      label: item.labelRu ?? item.label ?? item.key ?? `Статья ${index + 1}`,
+      value: Number(item.amount ?? 0),
+      percent: Number(item.shareOfRealisationPercent ?? 0),
+      color: getRevenueStructureColor(item.key, item.effect, index),
+      description: item.managerDescription ?? undefined,
+    }));
+}
+
+function getRevenueStructureColor(key?: string | null, effect?: string | null, index = 0) {
+  const byKey: Record<string, string> = {
+    marketplace_discount: 'rgba(244,114,182,0.85)',
+    cost_of_sales: 'rgba(253,186,140,0.85)',
+    profit: 'rgba(22,189,202,0.85)',
+    logistics: 'rgba(26,86,219,0.85)',
+    tax: 'rgba(144,97,249,0.85)',
+    commission: 'rgba(214,31,105,0.85)',
+    advertising: 'rgba(41,181,115,0.85)',
+    other_marketplace_expenses: 'rgba(55,61,63,0.85)',
   };
-
-  const summaryPrevious = (keys: string[], fallback: number) => {
-    for (const key of keys) {
-      const previous = summaryComparisons?.[key]?.previous;
-      if (typeof previous === 'number' && Number.isFinite(previous)) {
-        return previous;
-      }
-      const delta = summaryComparisons?.[key]?.delta;
-      if (typeof delta === 'number' && Number.isFinite(delta) && typeof fallback === 'number' && Number.isFinite(fallback)) {
-        const current = summaryMetric([key], fallback);
-        return current - delta;
-      }
-    }
-    return fallback;
-  };
-
-  const avgBeforeDiscountCurrent = summaryMetric(['averagePriceBeforeSPP'], averageOf(records, record => record.avg_price));
-  const avgBeforeDiscountPrevious = summaryPrevious(['averagePriceBeforeSPP'], averageOf(prevRecords, record => record.avg_price));
-  const avgAfterSppCurrent = summaryMetric(['averagePriceAfterSPP'], metrics.avgSalePrice.current);
-  const avgAfterSppPrevious = summaryPrevious(['averagePriceAfterSPP'], metrics.avgSalePrice.previous);
-  const sales = summaryMetric(['salesCount', 'salesUnits', 'orderedUnits'], metrics.sales.current);
-  const salesPrevious = summaryPrevious(['salesCount', 'salesUnits', 'orderedUnits'], metrics.sales.previous);
-  const salesCurrentValue = metrics.revenue.current;
-  const salesPreviousValue = metrics.revenue.previous;
-  const returns = summaryMetric(['returns'], metrics.returns.current);
-  const returnsPrevious = summaryPrevious(['returns'], metrics.returns.previous);
-  const profitabilityCurrent = salesCurrentValue > 0 ? (metrics.profit.current / salesCurrentValue) * 100 : 0;
-  const profitabilityPrevious = salesPreviousValue > 0 ? (metrics.profit.previous / salesPreviousValue) * 100 : 0;
-  const averageProfitPerPieceCurrent = summaryMetric(['averageProfitPerPiece'], metrics.profitPerUnit.current);
-  const averageProfitPerPiecePrevious = summaryPrevious(['averageProfitPerPiece'], metrics.profitPerUnit.previous);
-  const gmroiCurrentSource = summaryMetric(['gmroi'], inventoryValue > 0 ? (metrics.profit.current / Math.max(inventoryValue, 1)) * 100 : 0);
-  const gmroiPreviousSource = summaryPrevious(['gmroi'], gmroiCurrentSource);
-  const gmroiCurrent = summaryMetric(['gmroi'], gmroiCurrentSource);
-  const gmroiPrevious = summaryMetric(['gmroi'], gmroiPreviousSource);
-  const gmroiYearCurrent = summaryMetric(['gmroiYear'], gmroiCurrent * 365 / Math.max(daysInRange, 1));
-  const gmroiYearPrevious = summaryPrevious(['gmroiYear'], gmroiPrevious * 365 / Math.max(daysInRange, 1));
-
-  const stockBalanceCurrent = summaryMetric(['stockBalance', 'userWarehouseStockBalance'], inventoryValue);
-  const stockBalancePrevious = summaryPrevious(['stockBalance', 'userWarehouseStockBalance'], stockBalanceCurrent * 0.9);
-  const stockBalanceInWhCurrent = summaryMetric(['stockBalanceInWh'], stockBalanceCurrent);
-  const stockBalanceInWayToClientCurrent = summaryMetric(['stockBalanceInWayToClient'], 0);
-  const stockBalanceInWayFromClientCurrent = summaryMetric(['stockBalanceInWayFromClient'], 0);
-  const stockBalanceInWhPrevious = summaryPrevious(['stockBalanceInWh'], stockBalanceInWhCurrent);
-  const stockBalanceInWayToClientPrevious = summaryPrevious(['stockBalanceInWayToClient'], stockBalanceInWayToClientCurrent);
-  const stockBalanceInWayFromClientPrevious = summaryPrevious(['stockBalanceInWayFromClient'], stockBalanceInWayFromClientCurrent);
-  const totalPaidCurrent = summaryMetric(['totalPaid'], metrics.profit.current);
-  const totalPaidPrevious = summaryPrevious(['totalPaid'], metrics.profit.previous);
-  const toTransferCurrent = summaryMetric(['toTransfer'], totalPaidCurrent);
-  const toTransferPrevious = summaryPrevious(['toTransfer'], totalPaidPrevious);
-  const netMarketplaceRewardCurrent = summaryMetric(['netMarketplaceReward', 'wbFinalReward'], metrics.commission.current);
-  const netMarketplaceRewardPrevious = summaryPrevious(['netMarketplaceReward', 'wbFinalReward'], metrics.commission.previous);
-  const drrCurrent = summaryMetric(['drr', 'drrSales'], metrics.drr.current);
-  const drrPrevious = summaryPrevious(['drr', 'drrSales'], metrics.drr.previous);
-  const drrOrdersCurrent = summaryMetric(['drrByOrders', 'drrz', 'drrOrders'], drrCurrent);
-  const drrOrdersPrevious = summaryPrevious(['drrByOrders', 'drrz', 'drrOrders'], drrPrevious);
-  const drrSumCurrent = summaryMetric(['drrSum', 'drrTotal'], drrCurrent);
-  const drrSumPrevious = summaryPrevious(['drrSum', 'drrTotal'], drrPrevious);
-  const advertisingExpenseCurrent = summaryMetric(['advertisingExpense', 'advertisingExpenseSum'], metrics.adsSpend.current);
-  const advertisingExpensePrevious = summaryPrevious(['advertisingExpense', 'advertisingExpenseSum'], metrics.adsSpend.previous);
-  const advertisingExpenseBonusCurrent = summaryMetric(['advertisingExpenseBonus'], 0);
-  const advertisingExpenseBonusPrevious = summaryPrevious(['advertisingExpenseBonus'], advertisingExpenseBonusCurrent);
-  const costOfSalesCurrent = summaryMetric(['costOfSales'], salesCurrentValue - metrics.profit.current);
-  const costOfSalesPrevious = summaryPrevious(['costOfSales'], salesPreviousValue - metrics.profit.previous);
-  const commissionAcquiringCurrent = summaryMetric(['commissionAcquiring'], metrics.commission.current);
-  const commissionAcquiringPrevious = summaryPrevious(['commissionAcquiring'], metrics.commission.previous);
-  const nominalCommissionCurrent = summaryMetric(['nominalCommission'], metrics.commission.current);
-  const nominalCommissionPrevious = summaryPrevious(['nominalCommission'], metrics.commission.previous);
-  const finesCurrent = summaryMetric(['fines'], 0);
-  const finesPrevious = summaryPrevious(['fines'], finesCurrent);
-  const compensationCurrent = summaryMetric(['compensation'], 0);
-  const compensationPrevious = summaryPrevious(['compensation'], compensationCurrent);
-  const compensationForSubstitutedGoodsCurrent = summaryMetric(['compensationForSubstitutedGoods'], 0);
-  const compensationForSubstitutedGoodsPrevious = summaryPrevious(['compensationForSubstitutedGoods'], compensationForSubstitutedGoodsCurrent);
-  const reimbursementOfTransportationCostsCurrent = summaryMetric(['reimbursementOfTransportationCosts'], 0);
-  const reimbursementOfTransportationCostsPrevious = summaryPrevious(['reimbursementOfTransportationCosts'], reimbursementOfTransportationCostsCurrent);
-  const paymentForMarriageAndLostGoodsCurrent = summaryMetric(['paymentForMarriageAndLostGoods'], 0);
-  const paymentForMarriageAndLostGoodsPrevious = summaryPrevious(['paymentForMarriageAndLostGoods'], paymentForMarriageAndLostGoodsCurrent);
-  const drrBonusCurrent = summaryMetric(['drrBonus'], 0);
-  const drrBonusPrevious = summaryPrevious(['drrBonus'], drrBonusCurrent);
-  const acceptanceSumCurrent = summaryMetric(['acceptanceSum'], 0);
-  const acceptanceSumPrevious = summaryPrevious(['acceptanceSum'], acceptanceSumCurrent);
-  const otherDeductionCurrent = summaryMetric(['otherDeduction'], 0);
-  const otherDeductionPrevious = summaryPrevious(['otherDeduction'], otherDeductionCurrent);
-  const expenseCurrent = summaryMetric(
-    ['expense', 'operatingExpense'],
-    metrics.logisticsCost.current + metrics.adsSpend.current + metrics.commission.current + metrics.storageCost.current + metrics.taxes.current
-  );
-  const expensePrevious = summaryPrevious(
-    ['expense', 'operatingExpense'],
-    metrics.logisticsCost.previous + metrics.adsSpend.previous + metrics.commission.previous + metrics.storageCost.previous + metrics.taxes.previous
-  );
-  const capitalCostCurrent = summaryMetric(['capitalizationByCost', 'userWarehouseCapitalizationByCost'], inventoryValue);
-  const capitalCostPrevious = summaryPrevious(['capitalizationByCost', 'userWarehouseCapitalizationByCost'], capitalCostCurrent * 0.9);
-  const capitalPriceCurrent = summaryMetric(['capitalizationByPrice'], salesCurrentValue);
-  const capitalPricePrevious = summaryPrevious(['capitalizationByPrice'], capitalPriceCurrent * 0.9);
-  const userWarehouseStockBalanceCurrent = summaryMetric(['userWarehouseStockBalance'], stockBalanceCurrent);
-  const userWarehouseStockBalancePrevious = summaryPrevious(['userWarehouseStockBalance'], stockBalanceCurrent * 0.9);
-  const userWarehouseCapitalizationCurrent = summaryMetric(['userWarehouseCapitalizationByCost'], capitalCostCurrent);
-  const userWarehouseCapitalizationPrevious = summaryPrevious(['userWarehouseCapitalizationByCost'], capitalCostPrevious);
-  const profitWithoutExpenseCurrent = summaryMetric(['profitWithoutExpense'], metrics.profit.current);
-  const profitWithoutExpensePrevious = summaryPrevious(['profitWithoutExpense'], metrics.profit.previous);
-  const marginalityWithoutExpenseCurrent = summaryMetric(
-    ['marginalityWithoutExpense'],
-    salesCurrentValue > 0 ? (profitWithoutExpenseCurrent / salesCurrentValue) * 100 : 0
-  );
-  const marginalityWithoutExpensePrevious = summaryPrevious(
-    ['marginalityWithoutExpense'],
-    salesPreviousValue > 0 ? (profitWithoutExpensePrevious / Math.max(salesPreviousValue, 1)) * 100 : 0
-  );
-  const totalSalesCurrent = summaryMetric(['totalSales'], salesCurrentValue);
-  const totalSalesPrevious = summaryPrevious(['totalSales'], salesPreviousValue);
-  const totalSalesAmountCurrent = summaryMetric(['sales'], salesCurrentValue);
-  const totalSalesAmountPrevious = summaryPrevious(['sales'], salesPreviousValue);
-  const returnsUnitsCurrent = summaryMetric(['returnsUnits', 'refunds'], 0);
-  const returnsUnitsPrevious = summaryPrevious(['returnsUnits', 'refunds'], 0);
-  const averageLogisticsCostCurrent = summaryMetric(
-    ['averageLogisticsCost'],
-    metrics.sales.current > 0 ? metrics.logisticsCost.current / metrics.sales.current : 0
-  );
-  const averageLogisticsCostPrevious = summaryPrevious(
-    ['averageLogisticsCost'],
-    metrics.sales.previous > 0 ? metrics.logisticsCost.previous / metrics.sales.previous : 0
-  );
-  const salesTurnoverCurrent = summaryMetric(['salesTurnover'], metrics.inventoryTurnover.current);
-  const salesTurnoverPrevious = summaryPrevious(['salesTurnover'], metrics.inventoryTurnover.previous);
-  const ordersTurnoverCurrent = summaryMetric(['ordersTurnover'], metrics.inventoryTurnover.current);
-  const ordersTurnoverPrevious = summaryPrevious(['ordersTurnover'], metrics.inventoryTurnover.previous);
-
-  return {
-    averagePriceAfterSPP: { current: avgAfterSppCurrent, previous: avgAfterSppPrevious },
-    averagePriceBeforeSPP: { current: avgBeforeDiscountCurrent, previous: avgBeforeDiscountPrevious },
-    realisation: { current: metrics.revenue.current, previous: metrics.revenue.previous },
-    sales: { current: sales, previous: salesPrevious },
-    toTransfer: { current: toTransferCurrent, previous: toTransferPrevious },
-    returns: { current: returns, previous: returnsPrevious },
-    costOfSales: { current: costOfSalesCurrent, previous: costOfSalesPrevious },
-    fines: { current: finesCurrent, previous: finesPrevious },
-    compensationForSubstitutedGoods: { current: compensationForSubstitutedGoodsCurrent, previous: compensationForSubstitutedGoodsPrevious },
-    reimbursementOfTransportationCosts: { current: reimbursementOfTransportationCostsCurrent, previous: reimbursementOfTransportationCostsPrevious },
-    paymentForMarriageAndLostGoods: { current: paymentForMarriageAndLostGoodsCurrent, previous: paymentForMarriageAndLostGoodsPrevious },
-    averageLogisticsCost: { current: averageLogisticsCostCurrent, previous: averageLogisticsCostPrevious },
-    logistics: { current: metrics.logisticsCost.current, previous: metrics.logisticsCost.previous },
-    storage: { current: metrics.storageCost.current, previous: metrics.storageCost.previous },
-    rejectionsAndReturns: { current: returnsUnitsCurrent, previous: returnsUnitsPrevious },
-    totalSales: { current: totalSalesCurrent, previous: totalSalesPrevious },
-    totalSalesAmount: { current: totalSalesAmountCurrent, previous: totalSalesAmountPrevious },
-    averageRedemption: { current: metrics.buyoutRate.current, previous: metrics.buyoutRate.previous },
-    averageProfitPerPiece: { current: averageProfitPerPieceCurrent, previous: averageProfitPerPiecePrevious },
-    tax: { current: metrics.taxes.current, previous: metrics.taxes.previous },
-    taxBase: {
-      current: summaryMetric(['taxBase'], salesCurrentValue - metrics.storageCost.current - acceptanceSumCurrent - finesCurrent - otherDeductionCurrent - advertisingExpenseCurrent),
-      previous: summaryPrevious(['taxBase'], salesPreviousValue - metrics.storageCost.previous - acceptanceSumPrevious - finesPrevious - otherDeductionPrevious - advertisingExpensePrevious),
-    },
-    profit: { current: metrics.profit.current, previous: metrics.profit.previous },
-    profitWithoutExpense: { current: profitWithoutExpenseCurrent, previous: profitWithoutExpensePrevious },
-    roi: { current: metrics.roi.current, previous: metrics.roi.previous },
-    profitability: { current: profitabilityCurrent, previous: profitabilityPrevious },
-    marginality: {
-      current: metrics.revenue.current > 0 ? (metrics.profit.current / metrics.revenue.current) * 100 : 0,
-      previous: metrics.revenue.previous > 0 ? (metrics.profit.previous / metrics.revenue.previous) * 100 : 0,
-    },
-    advertisingExpense: { current: advertisingExpenseCurrent, previous: advertisingExpensePrevious },
-    advertisingExpenseBonus: { current: advertisingExpenseBonusCurrent, previous: advertisingExpenseBonusPrevious },
-    advertisingExpenseSum: { current: advertisingExpenseCurrent, previous: advertisingExpensePrevious },
-    drr: { current: drrCurrent, previous: drrPrevious },
-    drrBonus: { current: drrBonusCurrent, previous: drrBonusPrevious },
-    drrSum: { current: drrSumCurrent, previous: drrSumPrevious },
-    drrz: { current: drrOrdersCurrent, previous: drrOrdersPrevious },
-    acceptanceSum: { current: acceptanceSumCurrent, previous: acceptanceSumPrevious },
-    otherDeduction: { current: otherDeductionCurrent, previous: otherDeductionPrevious },
-    expense: { current: expenseCurrent, previous: expensePrevious },
-    orders: {
-      current: summaryMetric(['orders'], metrics.orders.current),
-      previous: summaryPrevious(['orders'], metrics.orders.previous),
-    },
-    ordersCount: { current: metrics.orders.current, previous: metrics.orders.previous },
-    commission: { current: summaryMetric(['commission'], metrics.commission.current), previous: summaryPrevious(['commission'], metrics.commission.previous) },
-    compensation: { current: compensationCurrent, previous: compensationPrevious },
-    wbFinalReward: { current: netMarketplaceRewardCurrent, previous: netMarketplaceRewardPrevious },
-    totalPaid: { current: totalPaidCurrent, previous: totalPaidPrevious },
-    stockBalance: { current: stockBalanceCurrent, previous: stockBalancePrevious },
-    stockBalanceInWh: { current: stockBalanceInWhCurrent, previous: stockBalanceInWhPrevious },
-    stockBalanceInWayToClient: { current: stockBalanceInWayToClientCurrent, previous: stockBalanceInWayToClientPrevious },
-    stockBalanceInWayFromClient: { current: stockBalanceInWayFromClientCurrent, previous: stockBalanceInWayFromClientPrevious },
-    capitalizationByCost: { current: capitalCostCurrent, previous: capitalCostPrevious },
-    capitalizationByPrice: { current: capitalPriceCurrent, previous: capitalPricePrevious },
-    commissionAcquiring: { current: commissionAcquiringCurrent, previous: commissionAcquiringPrevious },
-    nominalCommission: { current: nominalCommissionCurrent, previous: nominalCommissionPrevious },
-    mpDiscount: { current: summaryMetric(['mpDiscount'], 0), previous: summaryPrevious(['mpDiscount'], 0) },
-    refunds: { current: returnsUnitsCurrent, previous: returnsUnitsPrevious },
-    daysCount: { current: records.length, previous: prevRecords.length },
-    userWarehouseStockBalance: { current: userWarehouseStockBalanceCurrent, previous: userWarehouseStockBalancePrevious },
-    userWarehouseCapitalizationByCost: {
-      current: userWarehouseCapitalizationCurrent,
-      previous: userWarehouseCapitalizationPrevious,
-    },
-    gmroi: { current: gmroiCurrent, previous: gmroiPrevious },
-    gmroiYear: { current: gmroiYearCurrent, previous: gmroiYearPrevious },
-    salesTurnover: { current: salesTurnoverCurrent, previous: salesTurnoverPrevious },
-    ordersTurnover: { current: ordersTurnoverCurrent, previous: ordersTurnoverPrevious },
-    marginalityWithoutExpense: { current: marginalityWithoutExpenseCurrent, previous: marginalityWithoutExpensePrevious },
-  };
-}
-
-function buildCustomMetricValue(
-  formula: string,
-  variables: Record<string, { current: number; previous: number }>
-) {
-  const current = evaluateFormula(formula, variables, 'current');
-  const previous = evaluateFormula(formula, variables, 'previous');
-  return buildDerivedMetricValue(current, previous);
-}
-
-function buildDerivedMetricValue(current: number, previous: number) {
-  const delta = current - previous;
-  const deltaPercent = previous !== 0 ? (delta / Math.abs(previous)) * 100 : 0;
-
-  return {
-    current,
-    previous,
-    delta,
-    deltaPercent,
-    trend: delta > 0 ? 'up' as const : delta < 0 ? 'down' as const : 'neutral' as const,
-    sparkline: [],
-  };
-}
-
-function evaluateFormula(
-  formula: string,
-  variables: Record<string, { current: number; previous: number }>,
-  field: 'current' | 'previous'
-) {
-  const normalized = formula.replace(/@([\w]+)/g, (_, key: string) => String(variables[key]?.[field] ?? 0));
-  if (!/^[\d+\-*/().,\s]+$/.test(normalized)) return 0;
-
-  try {
-    const expression = normalized.replace(/,/g, '.');
-    const result = Function(`"use strict"; return (${expression});`)();
-    return Number.isFinite(result) ? Number(result) : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function formatCustomMetricValue(value: number, unit: string) {
-  switch (unit) {
-    case 'currency':
-      return formatCurrency(value);
-    case 'percent':
-      return `${value.toFixed(1)}%`;
-    case 'days':
-      return `${value.toFixed(1)} дн`;
-    case 'number':
-    default:
-      return formatNumber(value);
-  }
-}
-
-function formatCustomMetricDelta(value: number, unit: string) {
-  const sign = value >= 0 ? '+' : '';
-  switch (unit) {
-    case 'currency':
-      return `${sign}${formatCurrency(value)}`;
-    case 'percent':
-      return `${sign}${value.toFixed(1)} п.п.`;
-    case 'days':
-      return `${sign}${value.toFixed(1)} дн`;
-    case 'number':
-    default:
-      return `${sign}${formatNumber(value)}`;
-  }
-}
-
-function averageOf(records: SalesRecord[], selector: (record: SalesRecord) => number) {
-  if (records.length === 0) return 0;
-  return records.reduce((sum, record) => sum + selector(record), 0) / records.length;
-}
-
-function describeCustomMetricFormula(
-  formula: string,
-  variables: Array<{ label: string; value: string }>
-) {
-  const labels = Array.from(
-    new Set(
-      Array.from(formula.matchAll(/@([\w]+)/g))
-        .map(([, key]) => variables.find(variable => variable.value === key)?.label)
-        .filter((label): label is string => Boolean(label))
-    )
-  );
-
-  if (labels.length === 0) {
-    return 'Пользовательская метрика, рассчитанная по заданной формуле.';
-  }
-
-  return `Пользовательская метрика. Использует: ${labels.join(', ')}.`;
-}
-
-function buildTopMarginArticles(records: SalesRecord[], products: Map<string, Product>): MarginLeaderboardRow[] {
-  const byProduct = new Map<string, SalesRecord[]>();
-
-  records.forEach(record => {
-    if (!byProduct.has(record.product_id)) {
-      byProduct.set(record.product_id, []);
-    }
-    byProduct.get(record.product_id)!.push(record);
-  });
-
-  return Array.from(byProduct.entries())
-    .map(([productId, productRecords]) => {
-      const product = products.get(productId);
-      if (!product) return null;
-
-      const summary = sumRecords(productRecords);
-      if (summary.revenue <= 0) return null;
-
-      return {
-        id: productId,
-        title: product.name,
-        subtitle: `${product.sku} · ${product.brand}`,
-        revenue: summary.revenue,
-        profit: summary.profit,
-        margin: summary.margin,
-      };
-    })
-    .filter((item): item is MarginLeaderboardRow => item !== null)
-    .sort((a, b) => b.margin - a.margin || b.profit - a.profit || b.revenue - a.revenue);
-}
-
-function buildTopMarginArticlesFromApi(rows: AnalyticsTableRow[]): MarginLeaderboardRow[] {
-  return rows
-    .filter(row => row.revenue > 0)
-    .map(row => ({
-      id: row.id,
-      title: row.productName,
-      subtitle: `${row.marketplaceArticleId} · ${row.brand}`,
-      revenue: row.revenue,
-      profit: row.profit,
-      margin: row.marginality,
-    }))
-    .sort((a, b) => b.margin - a.margin || b.profit - a.profit || b.revenue - a.revenue);
-}
-
-function buildRevenueStructureItems(records: SalesRecord[], products: Map<string, Product>): RevenueStructureRow[] {
-  const summary = sumRecords(records);
-  const revenue = summary.revenue || 1;
-  const mpDiscount = records.reduce((sum, record) => {
-    const diff = Math.max(record.avg_price - record.avg_sale_price, 0);
-    return sum + diff * record.sales;
-  }, 0);
-  const costOfSales = records.reduce((sum, record) => {
-    const costPrice = products.get(record.product_id)?.cost_price ?? 0;
-    return sum + costPrice * record.sales;
-  }, 0);
-
-  return [
-    { label: 'Скидка МП', value: mpDiscount, percent: (mpDiscount / revenue) * 100, color: 'rgba(244,114,182,0.85)' },
-    { label: 'Себестоимость', value: costOfSales, percent: (costOfSales / revenue) * 100, color: 'rgba(253,186,140,0.85)' },
-    { label: 'Прибыль', value: summary.profit, percent: (summary.profit / revenue) * 100, color: 'rgba(22,189,202,0.85)' },
-    { label: 'Комиссия', value: summary.commission, percent: (summary.commission / revenue) * 100, color: 'rgba(214,31,105,0.85)' },
-    { label: 'Логистика', value: summary.logistics_cost, percent: (summary.logistics_cost / revenue) * 100, color: 'rgba(26,86,219,0.85)' },
-    { label: 'Налоги', value: summary.taxes, percent: (summary.taxes / revenue) * 100, color: 'rgba(144,97,249,0.85)' },
-    { label: 'Реклама', value: summary.ads_spend, percent: (summary.ads_spend / revenue) * 100, color: 'rgba(41,181,115,0.85)' },
-    { label: 'Прочее', value: summary.other_costs + summary.storage_cost, percent: ((summary.other_costs + summary.storage_cost) / revenue) * 100, color: 'rgba(55,61,63,0.85)' },
-    { label: 'Компенсация', value: -summary.returns * summary.avgSalePrice, percent: ((-summary.returns * summary.avgSalePrice) / revenue) * 100, color: 'rgba(16,185,129,0.85)' },
-  ];
-}
-
-function buildRevenueStructureItemsFromApi(summary: Record<string, number | null>) {
-  const revenue = Number(summary.sales ?? 0);
-  const safeRevenue = revenue || 1;
-  const profit = Number(summary.profit ?? 0);
-  const commission = Number(summary.commission ?? 0);
-  const logistics = Number(summary.logistics ?? 0);
-  const storage = Number(summary.storage ?? 0);
-  const returns = Number(summary.returns ?? 0);
-  const totalPaid = Number(summary.totalPaid ?? 0);
-
-  return [
-    { label: 'Прибыль', value: profit, percent: (profit / safeRevenue) * 100, color: 'rgba(22,189,202,0.85)' },
-    { label: 'Комиссия', value: commission, percent: (commission / safeRevenue) * 100, color: 'rgba(214,31,105,0.85)' },
-    { label: 'Логистика', value: logistics, percent: (logistics / safeRevenue) * 100, color: 'rgba(26,86,219,0.85)' },
-    { label: 'Хранение', value: storage, percent: (storage / safeRevenue) * 100, color: 'rgba(144,97,249,0.85)' },
-    { label: 'Возвраты', value: returns, percent: (returns / safeRevenue) * 100, color: 'rgba(244,114,182,0.85)' },
-    { label: 'К выплате', value: totalPaid, percent: (totalPaid / safeRevenue) * 100, color: 'rgba(41,181,115,0.85)' },
-  ];
+  if (key && byKey[key]) return byKey[key];
+  if (effect === 'profit') return 'rgba(22,189,202,0.85)';
+  if (effect === 'income') return 'rgba(16,185,129,0.85)';
+  const palette = ['rgba(244,114,182,0.85)', 'rgba(253,186,140,0.85)', 'rgba(26,86,219,0.85)', 'rgba(144,97,249,0.85)', 'rgba(55,61,63,0.85)'];
+  return palette[index % palette.length];
 }
 
 function orderWidgetDefinitions(widgetDefs: WidgetDefinition[], orderedIds: string[]) {
@@ -2772,67 +2168,6 @@ function orderWidgetDefinitions(widgetDefs: WidgetDefinition[], orderedIds: stri
 
     return 0;
   });
-}
-
-function buildTopMarginCategories(records: SalesRecord[], products: Map<string, Product>): MarginLeaderboardRow[] {
-  const byCategory = new Map<string, SalesRecord[]>();
-
-  records.forEach(record => {
-    const category = products.get(record.product_id)?.category ?? 'Без категории';
-    if (!byCategory.has(category)) {
-      byCategory.set(category, []);
-    }
-    byCategory.get(category)!.push(record);
-  });
-
-  return Array.from(byCategory.entries())
-    .map(([category, categoryRecords]) => {
-      const summary = sumRecords(categoryRecords);
-      if (summary.revenue <= 0) return null;
-
-      const uniqueArticles = new Set(categoryRecords.map(record => record.product_id)).size;
-
-      return {
-        id: category,
-        title: category,
-        subtitle: `${uniqueArticles} артикулов`,
-        revenue: summary.revenue,
-        profit: summary.profit,
-        margin: summary.margin,
-      };
-    })
-    .filter((item): item is MarginLeaderboardRow => item !== null)
-    .sort((a, b) => b.margin - a.margin || b.profit - a.profit || b.revenue - a.revenue);
-}
-
-function buildTopMarginCategoriesFromApi(rows: AnalyticsTableRow[]): MarginLeaderboardRow[] {
-  const byCategory = new Map<string, AnalyticsTableRow[]>();
-
-  rows.forEach(row => {
-    const key = row.category || 'Без категории';
-    if (!byCategory.has(key)) {
-      byCategory.set(key, []);
-    }
-    byCategory.get(key)!.push(row);
-  });
-
-  return Array.from(byCategory.entries())
-    .map(([category, categoryRows]) => {
-      const revenue = categoryRows.reduce((sum, row) => sum + row.revenue, 0);
-      const profit = categoryRows.reduce((sum, row) => sum + row.profit, 0);
-      const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
-
-      return {
-        id: category,
-        title: category,
-        subtitle: `${categoryRows.length} строк`,
-        revenue,
-        profit,
-        margin,
-      };
-    })
-    .filter(item => item.revenue > 0)
-    .sort((a, b) => b.margin - a.margin || b.profit - a.profit || b.revenue - a.revenue);
 }
 
 type MarginLeaderboardApiResponse = {
@@ -2877,9 +2212,9 @@ function buildMarginLeaderboardRowsFromApi(
     .map((item, index) => {
       const dimension = item.dimension ?? {};
       const metrics = item.metrics ?? {};
-      const revenue = Number(metrics.realisation ?? metrics.sales ?? metrics.revenue ?? 0);
+      const revenue = Number(metrics.realisation ?? 0);
       const profit = Number(item.profit ?? metrics.profit ?? 0);
-      const margin = Number(metrics.profitability ?? metrics.marginality ?? (revenue > 0 ? (profit / revenue) * 100 : 0));
+      const margin = Number(metrics.profitability ?? 0);
       const title =
         variant === 'product'
           ? dimension.productName ?? dimension.label ?? dimension.marketplaceArticle ?? dimension.vendorCode ?? `Товар ${index + 1}`
@@ -2943,10 +2278,12 @@ function buildMarginLeaderboardRemainder(
 
 function AnalyticsDataSection({
   rows,
+  totalRow,
   loading,
   error,
 }: {
   rows: AnalyticsTableRow[];
+  totalRow: AnalyticsTableRow | null;
   loading: boolean;
   error: string | null;
 }) {
@@ -2968,12 +2305,14 @@ function AnalyticsDataSection({
   const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
   const columnMenuRef = useRef<HTMLDivElement | null>(null);
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  const didDragColumnRef = useRef(false);
 
   const initialSettings = useMemo(() => {
     if (typeof window === 'undefined') {
       return {
-        order: ANALYTICS_COLUMNS.map(column => String(column.id)),
-        visible: ANALYTICS_COLUMNS.map(column => String(column.id)),
+        order: getDefaultAnalyticsColumnIds(),
+        visible: getDefaultAnalyticsColumnIds(),
+        pinned: DEFAULT_PINNED_ANALYTICS_COLUMN_IDS,
       };
     }
 
@@ -2981,36 +2320,49 @@ function AnalyticsDataSection({
       const raw = window.localStorage.getItem(ANALYTICS_TABLE_SETTINGS_KEY);
       if (!raw) {
         return {
-          order: ANALYTICS_COLUMNS.map(column => String(column.id)),
-          visible: ANALYTICS_COLUMNS.map(column => String(column.id)),
+          order: getDefaultAnalyticsColumnIds(),
+          visible: getDefaultAnalyticsColumnIds(),
+          pinned: DEFAULT_PINNED_ANALYTICS_COLUMN_IDS,
         };
       }
 
-      const parsed = JSON.parse(raw) as { order?: string[]; visible?: string[] };
+      const parsed = JSON.parse(raw) as { order?: string[]; visible?: string[]; pinned?: string[]; pinningVersion?: number };
+      const pinned = normalizeAnalyticsPinnedColumns(
+        parsed.pinningVersion === ANALYTICS_TABLE_PINNING_VERSION ? parsed.pinned ?? [] : parsed.pinned?.length ? parsed.pinned : DEFAULT_PINNED_ANALYTICS_COLUMN_IDS
+      );
       return {
-        order: parsed.order?.length ? parsed.order : ANALYTICS_COLUMNS.map(column => String(column.id)),
-        visible: parsed.visible?.length ? parsed.visible : ANALYTICS_COLUMNS.map(column => String(column.id)),
+        order: parsed.order?.length ? normalizeAnalyticsColumnOrder(parsed.order, pinned) : normalizeAnalyticsColumnOrder(getDefaultAnalyticsColumnIds(), pinned),
+        visible: parsed.visible?.length ? parsed.visible : getDefaultAnalyticsColumnIds(),
+        pinned,
       };
     } catch {
       return {
-        order: ANALYTICS_COLUMNS.map(column => String(column.id)),
-        visible: ANALYTICS_COLUMNS.map(column => String(column.id)),
+        order: getDefaultAnalyticsColumnIds(),
+        visible: getDefaultAnalyticsColumnIds(),
+        pinned: DEFAULT_PINNED_ANALYTICS_COLUMN_IDS,
       };
     }
   }, []);
 
   const [columnOrder, setColumnOrder] = useState<string[]>(initialSettings.order);
   const [visibleColumnIds, setVisibleColumnIds] = useState<string[]>(initialSettings.visible);
+  const [pinnedColumnIds, setPinnedColumnIds] = useState<string[]>(initialSettings.pinned);
   const [draftColumnOrder, setDraftColumnOrder] = useState<string[]>(initialSettings.order);
   const [draftVisibleColumnIds, setDraftVisibleColumnIds] = useState<string[]>(initialSettings.visible);
+  const [draftPinnedColumnIds, setDraftPinnedColumnIds] = useState<string[]>(initialSettings.pinned);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(
       ANALYTICS_TABLE_SETTINGS_KEY,
-      JSON.stringify({ order: columnOrder, visible: visibleColumnIds })
+      JSON.stringify({
+        order: columnOrder,
+        visible: visibleColumnIds,
+        pinned: pinnedColumnIds,
+        pinningVersion: ANALYTICS_TABLE_PINNING_VERSION,
+      })
     );
-  }, [columnOrder, visibleColumnIds]);
+  }, [columnOrder, pinnedColumnIds, visibleColumnIds]);
 
   useEffect(() => {
     if (!openColumnMenuId) return;
@@ -3040,12 +2392,58 @@ function AnalyticsDataSection({
   }, [isExportMenuOpen]);
 
   useEffect(() => {
+    if (!draggedColumnId) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const target = document
+        .elementFromPoint(event.clientX, event.clientY)
+        ?.closest<HTMLElement>('[data-analytics-column-id]');
+      const targetId = target?.dataset.analyticsColumnId;
+      if (!targetId || targetId === draggedColumnId) return;
+
+      didDragColumnRef.current = true;
+      setDraftColumnOrder(current => {
+        const next = [...current];
+        const from = next.indexOf(draggedColumnId);
+        const to = next.indexOf(targetId);
+        if (from === -1 || to === -1) return current;
+        const [moved] = next.splice(from, 1);
+        next.splice(to, 0, moved);
+        return next;
+      });
+    };
+
+    const handlePointerUp = () => {
+      setDraggedColumnId(null);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [draggedColumnId]);
+
+  useEffect(() => {
     setCurrentPage(1);
   }, [groupBy, pageSize, appliedColumnFilterValues, appliedRangeFilters, sortState]);
 
-  const orderedColumns = orderAnalyticsColumns(ANALYTICS_COLUMNS, columnOrder).filter(column =>
+  const orderedColumns = orderAnalyticsColumns(ANALYTICS_COLUMNS, normalizeAnalyticsColumnOrder(columnOrder, pinnedColumnIds)).filter(column =>
     visibleColumnIds.includes(String(column.id))
   );
+
+  const stickyOffsets = useMemo(() => {
+    let left = 0;
+    const offsets = new Map<string, number>();
+    orderedColumns.forEach(column => {
+      const columnId = String(column.id);
+      if (!pinnedColumnIds.includes(columnId)) return;
+      offsets.set(columnId, left);
+      left += getAnalyticsColumnWidth(column);
+    });
+    return offsets;
+  }, [orderedColumns, pinnedColumnIds]);
 
   const filterableValueOptions = useMemo(() => {
     const options = new Map<string, string[]>();
@@ -3102,8 +2500,6 @@ function AnalyticsDataSection({
       return sortState.direction === 'asc' ? compared : -compared;
     });
   }, [filteredRows, sortState]);
-
-  const totalRow = useMemo(() => buildAnalyticsTotalRow(sortedRows), [sortedRows]);
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
   const pageRows = sortedRows.slice((safePage - 1) * pageSize, safePage * pageSize);
@@ -3112,7 +2508,7 @@ function AnalyticsDataSection({
     const headers = orderedColumns
       .map(column => (column.id === 'article' ? (mode === 'barcode' ? 'Штрихкод' : column.label) : column.label))
       .join(',');
-    const allRows = [totalRow, ...sortedRows]
+    const allRows = sortedRows
       .map(row =>
         orderedColumns
           .map(column => {
@@ -3136,22 +2532,9 @@ function AnalyticsDataSection({
     setIsExportMenuOpen(false);
   };
 
-  const columnSettingsColumns = orderAnalyticsColumns(ANALYTICS_COLUMNS, draftColumnOrder).filter(column =>
+  const columnSettingsColumns = orderAnalyticsColumns(ANALYTICS_COLUMNS, normalizeAnalyticsColumnOrder(draftColumnOrder, draftPinnedColumnIds)).filter(column =>
     column.label.toLowerCase().includes(columnSearch.trim().toLowerCase())
   );
-
-  const moveDraftColumn = (draggedId: string, targetId: string) => {
-    if (draggedId === targetId) return;
-    setDraftColumnOrder(current => {
-      const next = [...current];
-      const from = next.indexOf(draggedId);
-      const to = next.indexOf(targetId);
-      if (from === -1 || to === -1) return current;
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
-    });
-  };
 
   const openColumnMenu = (columnId: string, anchor: HTMLElement) => {
     setOpenColumnMenuId(current => {
@@ -3207,16 +2590,11 @@ function AnalyticsDataSection({
   };
 
   const openColumnSettings = () => {
-    setDraftColumnOrder(columnOrder);
+    setDraftColumnOrder(normalizeAnalyticsColumnOrder(columnOrder, pinnedColumnIds));
     setDraftVisibleColumnIds(visibleColumnIds);
+    setDraftPinnedColumnIds(pinnedColumnIds);
     setColumnSearch('');
     setIsColumnSettingsOpen(true);
-  };
-
-  const stickyLeft = (column: AnalyticsColumnDefinition) => {
-    if (column.sticky === 'photo') return 'left-0 z-20';
-    if (column.sticky === 'article') return 'left-[72px] z-20';
-    return '';
   };
 
   return (
@@ -3289,16 +2667,25 @@ function AnalyticsDataSection({
 
       <div className="overflow-visible">
         <div className="max-h-[720px] overflow-auto">
-          <table className="min-w-[2200px] w-full text-sm">
+          <table className="min-w-[1600px] w-full table-auto text-xs">
             <thead className="sticky top-0 z-30 bg-white">
               <tr className="border-b border-slate-200 bg-slate-50/95 backdrop-blur">
                 {orderedColumns.map(column => (
                   <th
                     key={String(column.id)}
-                    className={`whitespace-nowrap border-b border-slate-200 px-3 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 ${
+                    className={`whitespace-normal break-words border-b border-r border-slate-200 px-2 py-2 align-top text-[11px] font-semibold uppercase leading-4 tracking-wide text-slate-500 ${
                       column.align === 'right' ? 'text-right' : 'text-left'
-                    } ${column.sticky ? `sticky ${stickyLeft(column)} bg-slate-50/95` : ''}`}
-                    style={column.sticky === 'photo' ? { width: 72, minWidth: 72 } : column.sticky === 'article' ? { width: 260, minWidth: 260 } : undefined}
+                    } ${stickyOffsets.has(String(column.id)) ? 'sticky z-20 bg-slate-50/95' : ''}`}
+                    style={
+                      stickyOffsets.has(String(column.id))
+                        ? {
+                            left: stickyOffsets.get(String(column.id)),
+                            width: getAnalyticsColumnWidth(column),
+                            minWidth: getAnalyticsColumnWidth(column),
+                            maxWidth: getAnalyticsColumnWidth(column),
+                          }
+                        : { maxWidth: getAnalyticsColumnWidth(column) }
+                    }
                   >
                     <div className={`relative flex ${column.align === 'right' ? 'justify-end' : ''}`}>
                       <button
@@ -3307,7 +2694,7 @@ function AnalyticsDataSection({
                           event.stopPropagation();
                           openColumnMenu(String(column.id), event.currentTarget);
                         }}
-                        className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white ${
+                        className={`inline-flex w-full max-w-full items-start gap-1 rounded-lg px-1.5 py-1 text-left leading-4 transition-colors hover:bg-white ${
                           openColumnMenuId === String(column.id) ||
                           sortState.columnId === String(column.id) ||
                           (appliedColumnFilterValues[String(column.id)]?.length ?? 0) > 0 ||
@@ -3318,7 +2705,10 @@ function AnalyticsDataSection({
                         }`}
                         aria-label={`Сортировка и фильтр колонки ${column.label}`}
                       >
-                        <span>{column.label}</span>
+                        <span className="line-clamp-2 min-w-0 break-words">
+                          {column.label}
+                          {column.unit && <span className="ml-1 whitespace-nowrap text-slate-400">{column.unit}</span>}
+                        </span>
                         {sortState.columnId === String(column.id) && sortState.direction === 'asc' && <ArrowUpWideNarrow size={12} className="text-blue-600" />}
                         {sortState.columnId === String(column.id) && sortState.direction === 'desc' && <ArrowDownWideNarrow size={12} className="text-blue-600" />}
                         {(appliedColumnFilterValues[String(column.id)]?.length ?? 0) > 0 && <FilterIcon className="text-blue-600" />}
@@ -3336,7 +2726,17 @@ function AnalyticsDataSection({
                     {orderedColumns.map(column => (
                       <td
                         key={`${String(column.id)}-${index}`}
-                        className={`px-3 py-3 ${column.sticky ? `sticky ${stickyLeft(column)} bg-white` : ''}`}
+                        className={`border-r border-slate-100 px-2 py-1.5 ${stickyOffsets.has(String(column.id)) ? 'sticky z-20 bg-white' : ''}`}
+                        style={
+                          stickyOffsets.has(String(column.id))
+                            ? {
+                                left: stickyOffsets.get(String(column.id)),
+                                width: getAnalyticsColumnWidth(column),
+                                minWidth: getAnalyticsColumnWidth(column),
+                                maxWidth: getAnalyticsColumnWidth(column),
+                              }
+                            : undefined
+                        }
                       >
                         <div className="h-4 animate-pulse rounded bg-slate-100" />
                       </td>
@@ -3351,9 +2751,11 @@ function AnalyticsDataSection({
                 </tr>
               ) : (
                 <>
-                  <AnalyticsTableRowView row={totalRow} columns={orderedColumns} stickyLeft={stickyLeft} isTotal />
+                  {totalRow && (
+                    <AnalyticsTableRowView row={totalRow} columns={orderedColumns} stickyOffsets={stickyOffsets} formatCell={formatAnalyticsCell} isTotal />
+                  )}
                   {pageRows.map(row => (
-                    <AnalyticsTableRowView key={row.id} row={row} columns={orderedColumns} stickyLeft={stickyLeft} />
+                    <AnalyticsTableRowView key={row.id} row={row} columns={orderedColumns} stickyOffsets={stickyOffsets} formatCell={formatAnalyticsCell} />
                   ))}
                 </>
               )}
@@ -3449,7 +2851,7 @@ function AnalyticsDataSection({
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => setDraftVisibleColumnIds(ANALYTICS_COLUMNS.map(column => String(column.id)))}
+                    onClick={() => setDraftVisibleColumnIds(getDefaultAnalyticsColumnIds())}
                     className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600"
                   >
                     Выбрать все
@@ -3457,8 +2859,9 @@ function AnalyticsDataSection({
                   <button
                     type="button"
                     onClick={() => {
-                      setDraftVisibleColumnIds(ANALYTICS_COLUMNS.map(column => String(column.id)));
-                      setDraftColumnOrder(ANALYTICS_COLUMNS.map(column => String(column.id)));
+                      setDraftVisibleColumnIds(getDefaultAnalyticsColumnIds());
+                      setDraftColumnOrder(getDefaultAnalyticsColumnIds());
+                      setDraftPinnedColumnIds(DEFAULT_PINNED_ANALYTICS_COLUMN_IDS);
                     }}
                     className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600"
                   >
@@ -3476,50 +2879,60 @@ function AnalyticsDataSection({
                 {columnSettingsColumns.map(column => (
                   <div
                     key={String(column.id)}
-                    draggable
-                    onDragStart={event => {
-                      setDraggedColumnId(String(column.id));
-                      event.dataTransfer.effectAllowed = 'move';
-                      event.dataTransfer.setData('text/plain', String(column.id));
-
-                      const dragPreview = event.currentTarget.cloneNode(true) as HTMLDivElement;
-                      dragPreview.style.position = 'fixed';
-                      dragPreview.style.top = '-1000px';
-                      dragPreview.style.left = '-1000px';
-                      dragPreview.style.width = `${event.currentTarget.clientWidth}px`;
-                      dragPreview.style.pointerEvents = 'none';
-                      dragPreview.style.transform = 'rotate(2deg)';
-                      dragPreview.style.boxShadow = '0 18px 40px rgba(15, 23, 42, 0.18)';
-                      dragPreview.style.borderColor = 'rgb(96 165 250)';
-                      dragPreview.style.background = 'rgba(239, 246, 255, 0.96)';
-                      document.body.appendChild(dragPreview);
-                      event.dataTransfer.setDragImage(dragPreview, 24, 24);
-                      window.setTimeout(() => {
-                        document.body.removeChild(dragPreview);
-                      }, 0);
-                    }}
-                    onDragEnd={() => setDraggedColumnId(null)}
-                    onDragOver={event => event.preventDefault()}
-                    onDrop={event => {
-                      const draggedId = draggedColumnId || event.dataTransfer.getData('text/plain');
-                      if (draggedId) moveDraftColumn(draggedId, String(column.id));
-                      setDraggedColumnId(null);
-                    }}
-                    onClick={() =>
+                    data-analytics-column-id={String(column.id)}
+                    onClick={() => {
+                      if (didDragColumnRef.current) {
+                        didDragColumnRef.current = false;
+                        return;
+                      }
                       setDraftVisibleColumnIds(current =>
                         current.includes(String(column.id))
                           ? current.filter(id => id !== String(column.id))
                           : [...current, String(column.id)]
-                      )
-                    }
-                    className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition-colors hover:bg-slate-50 ${
-                      draggedColumnId === String(column.id) ? 'scale-[1.01] border-blue-300 bg-blue-50/60 opacity-70 shadow-lg' : 'border-slate-200'
+                      );
+                    }}
+                    className={`flex cursor-pointer select-none items-center gap-3 rounded-xl border px-4 py-3 transition-colors hover:bg-slate-50 ${
+                      draggedColumnId === String(column.id) ? 'border-blue-300 bg-blue-50/60' : 'border-slate-200'
                     }`}
                   >
-                    <button type="button" onClick={event => event.stopPropagation()} className="cursor-grab rounded-md p-1 text-slate-400">
+                    <button
+                      type="button"
+                      onPointerDown={event => {
+                        event.stopPropagation();
+                        didDragColumnRef.current = false;
+                        setDraggedColumnId(String(column.id));
+                      }}
+                      onClick={event => event.stopPropagation()}
+                      className="cursor-grab rounded-md p-1 text-slate-400 active:cursor-grabbing"
+                    >
                       <GripVertical size={15} />
                     </button>
                     <div className="flex-1 text-sm text-slate-700">{column.label}</div>
+                    <button
+                      type="button"
+                      disabled={!draftPinnedColumnIds.includes(String(column.id)) && draftPinnedColumnIds.length >= MAX_PINNED_ANALYTICS_COLUMNS}
+                      onClick={event => {
+                        event.stopPropagation();
+                        setDraftPinnedColumnIds(current =>
+                          current.includes(String(column.id))
+                            ? current.filter(id => id !== String(column.id))
+                            : [...current, String(column.id)]
+                        );
+                      }}
+                      className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium transition-colors ${
+                        draftPinnedColumnIds.includes(String(column.id))
+                          ? 'border-blue-200 bg-blue-50 text-blue-700'
+                          : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                      } disabled:cursor-not-allowed disabled:opacity-45`}
+                      title={
+                        !draftPinnedColumnIds.includes(String(column.id)) && draftPinnedColumnIds.length >= MAX_PINNED_ANALYTICS_COLUMNS
+                          ? `Можно закрепить до ${MAX_PINNED_ANALYTICS_COLUMNS} колонок`
+                          : undefined
+                      }
+                    >
+                      <Pin size={12} />
+                      {draftPinnedColumnIds.includes(String(column.id)) ? 'Закреплено' : 'Закрепить'}
+                    </button>
                     <button
                       type="button"
                       onClick={event => {
@@ -3548,8 +2961,10 @@ function AnalyticsDataSection({
               <button
                 type="button"
                 onClick={() => {
-                  setColumnOrder(draftColumnOrder);
+                  const nextPinned = normalizeAnalyticsPinnedColumns(draftPinnedColumnIds);
+                  setColumnOrder(normalizeAnalyticsColumnOrder(draftColumnOrder, nextPinned));
                   setVisibleColumnIds(draftVisibleColumnIds);
+                  setPinnedColumnIds(nextPinned);
                 }}
                 className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600"
               >
@@ -3558,8 +2973,10 @@ function AnalyticsDataSection({
               <button
                 type="button"
                 onClick={() => {
-                  setColumnOrder(draftColumnOrder);
+                  const nextPinned = normalizeAnalyticsPinnedColumns(draftPinnedColumnIds);
+                  setColumnOrder(normalizeAnalyticsColumnOrder(draftColumnOrder, nextPinned));
                   setVisibleColumnIds(draftVisibleColumnIds);
+                  setPinnedColumnIds(nextPinned);
                   setIsColumnSettingsOpen(false);
                 }}
                 className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white"
@@ -3571,183 +2988,6 @@ function AnalyticsDataSection({
         </div>
       )}
     </div>
-  );
-}
-
-function AnalyticsTableRowView({
-  row,
-  columns,
-  stickyLeft,
-  isTotal = false,
-}: {
-  row: AnalyticsTableRow;
-  columns: AnalyticsColumnDefinition[];
-  stickyLeft: (column: AnalyticsColumnDefinition) => string;
-  isTotal?: boolean;
-}) {
-  return (
-    <tr className={`${isTotal ? 'bg-slate-50' : 'hover:bg-slate-50'} transition-colors`}>
-      {columns.map(column => {
-        const content = column.render ? column.render(row) : formatAnalyticsCell(row, column.id);
-        return (
-          <td
-            key={String(column.id)}
-            className={`border-b border-slate-100 px-3 py-3 align-middle ${
-              column.align === 'right' ? 'text-right' : 'text-left'
-            } ${column.sticky ? `sticky ${stickyLeft(column)} ${isTotal ? 'bg-slate-50 shadow-[6px_0_10px_-10px_rgba(15,23,42,0.35)]' : 'bg-white shadow-[6px_0_10px_-10px_rgba(15,23,42,0.18)]'}` : ''}`}
-            style={column.sticky === 'photo' ? { width: 72, minWidth: 72 } : column.sticky === 'article' ? { width: 260, minWidth: 260 } : undefined}
-          >
-            {isTotal && column.id === 'article' ? (
-              <div className="font-semibold text-slate-900">Итого за период</div>
-            ) : column.id === 'photo' && isTotal ? null : content}
-          </td>
-        );
-      })}
-    </tr>
-  );
-}
-
-function MetricLegendThumb({ label, color }: { label: string; color: string }) {
-  const initials = label
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(part => part[0]?.toUpperCase() ?? '')
-    .join('');
-
-  return (
-    <div
-      className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md border border-white/80 text-[10px] font-semibold shadow-sm"
-      style={{
-        background: `linear-gradient(135deg, ${color}22, ${color}55)`,
-        color,
-      }}
-      aria-hidden="true"
-    >
-      {initials || 'A'}
-    </div>
-  );
-}
-
-function RevenueStructureAccordion({ items }: { items: RevenueStructureRow[] }) {
-  const [isExpanded, setIsExpanded] = useState(true);
-  const maxValue = Math.max(...items.map(item => Math.abs(item.percent)), 5);
-  const axisMax = Math.ceil(maxValue / 5) * 5;
-  const axisMarks = Array.from({ length: axisMax * 2 / 5 + 1 }, (_, index) => -axisMax + index * 5);
-
-  return (
-    <div className="h-fit divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
-      <h2>
-        <button
-          type="button"
-          onClick={() => setIsExpanded(current => !current)}
-          className="flex w-full items-center justify-between p-5 text-left font-medium text-slate-900 transition-colors hover:bg-slate-50"
-        >
-          <div className="flex items-center gap-2">
-            <span>Структура выручки</span>
-            <SectionAlias alias="revenue-structure" />
-            <SectionInfoTooltip text="Рассчитывается в процентах от выручки и показывает, какие статьи формируют итоговую экономику." />
-          </div>
-          <div className="flex items-center gap-3">
-            <ChevronDown
-              size={18}
-              className={`text-slate-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-            />
-          </div>
-        </button>
-      </h2>
-
-      {isExpanded && (
-        <div className="bg-white p-5">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_96px]">
-            <div className="space-y-1">
-              {items.map(item => {
-                const width = `${(Math.abs(item.percent) / axisMax) * 50}%`;
-
-                return (
-                  <div key={item.label} className="grid grid-cols-[110px_minmax(0,1fr)] items-center gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
-                    <div className="truncate text-xs sm:text-sm text-slate-600">{item.label}</div>
-                    <div className="relative h-7 overflow-hidden bg-slate-50/70 first:rounded-t-md last:rounded-b-md">
-                      {axisMarks.map(mark => {
-                        const position = ((mark + axisMax) / (axisMax * 2)) * 100;
-                        return (
-                          <div
-                            key={mark}
-                            className={`absolute inset-y-0 w-px -translate-x-1/2 ${
-                              mark === 0 ? 'bg-slate-300' : 'bg-slate-200/80'
-                            }`}
-                            style={{ left: `${position}%` }}
-                          />
-                        );
-                      })}
-                      <div className="absolute inset-x-0 bottom-0 h-px bg-slate-200/70" />
-                      <div
-                        className="absolute top-1/2 h-5 -translate-y-1/2 rounded-md opacity-90"
-                        style={{
-                          width,
-                          backgroundColor: item.color,
-                          left: item.percent >= 0 ? '50%' : undefined,
-                          right: item.percent < 0 ? '50%' : undefined,
-                        }}
-                        title={`${item.label}: ${formatCurrency(item.value)} / ${item.percent.toFixed(2)}%`}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="my-0.5 flex flex-col justify-between gap-1 text-right text-xs sm:text-sm text-slate-500">
-              {items.map(item => (
-                <div key={item.label} className="h-7 leading-7" style={{ color: item.color }}>
-                  {formatCurrencyDetailed(item.value)}
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="mt-0 grid grid-cols-[110px_minmax(0,1fr)] items-center gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
-            <div />
-            <div className="border-t border-slate-200 pt-1">
-              <div className="grid text-[10px] text-slate-400" style={{ gridTemplateColumns: `repeat(${axisMarks.length}, minmax(0, 1fr))` }}>
-                {axisMarks.map(mark => (
-                  <div
-                    key={mark}
-                    className={
-                      mark === -axisMax
-                        ? 'text-left'
-                        : mark === axisMax
-                        ? 'text-right'
-                        : 'text-center'
-                    }
-                  >
-                    {mark}%
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SectionInfoTooltip({ text }: { text: string }) {
-  return (
-    <div className="group/tooltip relative flex shrink-0">
-      <Info size={14} className="text-slate-400" />
-      <div className="absolute left-0 top-full z-10 mt-2 hidden w-80 whitespace-pre-line rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm group-hover/tooltip:block">
-        {text}
-      </div>
-    </div>
-  );
-}
-
-function SectionAlias({ alias }: { alias: string }) {
-  return (
-    <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
-      {alias}
-    </span>
   );
 }
 
@@ -3948,366 +3188,25 @@ function AnalyticsColumnMenu({
   );
 }
 
+function normalizeAnalyticsPinnedColumns(pinnedIds: string[]) {
+  const knownIds = new Set(getDefaultAnalyticsColumnIds());
+  return Array.from(
+    new Set(pinnedIds.filter(id => knownIds.has(id)))
+  ).slice(0, MAX_PINNED_ANALYTICS_COLUMNS);
+}
+
+function normalizeAnalyticsColumnOrder(orderedIds: string[], pinnedIds: string[] = []) {
+  const defaultIds = getDefaultAnalyticsColumnIds();
+  const knownIds = new Set(defaultIds);
+  const normalizedPinnedIds = normalizeAnalyticsPinnedColumns(pinnedIds);
+  const restIds = orderedIds.filter(id => knownIds.has(id) && !normalizedPinnedIds.includes(id));
+  const missingIds = defaultIds.filter(id => !normalizedPinnedIds.includes(id) && !restIds.includes(id));
+  return [...normalizedPinnedIds, ...restIds, ...missingIds];
+}
+
 function orderAnalyticsColumns(columns: AnalyticsColumnDefinition[], orderedIds: string[]) {
-  const rank = new Map(orderedIds.map((id, index) => [id, index]));
+  const rank = new Map(normalizeAnalyticsColumnOrder(orderedIds).map((id, index) => [id, index]));
   return [...columns].sort((left, right) => (rank.get(String(left.id)) ?? 999) - (rank.get(String(right.id)) ?? 999));
-}
-
-function getAnalyticsComparableValue(row: AnalyticsTableRow, columnId: AnalyticsColumnDefinition['id'] | string) {
-  if (columnId === 'photo') return row.photoLabel;
-  if (columnId === 'article') return row.productName;
-  return row[columnId as keyof AnalyticsTableRow];
-}
-
-function getAnalyticsBarcode(row: AnalyticsTableRow) {
-  const raw = row.marketplaceArticleId.replace(/\D/g, '');
-  return raw ? `20${raw.padStart(11, '0').slice(0, 11)}` : `20${row.id.replace(/\D/g, '').padStart(11, '0').slice(0, 11)}`;
-}
-
-function getMetricNumber(metrics: Record<string, number | null> | null | undefined, keys: string[]) {
-  for (const key of keys) {
-    const value = metrics?.[key];
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
-    }
-  }
-  return 0;
-}
-
-function findMetricNumber(metrics: Record<string, number | null> | null | undefined, keys: string[]) {
-  for (const key of keys) {
-    const value = metrics?.[key];
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
-    }
-  }
-  return null;
-}
-
-function buildAnalyticsRowsFromApi(
-  rows: Array<{
-    dimension?: {
-      vendorCode?: string | null;
-      marketplaceArticle?: string | null;
-      productName?: string | null;
-      brand?: string | null;
-      category?: string | null;
-      accountName?: string | null;
-      marketplace?: string | null;
-    } | null;
-    metrics?: Record<string, number | null> | null;
-  }>
-) {
-  return rows.map((row, index) => {
-    const metrics = row.metrics ?? {};
-    const dimension = row.dimension ?? {};
-    const revenue = getMetricNumber(metrics, ['realisation', 'revenue', 'sales']);
-    const salesUnits = getMetricNumber(metrics, ['salesCount', 'salesUnits', 'orderedUnits']);
-    const sales = getMetricNumber(metrics, ['sales', 'revenue']);
-    const ordersCount = getMetricNumber(metrics, ['ordersCount', 'orders']);
-    const commission = getMetricNumber(metrics, ['commission']);
-    const logistics = getMetricNumber(metrics, ['logistics']);
-    const storage = getMetricNumber(metrics, ['storage']);
-    const returns = getMetricNumber(metrics, ['returns', 'returnsUnits']);
-    const totalPaid = getMetricNumber(metrics, ['totalPaid']);
-    const toTransfer = getMetricNumber(metrics, ['toTransfer', 'totalPaid']);
-    const taxes = getMetricNumber(metrics, ['tax', 'taxes']);
-    const advertisingExpense = getMetricNumber(metrics, ['advertisingExpense', 'advertisingExpenseSum']);
-    const costOfSales = getMetricNumber(metrics, ['costOfSales']);
-    const stockBalance = getMetricNumber(metrics, ['stockBalance']);
-    const stockBalanceOwn = getMetricNumber(metrics, ['userWarehouseStockBalance']);
-    const stockBalanceToClient = getMetricNumber(metrics, ['stockBalanceInWayToClient']);
-    const stockBalanceFromClient = getMetricNumber(metrics, ['stockBalanceInWayFromClient']);
-    const capitalizationByCost = getMetricNumber(metrics, ['capitalizationByCost', 'userWarehouseCapitalizationByCost']);
-    const capitalizationByRetail = getMetricNumber(metrics, ['capitalizationByPrice', 'stockBalanceValue']);
-    const capitalizationOwnWarehouse = getMetricNumber(metrics, ['userWarehouseCapitalizationByCost']);
-    const rejectionsAndReturns = getMetricNumber(metrics, ['rejectionsAndReturns', 'returnsUnits']);
-    const computedProfit =
-      findMetricNumber(metrics, ['profit']) ??
-      (revenue - commission - logistics - storage - returns - taxes - advertisingExpense - costOfSales);
-    const profitWithoutExpense = findMetricNumber(metrics, ['profitWithoutExpense']) ?? computedProfit;
-    const advertisingExpenseBonus = getMetricNumber(metrics, ['advertisingExpenseBonus']);
-    const drrBonus = getMetricNumber(metrics, ['drrBonus']);
-    const drrOrders = getMetricNumber(metrics, ['drrByOrders', 'drrOrders', 'drrz']);
-    const drr = findMetricNumber(metrics, ['drr', 'drrSales']) ?? (revenue > 0 ? (advertisingExpense / Math.max(revenue, 1)) * 100 : 0);
-    const drrTotal = findMetricNumber(metrics, ['drrTotal', 'drrSum']) ?? drr;
-    const marginalityWithoutExpense = findMetricNumber(metrics, ['marginalityWithoutExpense'])
-      ?? (revenue > 0 ? (profitWithoutExpense / revenue) * 100 : 0);
-    const operationalExpense = findMetricNumber(metrics, ['operationalExpense']) ?? (commission + logistics + storage + taxes);
-    const otherDeduction = getMetricNumber(metrics, ['otherDeduction']);
-    const wbFinalReward = getMetricNumber(metrics, ['netMarketplaceReward', 'wbFinalReward', 'totalPaid', 'commission']);
-    const compensation = getMetricNumber(metrics, ['compensation']);
-    const fines = getMetricNumber(metrics, ['fines']);
-    const acceptanceSum = getMetricNumber(metrics, ['acceptanceSum']);
-    const profit = computedProfit;
-    const avgSalePrice = findMetricNumber(metrics, ['averagePriceAfterSPP']) ?? (salesUnits > 0 ? revenue / salesUnits : 0);
-    const avgPriceBeforeDiscount = findMetricNumber(metrics, ['averagePriceBeforeSPP']) ?? avgSalePrice;
-    const buyoutRate =
-      findMetricNumber(metrics, ['averageRedemption', 'buyoutRate']) ??
-      (ordersCount > 0 ? (salesUnits / ordersCount) * 100 : 0);
-    const roi =
-      findMetricNumber(metrics, ['roi']) ??
-      (costOfSales + advertisingExpense + commission + logistics + storage + taxes > 0
-        ? (profit / (costOfSales + advertisingExpense + commission + logistics + storage + taxes)) * 100
-        : 0);
-    const gmroi =
-      findMetricNumber(metrics, ['gmroi']) ??
-      (capitalizationByCost > 0 ? (profit / capitalizationByCost) * 100 : 0);
-    const gmroiYear = findMetricNumber(metrics, ['gmroiYear']) ?? gmroi * 12;
-    return {
-      id: dimension.marketplaceArticle ?? dimension.vendorCode ?? dimension.productName ?? `product-${index + 1}`,
-      photoLabel: dimension.productName ?? dimension.marketplaceArticle ?? `Товар ${index + 1}`,
-      articleLabel: dimension.marketplaceArticle ?? dimension.vendorCode ?? `Товар ${index + 1}`,
-      productName: dimension.productName ?? dimension.marketplaceArticle ?? `Товар ${index + 1}`,
-      marketplace: dimension.marketplace ?? '—',
-      store: dimension.accountName ?? '—',
-      brand: dimension.brand ?? '—',
-      category: dimension.category ?? '—',
-      group: dimension.category ?? '—',
-      marketplaceArticleId: dimension.marketplaceArticle ?? dimension.vendorCode ?? '—',
-      avgCost: 0,
-      operationalExpense,
-      otherDeduction,
-      avgPriceBeforeDiscount,
-      avgSalePrice,
-      revenue,
-      turnoverSales: getMetricNumber(metrics, ['salesTurnover']),
-      turnoverOrders: getMetricNumber(metrics, ['ordersTurnover']),
-      sales,
-      toTransfer,
-      returns,
-      costOfSales,
-      fines,
-      ordersCount,
-      ordersAmount: revenue,
-      commission,
-      wbFinalReward,
-      compensation,
-      averageLogisticsCost: findMetricNumber(metrics, ['averageLogisticsCost']) ?? (salesUnits > 0 ? logistics / salesUnits : 0),
-      capitalizationByCost,
-      capitalizationByRetail: capitalizationByRetail || stockBalance * avgSalePrice,
-      capitalizationOwnWarehouse: capitalizationOwnWarehouse,
-      gmroi,
-      gmroiYear,
-      logisticsCost: logistics,
-      storage,
-      rejectionsAndReturns,
-      totalSales: getMetricNumber(metrics, ['totalSales', 'sales', 'revenue']),
-      buyoutRate,
-      averageProfitPerPiece: findMetricNumber(metrics, ['averageProfitPerPiece']) ?? (salesUnits > 0 ? profit / salesUnits : 0),
-      taxes,
-      taxBase: findMetricNumber(metrics, ['taxBase']) ?? (revenue - commission),
-      profit,
-      profitWithoutExpense,
-      roi,
-      shareOfRevenue: 0,
-      marginality: revenue > 0 ? (profit / revenue) * 100 : 0,
-      marginalityWithoutExpense,
-      advertisingExpense,
-      drrSales: drr,
-      advertisingExpenseBonus,
-      drrBonus,
-      advertisingExpenseTotal: advertisingExpense,
-      drrTotal,
-      drrOrders,
-      acceptanceSum,
-      abcProfit: '—',
-      abcRevenue: '—',
-      stockBalanceMP: stockBalance,
-      stockBalanceOwn,
-      stockBalanceToClient,
-      stockBalanceFromClient,
-      salesUnits,
-    } satisfies AnalyticsTableRow;
-  });
-}
-
-function buildAnalyticsTotalRow(rows: AnalyticsTableRow[]): AnalyticsTableRow;
-function buildAnalyticsTotalRow(rows: AnalyticsTableRow[]) {
-  const base = rows.reduce(
-    (acc, row) => {
-      Object.keys(row).forEach(key => {
-        if (typeof row[key as keyof AnalyticsTableRow] === 'number') {
-          acc[key as keyof AnalyticsTableRow] = ((acc[key as keyof AnalyticsTableRow] as number) || 0) + (row[key as keyof AnalyticsTableRow] as number);
-        }
-      });
-      return acc;
-    },
-    {} as Partial<Record<keyof AnalyticsTableRow, number>>
-  );
-
-  return {
-    id: 'total-period',
-    photoLabel: '',
-    articleLabel: 'Итого за период',
-    productName: 'Итого за период',
-    marketplace: '—',
-    store: '—',
-    brand: '—',
-    category: '—',
-    group: '—',
-    marketplaceArticleId: '—',
-    avgCost: (base.avgCost ?? 0) / Math.max(rows.length, 1),
-    operationalExpense: base.operationalExpense ?? 0,
-    otherDeduction: base.otherDeduction ?? 0,
-    avgPriceBeforeDiscount: (base.avgPriceBeforeDiscount ?? 0) / Math.max(rows.length, 1),
-    avgSalePrice: (base.avgSalePrice ?? 0) / Math.max(rows.length, 1),
-    revenue: base.revenue ?? 0,
-    turnoverSales: (base.turnoverSales ?? 0) / Math.max(rows.length, 1),
-    turnoverOrders: (base.turnoverOrders ?? 0) / Math.max(rows.length, 1),
-    sales: base.sales ?? 0,
-    toTransfer: base.toTransfer ?? 0,
-    returns: base.returns ?? 0,
-    costOfSales: base.costOfSales ?? 0,
-    fines: base.fines ?? 0,
-    ordersCount: base.ordersCount ?? 0,
-    ordersAmount: base.ordersAmount ?? 0,
-    commission: base.commission ?? 0,
-    wbFinalReward: base.wbFinalReward ?? 0,
-    compensation: base.compensation ?? 0,
-    averageLogisticsCost: (base.averageLogisticsCost ?? 0) / Math.max(rows.length, 1),
-    capitalizationByCost: base.capitalizationByCost ?? 0,
-    capitalizationByRetail: base.capitalizationByRetail ?? 0,
-    capitalizationOwnWarehouse: base.capitalizationOwnWarehouse ?? 0,
-    gmroi: (base.gmroi ?? 0) / Math.max(rows.length, 1),
-    gmroiYear: (base.gmroiYear ?? 0) / Math.max(rows.length, 1),
-    logisticsCost: base.logisticsCost ?? 0,
-    storage: base.storage ?? 0,
-    rejectionsAndReturns: base.rejectionsAndReturns ?? 0,
-    totalSales: base.totalSales ?? 0,
-    buyoutRate: (base.buyoutRate ?? 0) / Math.max(rows.length, 1),
-    averageProfitPerPiece: (base.averageProfitPerPiece ?? 0) / Math.max(rows.length, 1),
-    taxes: base.taxes ?? 0,
-    taxBase: base.taxBase ?? 0,
-    profit: base.profit ?? 0,
-    profitWithoutExpense: base.profitWithoutExpense ?? 0,
-    roi: (base.roi ?? 0) / Math.max(rows.length, 1),
-    shareOfRevenue: 100,
-    marginality: (base.marginality ?? 0) / Math.max(rows.length, 1),
-    marginalityWithoutExpense: (base.marginalityWithoutExpense ?? 0) / Math.max(rows.length, 1),
-    advertisingExpense: base.advertisingExpense ?? 0,
-    drrSales: (base.drrSales ?? 0) / Math.max(rows.length, 1),
-    advertisingExpenseBonus: base.advertisingExpenseBonus ?? 0,
-    drrBonus: (base.drrBonus ?? 0) / Math.max(rows.length, 1),
-    advertisingExpenseTotal: base.advertisingExpenseTotal ?? 0,
-    drrTotal: (base.drrTotal ?? 0) / Math.max(rows.length, 1),
-    drrOrders: (base.drrOrders ?? 0) / Math.max(rows.length, 1),
-    acceptanceSum: base.acceptanceSum ?? 0,
-    abcProfit: '—',
-    abcRevenue: '—',
-    stockBalanceMP: base.stockBalanceMP ?? 0,
-    stockBalanceOwn: base.stockBalanceOwn ?? 0,
-    stockBalanceToClient: base.stockBalanceToClient ?? 0,
-    stockBalanceFromClient: base.stockBalanceFromClient ?? 0,
-    salesUnits: base.salesUnits ?? 0,
-  } satisfies AnalyticsTableRow;
-}
-
-function formatAnalyticsCell(row: AnalyticsTableRow, columnId: AnalyticsColumnDefinition['id']): ReactNode {
-  const value = row[columnId as keyof AnalyticsTableRow];
-  if (typeof value === 'number') {
-    if (String(columnId).includes('Rate') || String(columnId).includes('roi') || String(columnId).includes('drr') || String(columnId).includes('margin') || columnId === 'shareOfRevenue' || columnId === 'buyoutRate' || columnId === 'gmroi' || columnId === 'gmroiYear' || columnId === 'marginality' || columnId === 'marginalityWithoutExpense') {
-      return `${value.toFixed(1)}%`;
-    }
-    if (
-      ['sales', 'returns', 'ordersCount', 'stockBalanceMP', 'stockBalanceOwn', 'stockBalanceToClient', 'stockBalanceFromClient', 'salesUnits', 'rejectionsAndReturns', 'totalSales'].includes(String(columnId))
-    ) {
-      return formatNumber(value);
-    }
-    return formatCurrency(value);
-  }
-  return value ?? '—';
-}
-
-function getAnalyticsExportValue(row: AnalyticsTableRow, columnId: AnalyticsColumnDefinition['id']) {
-  if (columnId === 'photo') return '';
-  if (columnId === 'article') return row.productName;
-  const value = row[columnId as keyof AnalyticsTableRow];
-  return typeof value === 'number' ? value : value ?? '';
-}
-
-function getMarketplaceColor(marketplace: string) {
-  if (marketplace.includes('Wildberries')) return '#7c3aed';
-  if (marketplace.includes('Ozon')) return '#2563eb';
-  if (marketplace.includes('Яндекс')) return '#f59e0b';
-  return '#0f766e';
-}
-
-function buildWidgetDocuments(records: SalesRecord[], revenue: number) {
-  return {
-    logistics: createDocumentSummary({
-      title: 'Логистика',
-      count: Math.max(1, Math.round(records.length / 9)),
-      revenue,
-      total: records.reduce((sum, record) => sum + record.logistics_cost, 0),
-      labels: ['К клиенту при продаже', 'Логистика', 'К клиенту при отмене', 'Обратная магистраль'],
-      weights: [0.62, 0.21, 0.09, 0.08],
-    }),
-    ads: createDocumentSummary({
-      title: 'Реклама',
-      count: Math.max(1, Math.round(records.length / 12)),
-      revenue,
-      total: records.reduce((sum, record) => sum + record.ads_spend, 0),
-      labels: ['Продвижение в поиске', 'Трафареты', 'Вывод в топ', 'Ретаргетинг'],
-      weights: [0.44, 0.27, 0.18, 0.11],
-    }),
-    commission: createDocumentSummary({
-      title: 'Комиссия',
-      count: Math.max(1, Math.round(records.length / 11)),
-      revenue,
-      total: records.reduce((sum, record) => sum + record.commission, 0),
-      labels: ['Комиссия за продажу', 'Эквайринг', 'Сбор за расчёты'],
-      weights: [0.72, 0.18, 0.1],
-    }),
-    storage: createDocumentSummary({
-      title: 'Хранение',
-      count: Math.max(1, Math.round(records.length / 14)),
-      revenue,
-      total: records.reduce((sum, record) => sum + record.storage_cost, 0),
-      labels: ['Хранение на складе', 'Обработка поставки', 'Перемещение между складами'],
-      weights: [0.68, 0.2, 0.12],
-    }),
-  };
-}
-
-function createDocumentSummary({
-  title,
-  count,
-  revenue,
-  total,
-  labels,
-  weights,
-}: {
-  title: string;
-  count: number;
-  revenue: number;
-  total: number;
-  labels: string[];
-  weights: number[];
-}): WidgetDocuments {
-  const normalizedWeights = normalizeWeights(weights);
-
-  return {
-    count,
-    title: `${title}: ${count}`,
-    subtitle: 'Источник: акты и детализация удержаний маркетплейсов, агрегированные для выбранных фильтров.',
-    items: labels.map((label, index) => {
-      const amount = total * normalizedWeights[index];
-      const revenuePercent = revenue > 0 ? (amount / revenue) * 100 : 0;
-
-      return {
-        label,
-        amount: formatCurrencyDetailed(amount),
-        percent: `${revenuePercent.toFixed(2)}% от выручки`,
-      };
-    }),
-  };
-}
-
-function normalizeWeights(weights: number[]) {
-  const sum = weights.reduce((acc, weight) => acc + weight, 0);
-  if (sum === 0) return weights.map(() => 0);
-  return weights.map(weight => weight / sum);
 }
 
 function formatCurrencyDetailed(value: number) {
@@ -4318,3 +3217,8 @@ function formatCurrencyDetailed(value: number) {
     maximumFractionDigits: 2,
   }).format(value);
 }
+
+
+
+
+

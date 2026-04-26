@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useFilters } from '../context/FilterContext';
-import { useSalesData } from '../hooks/useSalesData';
 import { usePlanFactData } from '../hooks/usePlanFactData';
 import { formatCurrency } from '../lib/calculations';
 import { Target, TrendingUp, TrendingDown, Search } from 'lucide-react';
@@ -39,8 +38,7 @@ function PlanActualBar({ planned, actual }: { planned: number; actual: number })
 
 export function PlanFactPage() {
   const { filters } = useFilters();
-  const { products } = useSalesData(filters);
-  const { rows, loading } = usePlanFactData(filters, products);
+  const { rows, loading } = usePlanFactData(filters);
   const [search, setSearch] = useState('');
 
   const filtered = rows.filter(r =>
@@ -113,7 +111,7 @@ export function PlanFactPage() {
       {!loading && !hasData && (
         <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center">
           <div className="text-sm font-semibold text-slate-700">Live данные план/факт пока недоступны</div>
-          <div className="mt-1 text-sm text-slate-500">Локальные seed-данные удалены из этой страницы. После подключения backend endpoint таблица заполнится автоматически.</div>
+          <div className="mt-1 text-sm text-slate-500">После подключения backend endpoint таблица заполнится автоматически.</div>
         </div>
       )}
 

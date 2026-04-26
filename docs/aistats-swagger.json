@@ -236,6 +236,36 @@
         }
       }
     },
+    "/api/v1/reporting/products/revenue-structure": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingProductRevenueStructureEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductRevenueStructureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductRevenueStructureResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/reporting/products/query": {
       "post": {
         "tags": [
@@ -5370,6 +5400,174 @@
               "nullable": true
             },
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductRevenueStructureBreakdownItem": {
+        "required": [
+          "amount",
+          "key",
+          "label",
+          "managerDescription"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "nullable": true
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "managerDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceMetrics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductRevenueStructureItem": {
+        "required": [
+          "amount",
+          "effect",
+          "key",
+          "label",
+          "managerDescription",
+          "shareOfRealisationPercent"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "nullable": true
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "effect": {
+            "type": "string",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "shareOfRealisationPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "managerDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceMetrics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductRevenueStructureRequest": {
+        "required": [
+          "dateFrom",
+          "dateTo"
+        ],
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ReportingMode"
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceKey"
+            },
+            "nullable": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticsFilters"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductRevenueStructureResponse": {
+        "required": [
+          "breakdowns",
+          "items",
+          "meta",
+          "query",
+          "realisation",
+          "sales",
+          "scope"
+        ],
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScope"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QueryContext"
+          },
+          "realisation": {
+            "type": "number",
+            "format": "double"
+          },
+          "sales": {
+            "type": "number",
+            "format": "double"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductRevenueStructureItem"
+            },
+            "nullable": true
+          },
+          "breakdowns": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ProductRevenueStructureBreakdownItem"
+              }
+            },
+            "nullable": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
           }
         },
         "additionalProperties": false

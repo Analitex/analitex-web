@@ -1,51 +1,3 @@
-export interface Product {
-  id: string;
-  name: string;
-  sku: string;
-  brand: string;
-  category: string;
-  marketplace: string;
-  store: string;
-  cost_price: number;
-  created_at: string;
-}
-
-export interface SalesRecord {
-  id: string;
-  product_id: string;
-  date: string;
-  revenue: number;
-  orders: number;
-  sales: number;
-  returns: number;
-  logistics_cost: number;
-  ads_spend: number;
-  commission: number;
-  storage_cost: number;
-  taxes: number;
-  other_costs: number;
-  avg_price: number;
-  avg_sale_price: number;
-}
-
-export interface InventoryRecord {
-  id: string;
-  product_id: string;
-  date: string;
-  stock_quantity: number;
-  warehouse: string;
-}
-
-export interface PlanRecord {
-  id: string;
-  product_id: string;
-  period_start: string;
-  period_end: string;
-  planned_revenue: number;
-  planned_profit: number;
-  planned_orders: number;
-}
-
 export interface FilterState {
   dateStart: string;
   dateEnd: string;
@@ -66,7 +18,7 @@ export interface MetricValue {
 }
 
 export interface DashboardMetrics {
-  revenue: MetricValue;
+  realisation: MetricValue;
   orders: MetricValue;
   sales: MetricValue;
   profit: MetricValue;
@@ -76,7 +28,7 @@ export interface DashboardMetrics {
   adsSpend: MetricValue;
   commission: MetricValue;
   storageCost: MetricValue;
-  taxes: MetricValue;
+  tax: MetricValue;
   returns: MetricValue;
   cogs: MetricValue;
   avgSalePrice: MetricValue;
@@ -91,7 +43,7 @@ export interface SummaryRow {
   periodLabel: string;
   avgPriceBeforeDiscount: number;
   avgSalePrice: number;
-  revenue: number;
+  realisation: number;
   sales: number;
   payouts: number;
   returns: number;
@@ -158,3 +110,4 @@ export type Page =
   | 'ai';
 
 export type GroupBy = 'week' | 'day' | 'month' | 'sku' | 'brand' | 'category';
+

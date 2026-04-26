@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Info, Maximize2 } from 'lucide-react';
+import { ChevronDown, Maximize2 } from 'lucide-react';
 import { formatCurrency } from '../../lib/calculations';
+import { SectionAlias, SectionInfoTooltip } from './DashboardSectionMeta';
 
 export interface MarginLeaderboardRow {
   id: string;
@@ -66,7 +67,6 @@ export function MarginLeaderboardCard({
           <SectionInfoTooltip text={subtitle} />
         </div>
         <div className="flex items-center gap-3">
-          <div className="hidden text-xs text-slate-400 sm:block">{totalCount} элементов</div>
           <ChevronDown
             size={18}
             className={`shrink-0 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
@@ -92,13 +92,6 @@ export function MarginLeaderboardCard({
             </div>
           ) : viewMode === 'circle' ? (
             <>
-              <MarginTotalRatio
-                selectedCount={items.length}
-                totalCount={totalCount}
-                selectedProfit={selectedProfit}
-                totalProfit={totalProfit}
-                percent={selectedProfitPercent}
-              />
               <div className="mt-4 grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start">
                 <MarginPieChart
                   items={items}
@@ -167,13 +160,6 @@ export function MarginLeaderboardCard({
             </>
           ) : (
             <>
-              <MarginTotalRatio
-                selectedCount={items.length}
-                totalCount={totalCount}
-                selectedProfit={selectedProfit}
-                totalProfit={totalProfit}
-                percent={selectedProfitPercent}
-              />
               <div className="mt-4 max-h-[23rem] space-y-1.5 overflow-y-auto pr-2">
                 {items.map((item, index) => (
                 <div
@@ -758,25 +744,6 @@ function MarginTotalRatio({
         <span>Всего: {formatCurrency(totalProfit)}</span>
       </div>
     </div>
-  );
-}
-
-function SectionInfoTooltip({ text }: { text: string }) {
-  return (
-    <div className="group/tooltip relative flex shrink-0">
-      <Info size={14} className="text-slate-400" />
-      <div className="absolute left-0 top-full z-10 mt-2 hidden w-80 whitespace-pre-line rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm group-hover/tooltip:block">
-        {text}
-      </div>
-    </div>
-  );
-}
-
-function SectionAlias({ alias }: { alias: string }) {
-  return (
-    <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
-      {alias}
-    </span>
   );
 }
 
