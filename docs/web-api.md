@@ -879,7 +879,7 @@ Returns a TrueStats-style top margin/profitability widget dataset.
 Purpose:
 - rank products by `profit` descending
 - return each product profit as a percentage of total selected-scope profit
-- let the frontend request top `10`, `50`, `100`, any other limit, or all products
+- let the frontend request any limit, or omit the limit to return all products
 - return an optional `Other` bucket for products outside the requested limit
 
 Request:
@@ -909,8 +909,8 @@ Notes:
   - `sales`
   - `totalPaid`
 - `profit` is always included even if omitted from `metrics`
-- omit `limit` for the default top 10
-- send `limit = null` or `limit = 0` to return all products
+- omit `limit`, send `limit = null`, or send `limit <= 0` to return all products
+- send any positive `limit` to return that many ranked products
 - when `includeOthers = true` and a positive `limit` is used, the response appends one `kind = "Other"` item for the remaining products
 
 Response shape:
@@ -947,7 +947,7 @@ Returns the same profit-share ranking, grouped by product category.
 Purpose:
 - rank product categories by total `profit` descending
 - return each category profit as a percentage of total selected-scope profit
-- let the frontend request top `10`, `50`, `100`, any other limit, or all categories
+- let the frontend request any limit, or omit the limit to return all categories
 - return an optional `Other` bucket for categories outside the requested limit
 
 Request:
@@ -1166,7 +1166,9 @@ Wildberries reporting formulas currently fixed in code:
   - management-mode business formula remains:
   - `sales - commission - logistics - storage - acceptanceSum - fines - otherDeduction - advertisingExpense + compensation`
   - both are intentionally distinct from raw WB payout `toTransfer`
-  - unfiltered financial product summaries allocate account-level/synthetic WB rows such as unmatched fines across product rows before recomputing summary totals, so summary `fines`, `totalPaid`, and `profit` include those rows
+  - unfiltered financial product summaries allocate synthetic WB storage/acceptance/other-deduction buckets across product rows before recomputing summary totals
+  - unidentified-product fines stay on the residual synthetic `marketplaceArticle = "0"` row instead of being smeared across visible products
+  - residual synthetic WB rows preserve informational metrics such as `netMarketplaceReward`, so table/margin totals can reconcile with account-level KPI cards
   - WB voluntary compensation is displayed as `compensation`, not as `commission`; financial reporting subtracts compensation from commission-like raw rows before recomputing derived values
 - `costOfSales`
   - when product cost config exists, reporting derives `costOfSales = cost * soldUnits`

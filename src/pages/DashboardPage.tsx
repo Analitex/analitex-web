@@ -7,6 +7,7 @@ import { useAnalyticsWorkspaceData } from '../hooks/useAnalyticsWorkspaceData';
 import { useProductReportingData } from '../hooks/useProductReportingData';
 import { MarketplaceBadge } from '../components/common/MarketplaceIcon';
 import { MetricCard } from '../components/dashboard/MetricCard';
+import { MarginLeaderboardCard, type MarginLeaderboardRow } from '../components/dashboard/MarginLeaderboardCard';
 import { buildMetricValue, formatCurrency, formatNumber, sumRecords } from '../lib/calculations';
 import { Activity, ArrowDownWideNarrow, ArrowUpWideNarrow, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, GripVertical, Info, Search, Settings2, TrendingUp, X } from 'lucide-react';
 import type { DashboardMetrics, MetricValue, Product, SalesRecord } from '../types';
@@ -147,18 +148,6 @@ interface CustomMetric {
   unit: string;
 }
 
-interface MarginLeaderboardRow {
-  id: string;
-  title: string;
-  subtitle: string;
-  revenue: number;
-  profit: number;
-  margin: number;
-  profitSharePercent?: number;
-  kind?: string;
-  productCount?: number;
-}
-
 interface RevenueStructureRow {
   label: string;
   value: number;
@@ -198,7 +187,6 @@ function buildApiMetricValue(
   };
 }
 
-const TOP_MARGIN_OPTIONS = [5, 10, 50] as const;
 const ANALYTICS_TABLE_SETTINGS_KEY = 'dashboard-analytics-table-settings';
 const FINANCIAL_TOTAL_PAID_WIDGET_ID = 'metric-total-paid';
 const EMPTY_METRIC_VALUE: MetricValue = { current: 0, previous: 0, delta: 0, deltaPercent: 0, trend: 'neutral', sparkline: [] };
@@ -1606,6 +1594,7 @@ export function DashboardPage() {
             selectedProfit={articleMarginRemainder.selectedProfit}
             hiddenCount={articleMarginRemainder.hiddenCount}
             hiddenProfit={articleMarginRemainder.hiddenProfit}
+            isLoading={productReportingData.marginLoading}
             onLimitChange={setArticleMarginLimit}
             emptyMessage={productReportingData.loading ? 'Загружаем маржинальные артикулы...' : 'Для выбранных фильтров пока нет артикулов с продажами.'}
           />
@@ -1620,6 +1609,7 @@ export function DashboardPage() {
             selectedProfit={categoryMarginRemainder.selectedProfit}
             hiddenCount={categoryMarginRemainder.hiddenCount}
             hiddenProfit={categoryMarginRemainder.hiddenProfit}
+            isLoading={productReportingData.marginLoading}
             onLimitChange={setCategoryMarginLimit}
             emptyMessage={productReportingData.loading ? 'Загружаем категории...' : 'Для выбранных фильтров пока нет категорий с продажами.'}
           />
@@ -2868,6 +2858,7 @@ type MarginLeaderboardApiResponse = {
       brand?: string | null;
       category?: string | null;
       accountName?: string | null;
+      imageUrl?: string | null;
     } | null;
     metrics?: Record<string, number | null> | null;
     profit?: number | null;
@@ -2895,13 +2886,14 @@ function buildMarginLeaderboardRowsFromApi(
           : dimension.label ?? dimension.category ?? dimension.id ?? 'Без категории';
       const subtitle =
         variant === 'product'
-          ? [dimension.marketplaceArticle ?? dimension.id, dimension.vendorCode, dimension.brand].filter(Boolean).join(' · ')
+          ? dimension.brand ?? dimension.accountName ?? ''
           : `${Number(item.productCount ?? 0)} артикулов`;
 
       return {
         id: dimension.id ?? dimension.marketplaceArticle ?? title,
         title,
         subtitle,
+        imageUrl: dimension.imageUrl ?? undefined,
         revenue,
         profit,
         margin,
@@ -2947,431 +2939,6 @@ function buildMarginLeaderboardRemainder(
     selectedProfit,
     hiddenProfit: Math.max(safeTotalProfit - selectedProfit, 0),
   };
-}
-
-function MarginLeaderboardCard({
-  title,
-  alias,
-  subtitle,
-  items,
-  limit,
-  totalCount,
-  totalProfit,
-  selectedProfit,
-  hiddenCount,
-  hiddenProfit,
-  onLimitChange,
-  emptyMessage,
-}: {
-  title: string;
-  alias: string;
-  subtitle: string;
-  items: MarginLeaderboardRow[];
-  limit: number | 'all';
-  totalCount: number;
-  totalProfit: number;
-  selectedProfit: number;
-  hiddenCount: number;
-  hiddenProfit: number;
-  onLimitChange: (value: number | 'all') => void;
-  emptyMessage: string;
-}) {
-  const [isExpanded, setIsExpanded] = useState(true);
-  const [viewMode, setViewMode] = useState<'circle' | 'list'>('circle');
-  const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
-  const [isOptionsOpen, setIsOptionsOpen] = useState(false);
-  const [manualLimit, setManualLimit] = useState('');
-  const optionsRef = useRef<HTMLDivElement | null>(null);
-  const selectedProfitPercent = totalProfit > 0 ? (selectedProfit / totalProfit) * 100 : 0;
-
-  useEffect(() => {
-    if (!isOptionsOpen) return;
-
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!optionsRef.current?.contains(event.target as Node)) {
-        setIsOptionsOpen(false);
-      }
-    };
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsOptionsOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleEscape);
-
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [isOptionsOpen]);
-
-  return (
-    <div className="self-start rounded-xl border border-slate-200 bg-white p-5">
-      <button
-        type="button"
-        onClick={() => setIsExpanded(current => !current)}
-        className="flex w-full items-start justify-between gap-4 text-left"
-      >
-        <div className="flex items-center gap-2">
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{title}</div>
-          <SectionAlias alias={alias} />
-          <SectionInfoTooltip text={subtitle} />
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="hidden text-xs text-slate-400 sm:block">{totalCount} элементов</div>
-          <ChevronDown
-            size={18}
-            className={`shrink-0 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-          />
-        </div>
-      </button>
-
-      {isExpanded && (
-        <div className="mt-4">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="inline-flex rounded-full bg-slate-100 p-1">
-              <button
-                type="button"
-                onClick={() => setViewMode('circle')}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                  viewMode === 'circle' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                Круги
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('list')}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                  viewMode === 'list' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                Список
-              </button>
-            </div>
-
-            <div className="relative" ref={optionsRef}>
-              <button
-                type="button"
-                onClick={() => setIsOptionsOpen(current => !current)}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
-              >
-                {limit === 'all' ? 'Все' : `Топ ${limit}`}
-                <ChevronDown size={14} className={`transition-transform ${isOptionsOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {isOptionsOpen && (
-                <div className="absolute right-0 top-full z-20 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
-                  <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                    Диапазон
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onLimitChange('all');
-                      setIsOptionsOpen(false);
-                    }}
-                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                      limit === 'all' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    Все
-                  </button>
-                  {TOP_MARGIN_OPTIONS.map(option => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => {
-                        onLimitChange(option);
-                        setIsOptionsOpen(false);
-                      }}
-                      className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                        limit === option ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      Топ {option}
-                    </button>
-                  ))}
-                  <div className="mt-2 border-t border-slate-100 pt-2">
-                    <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      Свой лимит
-                    </div>
-                    <div className="flex gap-2 px-2 pb-1">
-                      <input
-                        type="number"
-                        min={1}
-                        value={manualLimit}
-                        onChange={event => setManualLimit(event.target.value)}
-                        placeholder="Напр. 25"
-                        className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-2 text-sm text-slate-700 outline-none focus:border-blue-300"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const parsedLimit = Number.parseInt(manualLimit, 10);
-                          if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
-                            onLimitChange('all');
-                          } else {
-                            onLimitChange(parsedLimit);
-                          }
-                          setIsOptionsOpen(false);
-                        }}
-                        className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800"
-                      >
-                        OK
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {items.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-400">
-              {emptyMessage}
-            </div>
-          ) : viewMode === 'circle' ? (
-            <>
-              <MarginTotalRatio
-                selectedCount={items.length}
-                totalCount={totalCount}
-                selectedProfit={selectedProfit}
-                totalProfit={totalProfit}
-                percent={selectedProfitPercent}
-              />
-              <div className="mt-4 grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start">
-                <MarginPieChart
-                  items={items}
-                  hiddenProfit={hiddenProfit}
-                  hiddenCount={hiddenCount}
-                  hoveredItemId={hoveredItemId}
-                  onHoverChange={setHoveredItemId}
-                />
-                <div className="max-h-[32rem] space-y-1.5 overflow-y-auto pr-2 lg:pt-0.5">
-                  {items.map((item, index) => {
-                  const tone = getMarginChartColor(index);
-                  const isActive = hoveredItemId === item.id;
-                  const displayPercent = item.profitSharePercent ?? item.margin;
-
-                  return (
-                    <div
-                      key={item.id}
-                      onMouseEnter={() => setHoveredItemId(item.id)}
-                      onMouseLeave={() => setHoveredItemId(null)}
-                      className={`flex items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors ${
-                        isActive ? 'border-sky-200 bg-sky-50' : 'border-slate-100 hover:bg-slate-50'
-                      }`}
-                    >
-                      <MetricLegendThumb label={item.title} color={tone} />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-xs font-semibold" style={{ color: tone }}>
-                          {item.title}
-                        </div>
-                        <div className="truncate text-[11px] text-slate-400">{item.subtitle}</div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <div className="text-xs font-semibold" style={{ color: tone }}>
-                          {displayPercent.toFixed(1)}%
-                        </div>
-                        <div className="text-[11px] text-slate-400">доля прибыли</div>
-                      </div>
-                    </div>
-                  );
-                  })}
-                  {hiddenCount > 0 && (
-                    <div
-                      onMouseEnter={() => setHoveredItemId('__other__')}
-                      onMouseLeave={() => setHoveredItemId(null)}
-                      className={`flex items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors ${
-                        hoveredItemId === '__other__' ? 'border-slate-300 bg-slate-100' : 'border-slate-100 bg-slate-50/70'
-                      }`}
-                    >
-                      <MetricLegendThumb label="Остальное" color="#cbd5e1" />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-xs font-semibold text-slate-500">Остальное</div>
-                        <div className="truncate text-[11px] text-slate-400">прибыль вне выбранного топа</div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <div className="text-xs font-semibold text-slate-500">{formatCurrency(hiddenProfit)}</div>
-                        <div className="text-[11px] text-slate-400">прибыль</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <MarginTotalRatio
-                selectedCount={items.length}
-                totalCount={totalCount}
-                selectedProfit={selectedProfit}
-                totalProfit={totalProfit}
-                percent={selectedProfitPercent}
-              />
-              <div className="mt-4 max-h-[32rem] space-y-2 overflow-y-auto pr-2">
-                {items.map((item, index) => (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-3 rounded-xl border border-slate-100 px-3 py-3 transition-colors hover:bg-slate-50"
-                >
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
-                    {index + 1}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-slate-800">{item.title}</div>
-                    <div className="truncate text-xs text-slate-400">{item.subtitle}</div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <div className="text-sm font-semibold text-slate-800">{formatCurrency(item.profit)}</div>
-                    <div className="text-xs text-slate-400">Прибыль</div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <div className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                      {(item.profitSharePercent ?? item.margin).toFixed(1)}%
-                    </div>
-                    <div className="mt-1 text-xs text-slate-400">доля прибыли</div>
-                  </div>
-                </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MarginPieChart({
-  items,
-  hiddenProfit,
-  hiddenCount,
-  hoveredItemId,
-  onHoverChange,
-}: {
-  items: MarginLeaderboardRow[];
-  hiddenProfit: number;
-  hiddenCount: number;
-  hoveredItemId: string | null;
-  onHoverChange: (itemId: string | null) => void;
-}) {
-  const chartItems = items.slice(0, 8);
-  const hiddenChartItem: MarginLeaderboardRow | null = hiddenCount > 0
-    ? {
-        id: '__other__',
-        title: 'Остальное',
-        subtitle: 'Прибыль вне выбранного топа',
-        revenue: 0,
-        profit: hiddenProfit,
-        margin: 0,
-      }
-    : null;
-  const chartEntries = hiddenChartItem ? [...chartItems, hiddenChartItem] : chartItems;
-  const normalizedValues = chartItems.map(item => Math.max(item.profit, 0));
-  if (hiddenChartItem) {
-    normalizedValues.push(Math.max(hiddenChartItem.profit, 0));
-  }
-  const total = normalizedValues.reduce((sum, value) => sum + value, 0);
-  const activeItem = chartEntries.find(item => item.id === hoveredItemId) ?? chartEntries[0] ?? null;
-  let startAngle = -Math.PI / 2;
-
-  return (
-    <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-5">
-      <div className="mb-3 flex justify-end">
-        <SectionInfoTooltip text="Наведите на сектор или строку справа для отображения точных данных." />
-      </div>
-      <div className="flex items-center justify-center">
-        <div className="relative h-[220px] w-[220px]">
-          <svg viewBox="0 0 220 220" className="h-full w-full overflow-visible">
-            <g className="apexcharts-inner apexcharts-graphical" transform="translate(110 110)">
-              {chartEntries.map((item, index) => {
-                const value = normalizedValues[index];
-                const sliceAngle = total > 0 ? (value / total) * Math.PI * 2 : (Math.PI * 2) / Math.max(chartEntries.length, 1);
-                const endAngle = startAngle + sliceAngle;
-                const path = describePieSlice(0, 0, hoveredItemId === item.id ? 90 : 84, startAngle, endAngle);
-                startAngle = endAngle;
-                const isOther = item.id === '__other__';
-
-                return (
-                  <path
-                    key={item.id}
-                    d={path}
-                    fill={isOther ? '#cbd5e1' : getMarginChartColor(index)}
-                    opacity={hoveredItemId && hoveredItemId !== item.id ? 0.32 : 0.96}
-                    className="cursor-pointer transition-all duration-200"
-                    onMouseEnter={() => onHoverChange(item.id)}
-                    onMouseLeave={() => onHoverChange(null)}
-                  >
-                    <title>{isOther ? `Остальное: прибыль ${formatCurrency(item.profit)}` : `${item.title}: маржа ${item.margin.toFixed(2)}%, прибыль ${formatCurrency(item.profit)}, выручка ${formatCurrency(item.revenue)}`}</title>
-                  </path>
-                );
-              })}
-            </g>
-          </svg>
-        </div>
-      </div>
-      {activeItem && (
-        <div className="mt-3 rounded-xl border border-slate-100 bg-white/90 px-3 py-3 text-sm">
-          <div className="font-medium text-slate-800">{activeItem.title}</div>
-          <div className="mt-1 text-xs text-slate-400">{activeItem.subtitle}</div>
-          <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
-            <div>
-              <div className="text-slate-400">{activeItem.profitSharePercent !== undefined ? 'Доля прибыли' : 'Маржа'}</div>
-              <div className="font-semibold text-slate-800">
-                {activeItem.id === '__other__' ? '-' : `${(activeItem.profitSharePercent ?? activeItem.margin).toFixed(2)}%`}
-              </div>
-            </div>
-            <div>
-              <div className="text-slate-400">Прибыль</div>
-              <div className="font-semibold text-slate-800">{formatCurrency(activeItem.profit)}</div>
-            </div>
-            <div>
-              <div className="text-slate-400">Выручка</div>
-              <div className="font-semibold text-slate-800">{formatCurrency(activeItem.revenue)}</div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MarginTotalRatio({
-  selectedCount,
-  totalCount,
-  selectedProfit,
-  totalProfit,
-  percent,
-}: {
-  selectedCount: number;
-  totalCount: number;
-  selectedProfit: number;
-  totalProfit: number;
-  percent: number;
-}) {
-  const safePercent = Math.max(0, Math.min(percent, 100));
-
-  return (
-    <div className="rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3">
-      <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-        <div className="font-semibold uppercase tracking-[0.12em] text-slate-500">Соотношение к общей прибыли</div>
-        <div className="shrink-0 font-semibold text-slate-700">
-          {safePercent.toFixed(1)}%
-        </div>
-      </div>
-      <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
-        <div className="h-full rounded-full bg-sky-500" style={{ width: `${safePercent}%` }} />
-      </div>
-      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
-        <span>Топ: {formatCurrency(selectedProfit)} · {selectedCount} из {totalCount}</span>
-        <span>Всего: {formatCurrency(totalProfit)}</span>
-      </div>
-    </div>
-  );
 }
 
 function AnalyticsDataSection({
@@ -4664,31 +4231,6 @@ function getMarketplaceColor(marketplace: string) {
   if (marketplace.includes('Ozon')) return '#2563eb';
   if (marketplace.includes('Яндекс')) return '#f59e0b';
   return '#0f766e';
-}
-
-function describePieSlice(cx: number, cy: number, radius: number, startAngle: number, endAngle: number) {
-  const start = polarToCartesian(cx, cy, radius, endAngle);
-  const end = polarToCartesian(cx, cy, radius, startAngle);
-  const largeArcFlag = endAngle - startAngle <= Math.PI ? 0 : 1;
-
-  return [
-    `M ${cx} ${cy}`,
-    `L ${start.x} ${start.y}`,
-    `A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`,
-    'Z',
-  ].join(' ');
-}
-
-function polarToCartesian(cx: number, cy: number, radius: number, angleInRadians: number) {
-  return {
-    x: cx + radius * Math.cos(angleInRadians),
-    y: cy + radius * Math.sin(angleInRadians),
-  };
-}
-
-function getMarginChartColor(index: number) {
-  const palette = ['#0f766e', '#14b8a6', '#38bdf8', '#6366f1', '#8b5cf6', '#f59e0b', '#f97316', '#ef4444'];
-  return palette[index % palette.length];
 }
 
 function buildWidgetDocuments(records: SalesRecord[], revenue: number) {

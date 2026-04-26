@@ -274,6 +274,7 @@ export interface ProductReportingData {
   metricCards: ProductMetricCardDefinition[];
   metricDefinitions: ProductMetricDefinition[];
   loading: boolean;
+  marginLoading: boolean;
   error: string | null;
 }
 
@@ -303,6 +304,7 @@ export function useProductReportingData(options?: {
     metricCards: [],
     metricDefinitions: [],
     loading: false,
+    marginLoading: false,
     error: null,
   });
 
@@ -327,6 +329,7 @@ export function useProductReportingData(options?: {
         metricCards: [],
         metricDefinitions: [],
         loading: false,
+        marginLoading: false,
         error: null,
       });
       return;
@@ -361,7 +364,7 @@ export function useProductReportingData(options?: {
         const selectedMetrics = metricsCatalog.length > 0 ? metricsCatalog : [...PRODUCT_REPORT_METRICS_CATALOG];
         const overviewMetrics = preferMetrics(SUMMARY_PRIORITY_METRICS, selectedMetrics);
 
-        const [summary, overview, table, marginTop, marginCategories] = await Promise.all([
+        const [summary, overview, table] = await Promise.all([
           apiRequest<ProductSummaryResponse>('/reporting/products/summary', {
             method: 'POST',
             token: session.accessToken,
@@ -393,6 +396,87 @@ export function useProductReportingData(options?: {
               limit,
             }),
           }),
+        ]);
+
+        if (cancelled) return;
+
+        setState(current => ({
+          summary: summary ?? null,
+          overview: overview ?? null,
+          marginTop: current.marginTop,
+          marginCategories: current.marginCategories,
+          rows: table.rows ?? [],
+          metricsCatalog,
+          metricCards,
+          metricDefinitions,
+          loading: false,
+          marginLoading: current.marginLoading,
+          error: null,
+        }));
+      } catch (error) {
+        if (cancelled) return;
+        setState({
+          summary: null,
+          overview: null,
+          marginTop: null,
+          marginCategories: null,
+          rows: [],
+          metricsCatalog: [],
+          metricCards: [],
+          metricDefinitions: [],
+          loading: false,
+          marginLoading: false,
+          error: error instanceof Error ? error.message : 'Не удалось загрузить товарный отчет.',
+        });
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    accountIds,
+    accountIdsKey,
+    enabled,
+    filters.dateEnd,
+    filters.dateStart,
+    limit,
+    reportMode,
+    requestFilters,
+    session?.accessToken,
+  ]);
+
+  useEffect(() => {
+    if (!enabled || !session?.accessToken) {
+      setState(current => ({
+        ...current,
+        marginTop: null,
+        marginCategories: null,
+        marginLoading: false,
+      }));
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadMargins = async () => {
+      setState(current => ({ ...current, marginLoading: true, error: null }));
+
+      try {
+        const baseRequest = {
+          dateFrom: filters.dateStart,
+          dateTo: filters.dateEnd,
+          mode: reportMode === 'financial' ? 'Financial' : 'Management',
+          marketplaces: filters.marketplace,
+          filters: requestFilters,
+        };
+        if (accountIds.length > 0) {
+          (baseRequest as { accountIds: number[] }).accountIds = accountIds;
+        }
+
+        const [marginTop, marginCategories] = await Promise.all([
           apiRequest<ProductMarginResponse>('/reporting/products/margin-top', {
             method: 'POST',
             token: session.accessToken,
@@ -415,36 +499,26 @@ export function useProductReportingData(options?: {
 
         if (cancelled) return;
 
-        setState({
-          summary: summary ?? null,
-          overview: overview ?? null,
+        setState(current => ({
+          ...current,
           marginTop: marginTop ?? null,
           marginCategories: marginCategories ?? null,
-          rows: table.rows ?? [],
-          metricsCatalog,
-          metricCards,
-          metricDefinitions,
-          loading: false,
+          marginLoading: false,
           error: null,
-        });
+        }));
       } catch (error) {
         if (cancelled) return;
-        setState({
-          summary: null,
-          overview: null,
+        setState(current => ({
+          ...current,
           marginTop: null,
           marginCategories: null,
-          rows: [],
-          metricsCatalog: [],
-          metricCards: [],
-          metricDefinitions: [],
-          loading: false,
-          error: error instanceof Error ? error.message : 'Не удалось загрузить товарный отчет.',
-        });
+          marginLoading: false,
+          error: error instanceof Error ? error.message : 'Не удалось загрузить маржинальные виджеты.',
+        }));
       }
     };
 
-    void load();
+    void loadMargins();
 
     return () => {
       cancelled = true;
@@ -455,7 +529,6 @@ export function useProductReportingData(options?: {
     enabled,
     filters.dateEnd,
     filters.dateStart,
-    limit,
     marginCategoryLimit,
     marginProductLimit,
     reportMode,
