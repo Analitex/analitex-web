@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Files, Info, Minus, Pencil, TrendingDown, TrendingUp, X } from 'lucide-react';
 import type { MetricValue } from '../../types';
 import { Sparkline } from '../charts/Sparkline';
@@ -26,6 +27,7 @@ interface MetricCardProps {
   description?: string;
   isLoading?: boolean;
   isPlaceholder?: boolean;
+  isEditMode?: boolean;
   faq?: string;
   documents?: MetricDocuments;
   onEdit?: () => void;
@@ -52,6 +54,24 @@ function PlaceholderCard({ title }: { title: string }) {
   );
 }
 
+function FormattedValue({ value }: { value: string }) {
+  const parts = value.split(/(₽|%|шт|Дн\.|п\.п\.)/g);
+
+  return (
+    <>
+      {parts.map((part, index) =>
+        /^(₽|%|шт|Дн\.|п\.п\.)$/.test(part) ? (
+          <span key={`${part}-${index}`} className="relative -top-1 ml-0.5 text-[0.58em] font-semibold leading-none">
+            {part}
+          </span>
+        ) : (
+          <span key={`${part}-${index}`}>{part}</span>
+        )
+      )}
+    </>
+  );
+}
+
 export function MetricCard({
   title,
   metric,
@@ -62,6 +82,7 @@ export function MetricCard({
   description,
   isLoading = false,
   isPlaceholder = false,
+  isEditMode = false,
   faq,
   documents,
   onEdit,
@@ -134,14 +155,17 @@ export function MetricCard({
       <div
         role="button"
         tabIndex={0}
-        onClick={() => setIsDetailsOpen(true)}
+        onClick={() => {
+          if (!isEditMode) setIsDetailsOpen(true);
+        }}
         onKeyDown={event => {
+          if (isEditMode) return;
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
             setIsDetailsOpen(true);
           }
         }}
-        className={`relative z-0 w-full rounded-xl border p-2.5 text-left transition-all duration-200 hover:z-[140] hover:-translate-y-0.5 hover:shadow-md focus-within:z-[140] ${cardTone}`}
+        className={`relative z-0 w-full rounded-xl border p-3 text-left transition-all duration-200 focus-within:z-[140] sm:p-3.5 ${isEditMode ? 'cursor-default' : 'hover:z-[140] hover:-translate-y-0.5 hover:shadow-md'} ${cardTone}`}
       >
         {metric.sparkline.length > 1 && (
           <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl opacity-[0.16] transition-opacity">
@@ -152,10 +176,10 @@ export function MetricCard({
           </div>
         )}
 
-        <div className="relative mb-2 flex items-start justify-between gap-2">
+        <div className="relative mb-2.5 flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <div className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{title}</div>
+              <div className="min-w-0 truncate text-xs font-bold uppercase tracking-[0.1em] text-slate-950">{title}</div>
               {onEdit && (
                 <button
                   type="button"
@@ -214,20 +238,28 @@ export function MetricCard({
           </div>
         </div>
 
-        <div className="relative mb-1.5">
-          <span className="text-lg font-bold tracking-tight text-slate-900 sm:text-xl">{format(metric.current)}</span>
-          {unit && <span className="ml-1 text-xs text-slate-400 sm:text-sm">{unit}</span>}
+        <div className="relative mb-2">
+          <span className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+            <FormattedValue value={format(metric.current)} />
+          </span>
+          {unit && (
+            <span className="relative -top-1 ml-1 text-[0.58em] font-semibold text-slate-400">
+              {unit}
+            </span>
+          )}
         </div>
 
-        <div className="relative flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="truncate text-xs font-semibold text-slate-600 sm:text-sm">{format(metric.previous)}</div>
+        <div className="relative flex items-center gap-2">
+          <div className="min-w-0 shrink">
+            <div className="truncate text-xs font-semibold text-slate-600 sm:text-sm">
+              <FormattedValue value={format(metric.previous)} />
+            </div>
           </div>
-          <div className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px] ${bgColor} ${trendColor}`}>
-            {isNeutral ? <Minus size={11} /> : isPositive ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-            <span>{deltaStr}</span>
+          <div className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/80 bg-white px-2.5 py-1 text-[11px] font-bold shadow-sm ring-1 ring-slate-200/80 sm:text-xs ${trendColor}`}>
+            {isNeutral ? <Minus size={12} /> : isPositive ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+            <span><FormattedValue value={deltaStr} /></span>
             <span className="text-slate-300">/</span>
-            <span>{pctStr}</span>
+            <span><FormattedValue value={pctStr} /></span>
           </div>
         </div>
       </div>
@@ -243,7 +275,9 @@ export function MetricCard({
             <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{title}</div>
-                <div className="mt-1 text-lg font-semibold text-slate-900">{format(metric.current)}</div>
+                <div className="mt-1 text-lg font-semibold text-slate-900">
+                  <FormattedValue value={format(metric.current)} />
+                </div>
               </div>
               <button
                 type="button"
@@ -265,19 +299,23 @@ export function MetricCard({
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Текущее значение</div>
-                  <div className="mt-2 text-base font-semibold text-slate-900">{format(metric.current)}</div>
+                  <div className="mt-2 text-base font-semibold text-slate-900">
+                    <FormattedValue value={format(metric.current)} />
+                  </div>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Предыдущее значение</div>
-                  <div className="mt-2 text-base font-semibold text-slate-900">{format(metric.previous)}</div>
+                  <div className="mt-2 text-base font-semibold text-slate-900">
+                    <FormattedValue value={format(metric.previous)} />
+                  </div>
                 </div>
               </div>
 
               <div className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${bgColor} ${trendColor}`}>
                 {isNeutral ? <Minus size={12} /> : isPositive ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-                <span>{deltaStr}</span>
+                <span><FormattedValue value={deltaStr} /></span>
                 <span className="text-slate-300">/</span>
-                <span>{pctStr}</span>
+                <span><FormattedValue value={pctStr} /></span>
               </div>
 
               {faq && (
@@ -322,9 +360,40 @@ function PassiveFloat({
   panelClassName: string;
 }) {
   const [icon, content] = children;
+  const [anchorElement, setAnchorElement] = useState<HTMLDivElement | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (!isOpen || !anchorElement) return;
+
+    const updatePosition = () => {
+      const rect = anchorElement.getBoundingClientRect();
+      const panelWidth = Math.min(300, window.innerWidth - 24);
+      setPosition({
+        top: Math.min(rect.bottom + 8, window.innerHeight - 24),
+        left: Math.min(Math.max(12, rect.right - panelWidth), window.innerWidth - panelWidth - 12),
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [anchorElement, isOpen]);
 
   return (
-    <div className="group/tooltip relative z-[120] flex shrink-0">
+    <div
+      ref={setAnchorElement}
+      className="relative z-[120] flex shrink-0"
+      onMouseEnter={() => setIsOpen(true)}
+      onMouseLeave={() => setIsOpen(false)}
+      onFocus={() => setIsOpen(true)}
+      onBlur={() => setIsOpen(false)}
+    >
       <button
         type="button"
         className="cursor-help text-slate-400 transition-colors hover:text-slate-600 focus-visible:text-slate-600"
@@ -334,9 +403,17 @@ function PassiveFloat({
       >
         {icon}
       </button>
-      <div className={`pointer-events-none absolute top-full z-[130] mt-1 max-w-[min(280px,calc(100vw-24px))] rounded-xl border border-slate-200 bg-white p-3 opacity-0 shadow-xl transition-opacity duration-150 group-hover/tooltip:pointer-events-auto group-hover/tooltip:opacity-100 group-focus-within/tooltip:pointer-events-auto group-focus-within/tooltip:opacity-100 ${panelClassName}`}>
-        {content}
-      </div>
+      {isOpen && createPortal(
+        <div
+          className={`fixed z-[270] max-w-[min(300px,calc(100vw-24px))] rounded-xl border border-slate-200 bg-white p-3 shadow-2xl ${panelClassName}`}
+          style={{ top: position.top, left: position.left, width: 'min(300px, calc(100vw - 24px))' }}
+          onClick={event => event.stopPropagation()}
+          onMouseDown={event => event.stopPropagation()}
+        >
+          {content}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -359,36 +436,68 @@ const ClickFloat = ({
   trigger: ReactNode;
   children: ReactNode;
   anchorRef: MutableRefObject<HTMLDivElement | null>;
-}) => (
-  <div ref={anchorRef} className="relative z-[120] flex shrink-0">
-    <button
-      type="button"
-      onClick={event => {
-        event.stopPropagation();
-        onToggle();
-      }}
-      className="text-left"
-      aria-label={label}
-      aria-expanded={isOpen}
-    >
-      {trigger}
-    </button>
-    {isOpen && (
-      <div className={`absolute top-full z-[130] mt-2 max-w-[min(340px,calc(100vw-24px))] rounded-xl border border-slate-200 bg-white p-3 shadow-xl ${panelClassName}`}>
-        <div className="mb-2 flex justify-end">
-          <button
-            type="button"
-            onClick={event => {
-              event.stopPropagation();
-              onClose();
-            }}
-            className="text-xs font-medium text-slate-400 transition-colors hover:text-slate-600"
-          >
-            Закрыть
-          </button>
-        </div>
-        {children}
-      </div>
-    )}
-  </div>
-);
+}) => {
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (!isOpen || !anchorRef.current) return;
+
+    const updatePosition = () => {
+      if (!anchorRef.current) return;
+      const rect = anchorRef.current.getBoundingClientRect();
+      const panelWidth = Math.min(340, window.innerWidth - 24);
+      setPosition({
+        top: Math.min(rect.bottom + 8, window.innerHeight - 24),
+        left: Math.min(Math.max(12, rect.right - panelWidth), window.innerWidth - panelWidth - 12),
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [anchorRef, isOpen]);
+
+  return (
+    <div ref={anchorRef} className="relative z-[120] flex shrink-0">
+      <button
+        type="button"
+        onClick={event => {
+          event.stopPropagation();
+          onToggle();
+        }}
+        className="text-left"
+        aria-label={label}
+        aria-expanded={isOpen}
+      >
+        {trigger}
+      </button>
+      {isOpen && createPortal(
+        <div
+          className={`fixed z-[260] max-h-[min(420px,calc(100vh-32px))] max-w-[min(340px,calc(100vw-24px))] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl ${panelClassName}`}
+          style={{ top: position.top, left: position.left, width: 'min(340px, calc(100vw - 24px))' }}
+          onClick={event => event.stopPropagation()}
+          onMouseDown={event => event.stopPropagation()}
+        >
+          <div className="mb-2 flex justify-end">
+            <button
+              type="button"
+              onClick={event => {
+                event.stopPropagation();
+                onClose();
+              }}
+              className="text-xs font-medium text-slate-400 transition-colors hover:text-slate-600"
+            >
+              Закрыть
+            </button>
+          </div>
+          {children}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+};

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   BookOpen,
   Building2,
@@ -33,6 +33,8 @@ const navItems: NavItem[] = [
   { id: 'history', label: 'История', icon: History },
 ];
 
+const DEV_SIDEBAR_COLLAPSED_STORAGE_KEY = 'aistats-dev-sidebar-collapsed';
+
 interface DevSidebarProps {
   currentPage: DevPage;
   onNavigate: (page: DevPage) => void;
@@ -48,7 +50,14 @@ export function DevSidebar({
   isMobileOpen = false,
   onMobileClose,
 }: DevSidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(DEV_SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true';
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem(DEV_SIDEBAR_COLLAPSED_STORAGE_KEY, String(isCollapsed));
+  }, [isCollapsed]);
 
   const handleNavigate = (page: DevPage) => {
     onNavigate(page);

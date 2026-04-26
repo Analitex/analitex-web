@@ -336,7 +336,12 @@ Request:
       "marketplaceArticle": "1583892593",
       "vendorCode": "Полиуретановый клей 1 литр 1 шт",
       "productName": "Полиуретановый клей 1 литр 1 шт",
+      "barcode": "2043277800551",
+      "sizeId": 767569159,
+      "sizeName": "0",
       "costPerUnit": 450.0,
+      "fulfillmentPerUnit": 0.0,
+      "vatPerUnit": 0.0,
       "currencyCode": "RUB"
     }
   ]
@@ -347,8 +352,10 @@ Behavior:
 - replace semantics per connection
 - reporting match priority:
   - `marketplaceArticle`
+  - `barcode`
   - `vendorCode`
   - `productName`
+- accounting unit cost used by reporting is `costPerUnit + fulfillmentPerUnit + vatPerUnit`
 - configured values are applied at reporting time for:
   - `tax`
   - `taxBase`
@@ -732,7 +739,7 @@ TrueStats-style KPI card mapping:
 - `Годовой GMROI` -> `gmroiYear`
 - `Штрафы` -> `fines`
 - `Компенсации` -> `compensation`
-- `Возвраты` -> `returns` plus `returnsCount`
+- `Возвраты` -> `returns` plus `refunds`
 - `Оборачиваемость по прод.` -> `salesTurnover`
 - `Оборачиваемость по зак.` -> `ordersTurnover`
 
@@ -860,8 +867,138 @@ Frontend usage:
 - use this endpoint for KPI card values and previous-period comparisons
 - use `GET /api/v1/reporting/product-metrics` `cards[]` for KPI card titles, tooltips, and composite metric mapping
 - use `POST /api/v1/reporting/products/overview` for top-products and overview payloads
+- use `POST /api/v1/reporting/products/margin-top` for top margin/profit-share widgets
+- use `POST /api/v1/reporting/products/margin-categories` for top margin/profit-share category widgets
 - use `POST /api/v1/reporting/products/query` for the table
 - when comparing against TrueStats, make sure frontend URL parameters such as `dateStart`/`dateEnd` are converted to API request fields `dateFrom`/`dateTo`; otherwise the backend will use whatever request dates the web app sends
+
+### `POST /api/v1/reporting/products/margin-top`
+
+Returns a TrueStats-style top margin/profitability widget dataset.
+
+Purpose:
+- rank products by `profit` descending
+- return each product profit as a percentage of total selected-scope profit
+- let the frontend request top `10`, `50`, `100`, any other limit, or all products
+- return an optional `Other` bucket for products outside the requested limit
+
+Request:
+
+```json
+{
+  "dateFrom": "2026-04-13",
+  "dateTo": "2026-04-19",
+  "mode": "Financial",
+  "accountIds": [123456],
+  "marketplaces": ["Wildberries"],
+  "filters": {
+    "productIds": [],
+    "brandIds": [],
+    "categoryIds": []
+  },
+  "limit": 10,
+  "includeOthers": true,
+  "metrics": ["profit", "profitability", "sales", "totalPaid"]
+}
+```
+
+Notes:
+- omit `metrics` to get default display metrics:
+  - `profit`
+  - `profitability`
+  - `sales`
+  - `totalPaid`
+- `profit` is always included even if omitted from `metrics`
+- omit `limit` for the default top 10
+- send `limit = null` or `limit = 0` to return all products
+- when `includeOthers = true` and a positive `limit` is used, the response appends one `kind = "Other"` item for the remaining products
+
+Response shape:
+- `scope`
+- `query`
+- `summary`
+  - `totalProducts`
+  - `returnedProducts`
+  - `otherProducts`
+  - `totalProfit`
+  - `returnedProfit`
+  - `otherProfit`
+- `items[]`
+  - `rank`
+  - `kind`: `Product` or `Other`
+  - `dimension` for product rows; `null` for the `Other` bucket
+  - `metrics`
+  - `profit`
+  - `profitSharePercent`
+  - `cumulativeProfitSharePercent`
+  - `productCount`
+- `meta`
+
+Frontend usage:
+- render product rows from `kind = "Product"`
+- render the remaining slice from `kind = "Other"` when present
+- use `profitSharePercent` for the percent label/bar segment
+- use `summary.totalProfit` as the denominator label if needed
+
+### `POST /api/v1/reporting/products/margin-categories`
+
+Returns the same profit-share ranking, grouped by product category.
+
+Purpose:
+- rank product categories by total `profit` descending
+- return each category profit as a percentage of total selected-scope profit
+- let the frontend request top `10`, `50`, `100`, any other limit, or all categories
+- return an optional `Other` bucket for categories outside the requested limit
+
+Request:
+
+```json
+{
+  "dateFrom": "2026-04-13",
+  "dateTo": "2026-04-19",
+  "mode": "Financial",
+  "accountIds": [123456],
+  "marketplaces": ["Wildberries"],
+  "filters": {
+    "productIds": [],
+    "brandIds": [],
+    "categoryIds": []
+  },
+  "limit": 10,
+  "includeOthers": true,
+  "metrics": ["profit", "profitability", "sales", "totalPaid"]
+}
+```
+
+Response shape:
+- `scope`
+- `query`
+- `summary`
+  - `totalCategories`
+  - `returnedCategories`
+  - `otherCategories`
+  - `totalProducts`
+  - `totalProfit`
+  - `returnedProfit`
+  - `otherProfit`
+- `items[]`
+  - `rank`
+  - `kind`: `Category` or `Other`
+  - `dimension`
+    - `id`
+    - `label`
+    - optional `marketplace`, `accountId`, `accountName` when the category belongs to one scope
+  - `metrics`
+  - `profit`
+  - `profitSharePercent`
+  - `cumulativeProfitSharePercent`
+  - `productCount`
+- `meta`
+
+Notes:
+- metric defaults and `limit` behavior match `POST /api/v1/reporting/products/margin-top`
+- uncategorized rows are grouped under `Без категории`
+- `profitability` in category and `Other` rows is recomputed from grouped profit and grouped `realisation` when requested
 
 ### `POST /api/v1/reporting/products`
 
@@ -999,6 +1136,12 @@ Current behavior:
   - `positionCategory`
 
 Wildberries reporting formulas currently fixed in code:
+- `netMarketplaceReward`
+  - for WB, this is a TrueStats-style `wbFinalReward` semantic, not raw signed `vw`, not `ppvzReward`, and not the derived commission/acquiring decomposition
+  - current connector formula uses the positive WB reward basis from finance rows:
+  - `abs(vw) + abs(acquiringFee) + abs(rebillLogisticCost) - abs(penalty)`
+  - this treats WB transportation setoff rows as part of the informational reward basis and keeps fines separate
+  - existing synced data must be resynced after this connector mapping changes; old rows may still contain the previous derived value
 - `logistics`
   - based on WB finance rows only
   - includes only operation families matching marketplace logistics and logistics corrections
@@ -1019,14 +1162,16 @@ Wildberries reporting formulas currently fixed in code:
   - direct sum of WB finance payout rows from `wildberries_finance_sync_rows.to_transfer`
 - `totalPaid`
   - financial-mode row formula is:
-  - `toTransfer - logistics - storage - acceptanceSum - fines - otherDeduction - advertisingExpense`
+  - `sales - commission - logistics - storage - acceptanceSum - fines - otherDeduction - advertisingExpense + compensation`
   - management-mode business formula remains:
   - `sales - commission - logistics - storage - acceptanceSum - fines - otherDeduction - advertisingExpense + compensation`
   - both are intentionally distinct from raw WB payout `toTransfer`
   - unfiltered financial product summaries allocate account-level/synthetic WB rows such as unmatched fines across product rows before recomputing summary totals, so summary `fines`, `totalPaid`, and `profit` include those rows
+  - WB voluntary compensation is displayed as `compensation`, not as `commission`; financial reporting subtracts compensation from commission-like raw rows before recomputing derived values
 - `costOfSales`
   - when product cost config exists, reporting derives `costOfSales = cost * soldUnits`
-  - for WB financial filtered rows, raw-finance count overrides can adjust `salesCount`, `totalSales`, `returnsCount`, and `refunds`
+  - for WB financial rows, raw-finance count overrides can adjust `salesCount`, `totalSales`, `returnsCount`, and `refunds`
+  - in TrueStats-style financial reporting, `salesCount` and `totalSales` are both exposed as sold pieces after explicit refunds
   - after those overrides, financial derived metrics recompute configured COGS from updated `totalSales`
 - `taxBase`
   - tax is config-backed, not read from WB
@@ -1608,6 +1753,8 @@ Contract note:
 - unsupported metrics now return `400 Bad Request` instead of silently coming back as `null`
 - for rich product KPIs, use:
   - `POST /api/v1/reporting/products/overview`
+  - `POST /api/v1/reporting/products/margin-top`
+  - `POST /api/v1/reporting/products/margin-categories`
   - `POST /api/v1/reporting/products/query`
 
 Current empty-state behavior:
@@ -1848,6 +1995,7 @@ Current behavior:
 ### `GET /api/v1/config/custom-metrics`
 ### `POST /api/v1/config/custom-metrics`
 ### `PATCH /api/v1/config/custom-metrics/{id}`
+### `DELETE /api/v1/config/custom-metrics/{id}`
 ### `POST /api/v1/config/custom-metrics/validate`
 ### `POST /api/v1/config/custom-metrics/preview`
 
@@ -1908,6 +2056,9 @@ Preview response:
 Current behavior:
 - supported formula operators are `+`, `-`, `*`, `/`, and parentheses
 - unknown metric keys are rejected by the validation endpoint and by create/update
+- deleting an existing custom metric returns `204 No Content`
+- deleting a missing custom metric returns a validation-style `400`
+- deleting a custom metric that is referenced by another custom metric is rejected with a validation-style `400`
 - preview uses the provided `sampleMetrics` values and treats missing referenced metrics as `0`
 - current custom metric functionality is intentionally much narrower than the product metric catalog
 - currently allowed base variables are only:
@@ -1929,10 +2080,12 @@ Recommended product-screen fetch pattern:
 
 1. `GET /api/v1/reporting/product-metrics`
 2. `POST /api/v1/reporting/products/overview`
-3. `POST /api/v1/reporting/products/query`
-4. `POST /api/v1/reporting/products/details` on demand for drawer header / one-metric detail
-5. `POST /api/v1/reporting/products/metric-breakdowns` on demand for grouped finance and stock drilldowns
-6. `POST /api/v1/reporting/products/stock-history` and `traffic-history` for charts
+3. `POST /api/v1/reporting/products/margin-top` for top margin/profit-share widgets
+4. `POST /api/v1/reporting/products/margin-categories` for top margin category widgets
+5. `POST /api/v1/reporting/products/query`
+6. `POST /api/v1/reporting/products/details` on demand for drawer header / one-metric detail
+7. `POST /api/v1/reporting/products/metric-breakdowns` on demand for grouped finance and stock drilldowns
+8. `POST /api/v1/reporting/products/stock-history` and `traffic-history` for charts
 
 Recommended frontend responsibility split:
 - backend:
@@ -2153,12 +2306,14 @@ Recommended product screen load sequence:
 
 1. `GET /api/v1/reporting/product-metrics`
 2. `POST /api/v1/reporting/products/overview`
-3. `POST /api/v1/reporting/products/query`
-4. `POST /api/v1/reporting/products/details` on demand for drawer header/summary
-5. `POST /api/v1/reporting/products/metric-breakdowns` for grouped finance and stock drilldowns
-6. `POST /api/v1/reporting/products/stock-history` for inventory chart/drawer
-7. `POST /api/v1/reporting/products/traffic-history` for organic funnel chart/drawer
-8. `POST /api/v1/reporting/products/stock-sources` for latest warehouse/source breakdown
+3. `POST /api/v1/reporting/products/margin-top` for top margin/profit-share widgets
+4. `POST /api/v1/reporting/products/margin-categories` for top margin category widgets
+5. `POST /api/v1/reporting/products/query`
+6. `POST /api/v1/reporting/products/details` on demand for drawer header/summary
+7. `POST /api/v1/reporting/products/metric-breakdowns` for grouped finance and stock drilldowns
+8. `POST /api/v1/reporting/products/stock-history` for inventory chart/drawer
+9. `POST /api/v1/reporting/products/traffic-history` for organic funnel chart/drawer
+10. `POST /api/v1/reporting/products/stock-sources` for latest warehouse/source breakdown
 
 Recommended first-owner onboarding:
 

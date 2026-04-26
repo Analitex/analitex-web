@@ -66,6 +66,66 @@
         }
       }
     },
+    "/api/v1/reporting/products/margin-categories": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingProductMarginCategoriesTopEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductMarginCategoryTopRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductMarginCategoryTopResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/products/margin-top": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsReportingProductMarginTopEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductMarginTopRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductMarginTopResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/reporting/products/metric-breakdowns": {
       "post": {
         "tags": [
@@ -1560,6 +1620,17 @@
                 }
               }
             }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsConfigDeleteCustomMetricEndpoint",
+        "responses": {
+          "204": {
+            "description": "No Content"
           }
         }
       }
@@ -3451,8 +3522,10 @@
         "required": [
           "costPerUnit",
           "currencyCode",
+          "fulfillmentPerUnit",
           "id",
-          "updatedAt"
+          "updatedAt",
+          "vatPerUnit"
         ],
         "type": "object",
         "properties": {
@@ -3472,12 +3545,46 @@
             "type": "string",
             "nullable": true
           },
+          "barcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "sizeId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "sizeName": {
+            "type": "string",
+            "nullable": true
+          },
           "costPerUnit": {
+            "type": "number",
+            "format": "double"
+          },
+          "fulfillmentPerUnit": {
+            "type": "number",
+            "format": "double"
+          },
+          "vatPerUnit": {
             "type": "number",
             "format": "double"
           },
           "currencyCode": {
             "type": "string",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceExternalId": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceDate": {
+            "type": "string",
+            "format": "date",
             "nullable": true
           },
           "updatedAt": {
@@ -3505,12 +3612,46 @@
             "type": "string",
             "nullable": true
           },
+          "barcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "sizeId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "sizeName": {
+            "type": "string",
+            "nullable": true
+          },
           "costPerUnit": {
+            "type": "number",
+            "format": "double"
+          },
+          "fulfillmentPerUnit": {
+            "type": "number",
+            "format": "double"
+          },
+          "vatPerUnit": {
             "type": "number",
             "format": "double"
           },
           "currencyCode": {
             "type": "string",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceExternalId": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceDate": {
+            "type": "string",
+            "format": "date",
             "nullable": true
           }
         },
@@ -4075,6 +4216,391 @@
           "sizeName": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMarginCategoryDimension": {
+        "required": [
+          "id",
+          "label"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "marketplace": {
+            "$ref": "#/components/schemas/MarketplaceKey"
+          },
+          "accountId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "accountName": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMarginCategoryTopItem": {
+        "required": [
+          "cumulativeProfitSharePercent",
+          "kind",
+          "metrics",
+          "productCount",
+          "profit",
+          "profitSharePercent"
+        ],
+        "type": "object",
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimension": {
+            "$ref": "#/components/schemas/ProductMarginCategoryDimension"
+          },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double",
+              "nullable": true
+            },
+            "nullable": true
+          },
+          "profit": {
+            "type": "number",
+            "format": "double"
+          },
+          "profitSharePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "cumulativeProfitSharePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "productCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMarginCategoryTopRequest": {
+        "required": [
+          "dateFrom",
+          "dateTo"
+        ],
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ReportingMode"
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceKey"
+            },
+            "nullable": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticsFilters"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "includeOthers": {
+            "type": "boolean"
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMarginCategoryTopResponse": {
+        "required": [
+          "items",
+          "meta",
+          "query",
+          "scope",
+          "summary"
+        ],
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScope"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QueryContext"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ProductMarginCategoryTopSummary"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductMarginCategoryTopItem"
+            },
+            "nullable": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMarginCategoryTopSummary": {
+        "required": [
+          "otherCategories",
+          "otherProfit",
+          "returnedCategories",
+          "returnedProfit",
+          "totalCategories",
+          "totalProducts",
+          "totalProfit"
+        ],
+        "type": "object",
+        "properties": {
+          "totalCategories": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "returnedCategories": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "otherCategories": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalProducts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalProfit": {
+            "type": "number",
+            "format": "double"
+          },
+          "returnedProfit": {
+            "type": "number",
+            "format": "double"
+          },
+          "otherProfit": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMarginTopItem": {
+        "required": [
+          "cumulativeProfitSharePercent",
+          "kind",
+          "metrics",
+          "productCount",
+          "profit",
+          "profitSharePercent"
+        ],
+        "type": "object",
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimension": {
+            "$ref": "#/components/schemas/ProductDimension"
+          },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double",
+              "nullable": true
+            },
+            "nullable": true
+          },
+          "profit": {
+            "type": "number",
+            "format": "double"
+          },
+          "profitSharePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "cumulativeProfitSharePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "productCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMarginTopRequest": {
+        "required": [
+          "dateFrom",
+          "dateTo"
+        ],
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ReportingMode"
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceKey"
+            },
+            "nullable": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticsFilters"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "includeOthers": {
+            "type": "boolean"
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMarginTopResponse": {
+        "required": [
+          "items",
+          "meta",
+          "query",
+          "scope",
+          "summary"
+        ],
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScope"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QueryContext"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ProductMarginTopSummary"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductMarginTopItem"
+            },
+            "nullable": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductMarginTopSummary": {
+        "required": [
+          "otherProducts",
+          "otherProfit",
+          "returnedProducts",
+          "returnedProfit",
+          "totalProducts",
+          "totalProfit"
+        ],
+        "type": "object",
+        "properties": {
+          "totalProducts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "returnedProducts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "otherProducts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalProfit": {
+            "type": "number",
+            "format": "double"
+          },
+          "returnedProfit": {
+            "type": "number",
+            "format": "double"
+          },
+          "otherProfit": {
+            "type": "number",
+            "format": "double"
           }
         },
         "additionalProperties": false

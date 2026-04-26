@@ -835,7 +835,7 @@ function ProfileTab({
 }
 
 function ShopsTab({ isLoading }: { isLoading: boolean }) {
-  const { session, connections, syncRuns, selectedOrganizationId, validateConnection, enqueueSync, connectShop } = usePlatform();
+  const { session, connections, connectors, syncRuns, selectedOrganizationId, validateConnection, enqueueSync, connectShop } = usePlatform();
   const shops = connections.filter(connection => connection.organizationId === selectedOrganizationId);
   const defaultDateTo = new Date().toISOString().slice(0, 10);
   const defaultDateFrom = new Date(Date.now() - 13 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -879,6 +879,29 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
     setSyncDateError(null);
   };
 
+  const getSupportedSyncKinds = (marketplaceName: 'Wildberries' | 'Ozon') => {
+    const connectorKinds = connectors.find(connector => connector.marketplace === marketplaceName)?.supportedSyncKinds ?? [];
+    if (connectorKinds.length > 0) {
+      return connectorKinds;
+    }
+
+    return marketplaceName === 'Ozon'
+      ? [
+          'catalog',
+          'postings',
+          'finance',
+          'storage',
+          'returns',
+          'stocks',
+          'analytics',
+          'performanceProducts',
+          'performanceOrders',
+          'performancePhrases',
+          'performanceExternalTraffic',
+        ]
+      : ['catalog', 'orders', 'sales', 'stocks', 'finance'];
+  };
+
   const submitSync = (marketplaceName: 'Wildberries' | 'Ozon') => {
     if (!syncShopId) return;
     if (!syncDateFrom || !syncDateTo) {
@@ -894,7 +917,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
       connectionId: syncShopId,
       dateFrom: syncDateFrom,
       dateTo: syncDateTo,
-      syncKinds: marketplaceName === 'Ozon' ? ['postings', 'finance', 'returns', 'stocks'] : ['orders', 'sales', 'stocks', 'finance'],
+      syncKinds: getSupportedSyncKinds(marketplaceName),
     });
     closeSyncModal();
   };
@@ -1126,10 +1149,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                           : { apiToken: apiToken.trim() },
                       startInitialSync,
                       initialSyncDays: 14,
-                      initialSyncKinds:
-                        marketplace === 'Ozon'
-                          ? ['postings', 'finance', 'returns', 'stocks']
-                          : ['orders', 'sales', 'stocks', 'finance'],
+                      initialSyncKinds: getSupportedSyncKinds(marketplace),
                     });
                     setConnectNotice(`Подключение ${displayName.trim() || marketplace} отправлено в API.`);
                     setIsConnectFormOpen(false);

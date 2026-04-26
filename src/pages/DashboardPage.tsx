@@ -8,12 +8,51 @@ import { useProductReportingData } from '../hooks/useProductReportingData';
 import { MarketplaceBadge } from '../components/common/MarketplaceIcon';
 import { MetricCard } from '../components/dashboard/MetricCard';
 import { buildMetricValue, formatCurrency, formatNumber, sumRecords } from '../lib/calculations';
-import { Activity, ArrowDownWideNarrow, ArrowUpWideNarrow, ChevronDown, ChevronLeft, ChevronRight, GripVertical, Info, Search, Settings2, TrendingUp, X } from 'lucide-react';
+import { Activity, ArrowDownWideNarrow, ArrowUpWideNarrow, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, GripVertical, Info, Search, Settings2, TrendingUp, X } from 'lucide-react';
 import type { DashboardMetrics, MetricValue, Product, SalesRecord } from '../types';
 
 const WIDGET_PROFILES_STORAGE_KEY = 'dashboard-widget-profiles';
 const DEFAULT_WIDGET_PROFILE_ID = 'default-profile';
 const CUSTOM_METRICS_STORAGE_KEY = 'dashboard-custom-metrics';
+const DEFAULT_PRODUCT_METRIC_WIDGET_ORDER = [
+  'metric-total-paid',
+  'metric-profit',
+  'metric-profit-without-expense',
+  'metric-sales',
+  'metric-revenue',
+  'metric-wb-final-reward',
+  'metric-orders',
+  'metric-buyout-rate',
+  'metric-logistics',
+  'metric-ads-drr',
+  'metric-storage',
+  'metric-acceptance',
+  'metric-other-deduction',
+  'metric-roi',
+  'metric-cogs',
+  'metric-operating-expense',
+  'metric-taxes',
+  'metric-tax-base',
+  'metric-commission',
+  'metric-average-price-before-spp',
+  'metric-capitalization-cost',
+  'metric-capitalization-price',
+  'metric-stock-balance',
+  'metric-user-warehouse-stock',
+  'metric-user-warehouse-capitalization',
+  'metric-gmroi',
+  'metric-gmroi-year',
+  'metric-fines',
+  'metric-compensation',
+  'metric-average-price',
+  'metric-average-logistics-cost',
+  'metric-profit-per-unit',
+  'metric-ads-drr-orders',
+  'metric-returns',
+  'metric-sales-turnover',
+  'metric-orders-turnover',
+  'metric-sales-units',
+] as const;
 
 const AVAILABLE_FORMULA_METRICS = [
   { label: 'Средняя цена продажи', value: 'averagePriceAfterSPP' },
@@ -115,6 +154,9 @@ interface MarginLeaderboardRow {
   revenue: number;
   profit: number;
   margin: number;
+  profitSharePercent?: number;
+  kind?: string;
+  productCount?: number;
 }
 
 interface RevenueStructureRow {
@@ -156,14 +198,7 @@ function buildApiMetricValue(
   };
 }
 
-function formatUpdatedAt(value?: string | null) {
-  if (!value) return '\u2014';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('ru-RU');
-}
-
-const TOP_MARGIN_OPTIONS = [10, 50, 100] as const;
+const TOP_MARGIN_OPTIONS = [5, 10, 50] as const;
 const ANALYTICS_TABLE_SETTINGS_KEY = 'dashboard-analytics-table-settings';
 const FINANCIAL_TOTAL_PAID_WIDGET_ID = 'metric-total-paid';
 const EMPTY_METRIC_VALUE: MetricValue = { current: 0, previous: 0, delta: 0, deltaPercent: 0, trend: 'neutral', sparkline: [] };
@@ -373,7 +408,14 @@ export function DashboardPage() {
     includeBreakdown: false,
     includeExplanation: false,
   });
-  const productReportingData = useProductReportingData({ accountIds: analytics.accountIds });
+  const [articleMarginLimit, setArticleMarginLimit] = useState<number | 'all'>(10);
+  const [categoryMarginLimit, setCategoryMarginLimit] = useState<number | 'all'>(10);
+  const productReportingData = useProductReportingData({
+    accountIds: analytics.accountIds,
+    limit: 100,
+    marginProductLimit: articleMarginLimit === 'all' ? 0 : articleMarginLimit,
+    marginCategoryLimit: categoryMarginLimit === 'all' ? 0 : categoryMarginLimit,
+  });
   const reportingSummaryMetrics = useMemo<Record<string, number | null> | null>(() => {
     const workspaceSummary = analytics.summary?.metrics ?? null;
     const productsSummary = productReportingData.overview?.summary ?? null;
@@ -482,12 +524,14 @@ export function DashboardPage() {
       (salesUnitsPrevious > 0 ? profitPrevious / salesUnitsPrevious : profitPerUnitCurrent);
     const stockBalanceCurrent = Number(summaryMetrics?.stockBalance ?? summaryMetrics?.stock ?? productMetricTotals.stockBalance);
     const stockBalancePrevious = Number(comparisons?.stockBalance?.previous ?? stockBalanceCurrent);
+    const stockBalanceOverallCurrent = Number(summaryMetrics?.stockBalanceOverall ?? stockBalanceCurrent);
+    const stockBalanceOverallPrevious = Number(comparisons?.stockBalanceOverall?.previous ?? stockBalanceOverallCurrent);
     const inventoryValueCurrent = Number(summaryMetrics?.capitalizationByCost ?? summaryMetrics?.userWarehouseCapitalizationByCost ?? productMetricTotals.inventoryValue);
     const inventoryValuePrevious = Number(comparisons?.capitalizationByCost?.previous ?? comparisons?.userWarehouseCapitalizationByCost?.previous ?? inventoryValueCurrent);
     const avgDailySalesCurrent = salesUnitsCurrent > 0 ? salesUnitsCurrent / daysInRange : 0;
     const avgDailySalesPrevious = salesUnitsPrevious > 0 ? salesUnitsPrevious / daysInRange : 0;
-    const inventoryTurnoverCurrent = avgDailySalesCurrent > 0 ? stockBalanceCurrent / avgDailySalesCurrent : 0;
-    const inventoryTurnoverPrevious = avgDailySalesPrevious > 0 ? stockBalancePrevious / avgDailySalesPrevious : inventoryTurnoverCurrent;
+    const inventoryTurnoverCurrent = avgDailySalesCurrent > 0 ? stockBalanceOverallCurrent / avgDailySalesCurrent : 0;
+    const inventoryTurnoverPrevious = avgDailySalesPrevious > 0 ? stockBalanceOverallPrevious / avgDailySalesPrevious : inventoryTurnoverCurrent;
     const drrSummaryCurrent = findMetricNumber(summaryMetrics, ['drr', 'drrSales']);
     const drrSummaryPrevious = comparisons?.drr?.previous;
     const drrCurrent = drrSummaryCurrent ?? (revenueCurrent > 0 ? (advertisingCurrent / revenueCurrent) * 100 : 0);
@@ -529,10 +573,11 @@ export function DashboardPage() {
     };
   }, [daysInRange, productMetricTotals, reportingSummaryComparisons, reportingSummaryMetrics]);
   const hasLiveSummaryMetrics = Boolean(reportingSummaryMetrics) || productReportingData.rows.length > 0;
-  const isMetricsLoading = (analytics.loading || productReportingData.loading) && !hasLiveSummaryMetrics;
+  const isMetricsLoading = analytics.loading || productReportingData.loading;
   const showMetricPlaceholders = !isMetricsLoading && !hasLiveSummaryMetrics;
   const [isWidgetModalOpen, setIsWidgetModalOpen] = useState(false);
   const [isCreateMetricModalOpen, setIsCreateMetricModalOpen] = useState(false);
+  const [isWidgetEditMode, setIsWidgetEditMode] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [widgetSearch, setWidgetSearch] = useState('');
   const [profileName, setProfileName] = useState('');
@@ -541,11 +586,10 @@ export function DashboardPage() {
   const [metricGrowthColor, setMetricGrowthColor] = useState('');
   const [metricUnit, setMetricUnit] = useState('');
   const [editingCustomMetricId, setEditingCustomMetricId] = useState<string | null>(null);
+  const [isDeleteMetricConfirmOpen, setIsDeleteMetricConfirmOpen] = useState(false);
   const [draggedWidgetId, setDraggedWidgetId] = useState<string | null>(null);
   const [dragOverWidgetId, setDragOverWidgetId] = useState<string | null>(null);
   const [dragInsertPosition, setDragInsertPosition] = useState<'before' | 'after'>('before');
-  const [articleMarginLimit, setArticleMarginLimit] = useState<number | 'all'>(10);
-  const [categoryMarginLimit, setCategoryMarginLimit] = useState<number | 'all'>(10);
   const [customMetrics, setCustomMetrics] = useState<CustomMetric[]>(() => {
     if (typeof window === 'undefined') return [];
     try {
@@ -557,8 +601,6 @@ export function DashboardPage() {
   });
   const totalSalesCount = useMemo(() => records.reduce((s, r) => s + r.sales, 0), [records]);
   const revenueCurrent = metrics.revenue.current;
-  const productReportingMeta = productReportingData.summary?.meta ?? productReportingData.overview?.meta ?? null;
-  const productSummarySnapshot = productReportingData.summary?.metrics ?? productReportingData.overview?.summary ?? null;
   const widgetDocuments = useMemo(
     () => buildWidgetDocuments(records, revenueCurrent),
     [records, revenueCurrent]
@@ -571,209 +613,465 @@ export function DashboardPage() {
         prevRecords,
         totalValue,
         reportingSummaryMetrics,
-        reportingSummaryComparisons
+        reportingSummaryComparisons,
+        daysInRange
       ),
-    [metrics, prevRecords, records, reportingSummaryComparisons, reportingSummaryMetrics, totalValue]
+    [daysInRange, metrics, prevRecords, records, reportingSummaryComparisons, reportingSummaryMetrics, totalValue]
   );
+  const productMetricTooltips = useMemo(() => {
+    const byMetric = new Map<string, string>();
+    const byCard = new Map<string, string>();
 
-  const widgetDefs = useMemo<WidgetDefinition[]>(() => [
+    const pushUnique = (parts: string[], value?: string | null) => {
+      const normalized = value?.trim();
+      if (normalized && !parts.includes(normalized)) {
+        parts.push(normalized);
+      }
+    };
+
+    productReportingData.metricDefinitions.forEach(metric => {
+      const key = metric.key ?? metric.slug ?? metric.id ?? metric.header;
+      const hint = metric.meta?.hint ?? metric.description ?? metric.label ?? metric.header;
+      if (key && hint) {
+        byMetric.set(key, hint);
+      }
+    });
+
+    productReportingData.metricCards.forEach(card => {
+      const parts: string[] = [];
+      pushUnique(parts, card.hint);
+      [card.primaryMetric, card.secondaryMetric, card.ratioMetric].forEach(metric => pushUnique(parts, metric ? byMetric.get(metric) : null));
+      const text = parts.join('\n\n');
+      if (!text) return;
+
+      [card.id, card.title, card.primaryMetric, card.secondaryMetric, card.ratioMetric].forEach(key => {
+        if (key) {
+          byCard.set(key, text);
+        }
+      });
+    });
+
+    return { byMetric, byCard };
+  }, [productReportingData.metricCards, productReportingData.metricDefinitions]);
+
+  const widgetDefs = useMemo<WidgetDefinition[]>(() => {
+    const getFormulaMetric = (key: keyof typeof formulaMetricValues) =>
+      formulaMetricValues[key] ?? { current: 0, previous: 0 };
+    const metricValue = (key: keyof typeof formulaMetricValues) => {
+      const value = getFormulaMetric(key);
+      return buildDerivedMetricValue(value.current, value.previous);
+    };
+    const moneyShare = (key: keyof typeof formulaMetricValues) => (value: number) => {
+      const revenue = Math.max(getFormulaMetric('realisation').current, 1);
+      return `${formatCurrency(value)} / ${((getFormulaMetric(key).current / revenue) * 100).toFixed(2)}%`;
+    };
+    const moneyUnit = (key: keyof typeof formulaMetricValues) => (value: number) =>
+      `${formatCurrency(value)} / ${formatNumber(getFormulaMetric(key).current)} шт`;
+    const percent = (value: number) => `${value.toFixed(2)}%`;
+    const deltaMoney = (value: number) => `${value >= 0 ? '+' : ''}${formatCurrency(value)}`;
+    const deltaPercent = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(2)} п.п.`;
+    const tooltip = (keys: string[], fallback: string, cardKeys: string[] = []) => {
+      const parts: string[] = [];
+      const pushUnique = (value?: string) => {
+        const normalized = value?.trim();
+        if (normalized && !parts.includes(normalized)) {
+          parts.push(normalized);
+        }
+      };
+
+      [...cardKeys, ...keys].forEach(key => pushUnique(productMetricTooltips.byCard.get(key)));
+      keys.forEach(key => pushUnique(productMetricTooltips.byMetric.get(key)));
+
+      return parts.length > 0 ? parts.join('\n\n') : fallback;
+    };
+
+    return [
     {
-      id: 'metric-revenue',
-      title: 'Реализация',
-      metric: metrics.revenue,
-      format: (v: number) => formatCurrency(v),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
-      description: 'Выручка за период',
+      id: FINANCIAL_TOTAL_PAID_WIDGET_ID,
+      title: 'Итого к оплате',
+      metric: metricValue('totalPaid'),
+      format: formatCurrency,
+      formatDelta: deltaMoney,
+      description: 'Итого к оплате, ₽',
+      faq: tooltip(['totalPaid'], 'Итого к оплате, ₽', [FINANCIAL_TOTAL_PAID_WIDGET_ID]),
       section: 'metrics',
-      faq: 'Сумма фактической выручки за выбранный период после применения текущих фильтров.',
     },
     {
-      id: 'metric-orders',
-      title: 'Заказы',
-      metric: buildDerivedMetricValue(
-        Number(reportingSummaryMetrics?.orders ?? metrics.revenue.current),
-        Number(reportingSummaryComparisons?.orders?.previous ?? reportingSummaryMetrics?.orders ?? metrics.revenue.previous)
-      ),
-      format: (v: number) => `${formatCurrency(v)} / ${formatNumber(metrics.orders.current)} шт`,
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
-      description: 'Сумма заказов / количество',
+      id: 'metric-profit',
+      title: 'Чистая прибыль',
+      metric: metricValue('profit'),
+      format: (v: number) => `${formatCurrency(v)} / ${formulaMetricValues.profitability.current.toFixed(2)}%`,
+      formatDelta: deltaMoney,
+      description: 'Чистая прибыль/Марж-cть, ₽/%',
+      faq: tooltip(['profit', 'profitability'], 'Чистая прибыль/Марж-cть, ₽/%'),
       section: 'metrics',
-      faq: 'Все оформленные заказы в выбранном периоде, даже если часть из них позже была отменена или возвращена.',
+    },
+    {
+      id: 'metric-profit-without-expense',
+      title: 'Прибыль без опер. расх.',
+      metric: metricValue('profitWithoutExpense'),
+      format: (v: number) => `${formatCurrency(v)} / ${formulaMetricValues.marginalityWithoutExpense.current.toFixed(2)}%`,
+      formatDelta: deltaMoney,
+      description: 'Прибыль/Марж. без опер. расх., ₽/%',
+      faq: tooltip(['profitWithoutExpense', 'marginalityWithoutExpense'], 'Прибыль/Марж. без опер. расх., ₽/%'),
+      section: 'metrics',
     },
     {
       id: 'metric-sales',
       title: 'Продажи',
-      metric: buildDerivedMetricValue(
-        Number(reportingSummaryMetrics?.sales ?? reportingSummaryMetrics?.totalSales ?? metrics.revenue.current),
-        Number(reportingSummaryComparisons?.sales?.previous ?? reportingSummaryComparisons?.totalSales?.previous ?? reportingSummaryMetrics?.sales ?? metrics.revenue.previous)
-      ),
-      format: (v: number) => `${formatCurrency(v)} / ${formatNumber(metrics.sales.current)} шт`,
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
-      description: 'Сумма продаж / выкупленные единицы',
+      metric: metricValue('totalSalesAmount'),
+      format: moneyUnit('sales'),
+      formatDelta: deltaMoney,
+      description: 'Продажи, ₽/шт',
+      faq: tooltip(['sales', 'salesCount', 'totalSales'], 'Продажи, ₽/шт'),
       section: 'metrics',
-      faq: 'Фактически выкупленные единицы товара без отмен и возвратов.',
     },
     {
-      id: 'metric-profit',
-      title: 'Чистая прибыль / Марж-сть',
-      metric: metrics.profit,
-      format: (v: number) => formatCurrency(v),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
-      description: 'После всех вычетов',
+      id: 'metric-revenue',
+      title: 'Реализация',
+      metric: metricValue('realisation'),
+      format: formatCurrency,
+      formatDelta: deltaMoney,
+      description: 'Реализация, ₽',
+      faq: tooltip(['realisation'], 'Реализация, ₽'),
       section: 'metrics',
-      faq: 'Выручка за минусом логистики, рекламы, комиссии, хранения, налогов и прочих расходов.',
     },
     {
-      id: FINANCIAL_TOTAL_PAID_WIDGET_ID,
-      title: 'Итого к оплате',
-      metric: buildDerivedMetricValue(formulaMetricValues.totalPaid.current, formulaMetricValues.totalPaid.previous),
-      format: (v: number) => formatCurrency(v),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
-      description: 'Сумма к перечислению на расчетный счет',
+      id: 'metric-wb-final-reward',
+      title: 'Вознаграждение ВБ',
+      metric: metricValue('wbFinalReward'),
+      format: formatCurrency,
+      formatDelta: deltaMoney,
+      invertColors: true,
+      description: 'Итоговое вознаграждение ВБ, ₽',
+      faq: tooltip(['netMarketplaceReward'], 'Итоговое вознаграждение ВБ, ₽'),
       section: 'metrics',
-      faq: 'Сумма, которую селлер получит на расчетный счет от маркетплейса в режиме финансовой отчетности.',
     },
     {
-      id: 'metric-roi',
-      title: 'ROI',
-      metric: metrics.roi,
-      format: (v: number) => `${v.toFixed(1)}%`,
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)} п.п.`,
-      description: 'Возврат на инвестиции',
+      id: 'metric-orders',
+      title: 'Заказы',
+      metric: metricValue('orders'),
+      format: moneyUnit('ordersCount'),
+      formatDelta: deltaMoney,
+      description: 'Заказы, ₽/шт',
+      faq: tooltip(['orders', 'ordersCount'], 'Заказы, ₽/шт'),
       section: 'metrics',
-      faq: 'Отношение прибыли к расходам. Помогает быстро оценить окупаемость вложений.',
     },
     {
       id: 'metric-buyout-rate',
-      title: '% Выкупа',
-      metric: metrics.buyoutRate,
-      format: (v: number) => `${v.toFixed(1)}%`,
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)} п.п.`,
-      description: 'Выкуп / Заказы',
+      title: '% выкупа',
+      metric: metricValue('averageRedemption'),
+      format: percent,
+      formatDelta: deltaPercent,
+      description: 'Процент выкупа, %',
+      faq: tooltip(['averageRedemption'], 'Процент выкупа, %'),
       section: 'metrics',
-      faq: 'Доля заказов, которые дошли до фактического выкупа.',
     },
     {
       id: 'metric-logistics',
       title: 'Логистика',
-      metric: metrics.logisticsCost,
-      format: (v: number) => formatCurrency(v),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
+      metric: metricValue('logistics'),
+      format: moneyShare('logistics'),
+      formatDelta: deltaMoney,
       invertColors: true,
-      description: 'Стоимость доставки',
+      description: 'Логистика, ₽/%',
+      faq: tooltip(['logistics'], 'Логистика, ₽/%'),
       section: 'metrics',
-      faq: 'Включает прямую логистику до клиента, удержания при отменах и возвратные логистические документы.',
       documents: widgetDocuments.logistics,
     },
     {
-      id: 'metric-drr',
+      id: 'metric-ads-drr',
       title: 'Реклама / ДРР',
-      metric: metrics.drr,
-      format: (v: number) => `${v.toFixed(1)}%`,
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)} п.п.`,
+      metric: metricValue('advertisingExpense'),
+      format: (v: number) => `${formatCurrency(v)} / ${formulaMetricValues.drr.current.toFixed(2)}%`,
+      formatDelta: deltaMoney,
       invertColors: true,
-      description: 'Доля рекламных расходов',
+      description: 'Реклама / ДРР, ₽/%',
+      faq: tooltip(['advertisingExpense', 'drr'], 'Реклама / ДРР, ₽/%'),
       section: 'metrics',
-      faq: 'Показывает, какую долю выручки съедает реклама.',
-    },
-    {
-      id: 'metric-ads',
-      title: 'Реклама',
-      metric: metrics.adsSpend,
-      format: (v: number) => formatCurrency(v),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
-      invertColors: true,
-      description: 'Рекламный бюджет',
-      section: 'metrics',
-      faq: 'Суммарные рекламные списания по внутренним инструментам продвижения маркетплейсов.',
       documents: widgetDocuments.ads,
-    },
-    {
-      id: 'metric-commission',
-      title: 'Комиссия',
-      metric: metrics.commission,
-      format: (v: number) => formatCurrency(v),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
-      invertColors: true,
-      description: 'Комиссия маркетплейса',
-      section: 'metrics',
-      faq: 'Комиссия площадки за продажу и обработку платежей по выбранным товарам.',
-      documents: widgetDocuments.commission,
     },
     {
       id: 'metric-storage',
       title: 'Хранение',
-      metric: metrics.storageCost,
-      format: (v: number) => formatCurrency(v),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
+      metric: metricValue('storage'),
+      format: moneyShare('storage'),
+      formatDelta: deltaMoney,
       invertColors: true,
-      description: 'Стоимость хранения',
+      description: 'Хранение, ₽/%',
+      faq: tooltip(['storage'], 'Хранение, ₽/%'),
       section: 'metrics',
-      faq: 'Складские удержания маркетплейса за хранение, обработку и сопутствующие услуги.',
       documents: widgetDocuments.storage,
+    },
+    {
+      id: 'metric-acceptance',
+      title: 'Плат. приемка',
+      metric: metricValue('acceptanceSum'),
+      format: moneyShare('acceptanceSum'),
+      formatDelta: deltaMoney,
+      invertColors: true,
+      description: 'Плат. приемка, ₽/%',
+      faq: tooltip(['acceptanceSum'], 'Плат. приемка, ₽/%'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-other-deduction',
+      title: 'Прочие удерж.',
+      metric: metricValue('otherDeduction'),
+      format: moneyShare('otherDeduction'),
+      formatDelta: deltaMoney,
+      invertColors: true,
+      description: 'Прочие удержания, ₽/%',
+      faq: tooltip(['otherDeduction'], 'Прочие удержания, ₽/%'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-roi',
+      title: 'ROI',
+      metric: metricValue('roi'),
+      format: percent,
+      formatDelta: deltaPercent,
+      description: 'ROI, %',
+      faq: tooltip(['roi'], 'ROI, %'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-cogs',
+      title: 'Себестоимость продаж',
+      metric: metricValue('costOfSales'),
+      format: moneyShare('costOfSales'),
+      formatDelta: deltaMoney,
+      invertColors: true,
+      description: 'Себестоимость продаж, ₽/%',
+      faq: tooltip(['costOfSales'], 'Себестоимость продаж, ₽/%'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-operating-expense',
+      title: 'Операционные расходы',
+      metric: metricValue('expense'),
+      format: moneyShare('expense'),
+      formatDelta: deltaMoney,
+      invertColors: true,
+      description: 'Операционные расходы, ₽/%',
+      faq: tooltip(['expense', 'operatingExpense'], 'Операционные расходы, ₽/%'),
+      section: 'metrics',
     },
     {
       id: 'metric-taxes',
       title: 'Налоги',
-      metric: metrics.taxes,
-      format: (v: number) => formatCurrency(v),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
+      metric: metricValue('tax'),
+      format: moneyShare('tax'),
+      formatDelta: deltaMoney,
       invertColors: true,
-      description: '6% от выручки',
+      description: 'Налоги, ₽/%',
+      faq: tooltip(['tax'], 'Налоги, ₽/%'),
       section: 'metrics',
-      faq: 'Расчётный налог по ставке 6% от выручки.',
+    },
+    {
+      id: 'metric-tax-base',
+      title: 'Налоговая база',
+      metric: metricValue('taxBase'),
+      format: formatCurrency,
+      formatDelta: deltaMoney,
+      description: 'Налоговая База, ₽',
+      faq: tooltip(['taxBase'], 'Налоговая База, ₽'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-commission',
+      title: 'Комиссия',
+      metric: metricValue('commission'),
+      format: moneyShare('commission'),
+      formatDelta: deltaMoney,
+      invertColors: true,
+      description: 'Комиссия, ₽/%',
+      faq: tooltip(['commission'], 'Комиссия, ₽/%'),
+      section: 'metrics',
+      documents: widgetDocuments.commission,
+    },
+    {
+      id: 'metric-average-price-before-spp',
+      title: 'Цена до скидок МП',
+      metric: metricValue('averagePriceBeforeSPP'),
+      format: formatCurrency,
+      formatDelta: deltaMoney,
+      description: 'Сред. цена до скидок МП, ₽',
+      faq: tooltip(['averagePriceBeforeSPP'], 'Сред. цена до скидок МП, ₽'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-capitalization-cost',
+      title: 'Капитализация себес.',
+      metric: metricValue('capitalizationByCost'),
+      format: formatCurrency,
+      formatDelta: deltaMoney,
+      description: 'Капитализация по себес., ₽',
+      faq: tooltip(['capitalizationByCost'], 'Капитализация по себес., ₽'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-capitalization-price',
+      title: 'Капитализация розн.',
+      metric: metricValue('capitalizationByPrice'),
+      format: formatCurrency,
+      formatDelta: deltaMoney,
+      description: 'Капитализация по розн., ₽',
+      faq: tooltip(['capitalizationByPrice'], 'Капитализация по розн., ₽'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-stock-balance',
+      title: 'Остатки',
+      metric: metricValue('stockBalance'),
+      format: formatNumber,
+      description: 'Остатки, шт',
+      faq: tooltip(['stockBalance', 'stockBalanceOverall'], 'Остатки, шт'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-user-warehouse-stock',
+      title: 'Мои склады',
+      metric: metricValue('userWarehouseStockBalance'),
+      format: formatNumber,
+      description: 'Остатки на моих складах, шт',
+      faq: tooltip(['userWarehouseStockBalance'], 'Остатки на моих складах, шт'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-user-warehouse-capitalization',
+      title: 'Капитализ. моих складов',
+      metric: metricValue('userWarehouseCapitalizationByCost'),
+      format: formatCurrency,
+      formatDelta: deltaMoney,
+      description: 'Капитализ. на моих складах, ₽',
+      faq: tooltip(['userWarehouseCapitalizationByCost'], 'Капитализ. на моих складах, ₽'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-gmroi',
+      title: 'GMROI',
+      metric: metricValue('gmroi'),
+      format: percent,
+      formatDelta: deltaPercent,
+      description: 'GMROI, %',
+      faq: tooltip(['gmroi'], 'GMROI, %'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-gmroi-year',
+      title: 'Годовой GMROI',
+      metric: metricValue('gmroiYear'),
+      format: percent,
+      formatDelta: deltaPercent,
+      description: 'Годовой GMROI, %',
+      faq: tooltip(['gmroiYear'], 'Годовой GMROI, %'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-fines',
+      title: 'Штрафы',
+      metric: metricValue('fines'),
+      format: moneyShare('fines'),
+      formatDelta: deltaMoney,
+      invertColors: true,
+      description: 'Штрафы, ₽/%',
+      faq: tooltip(['fines'], 'Штрафы, ₽/%'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-compensation',
+      title: 'Компенсации',
+      metric: metricValue('compensation'),
+      format: moneyShare('compensation'),
+      formatDelta: deltaMoney,
+      description: 'Компенсации, ₽/%',
+      faq: tooltip(['compensation'], 'Компенсации, ₽/%'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-average-price',
+      title: 'Сред. цена продажи',
+      metric: metricValue('averagePriceAfterSPP'),
+      format: formatCurrency,
+      formatDelta: deltaMoney,
+      description: 'Сред. цена продажи, ₽',
+      faq: tooltip(['averagePriceAfterSPP'], 'Сред. цена продажи, ₽'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-average-logistics-cost',
+      title: 'Логистика / шт.',
+      metric: metricValue('averageLogisticsCost'),
+      format: formatCurrency,
+      formatDelta: deltaMoney,
+      invertColors: true,
+      description: 'Ср. стоимость логистики на 1 шт., ₽',
+      faq: tooltip(['averageLogisticsCost'], 'Ср. стоимость логистики на 1 шт., ₽'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-profit-per-unit',
+      title: 'Прибыль / шт.',
+      metric: metricValue('averageProfitPerPiece'),
+      format: formatCurrency,
+      formatDelta: deltaMoney,
+      description: 'Средняя прибыль на 1 шт., ₽',
+      faq: tooltip(['averageProfitPerPiece'], 'Средняя прибыль на 1 шт., ₽'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-ads-drr-orders',
+      title: 'Реклама / ДРРз',
+      metric: metricValue('advertisingExpense'),
+      format: (v: number) => `${formatCurrency(v)} / ${formulaMetricValues.drrz.current.toFixed(2)}%`,
+      formatDelta: deltaMoney,
+      invertColors: true,
+      description: 'Реклама/ДРРз, ₽/%',
+      faq: tooltip(['advertisingExpense', 'drrByOrders'], 'Реклама/ДРРз, ₽/%'),
+      section: 'metrics',
     },
     {
       id: 'metric-returns',
       title: 'Возвраты',
-      metric: metrics.returns,
-      format: (v: number) => formatNumber(v),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatNumber(v)}`,
+      metric: metricValue('returns'),
+      format: (v: number) => `${formatCurrency(v)} / ${formatNumber(formulaMetricValues.rejectionsAndReturns.current)} шт`,
+      formatDelta: deltaMoney,
       invertColors: true,
-      description: 'Количество возвратов',
+      description: 'Возвраты, ₽/шт',
+      faq: tooltip(['returns', 'returnsCount', 'returnsUnits'], 'Возвраты, ₽/шт'),
       section: 'metrics',
-      faq: 'Количество возвращённых единиц по всем заказам в выбранном периоде.',
     },
     {
-      id: 'metric-average-price',
-      title: 'Средняя цена',
-      metric: metrics.avgSalePrice,
-      format: (v: number) => formatCurrency(v),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
-      description: 'Средняя цена продажи',
-      section: 'metrics',
-      faq: 'Средняя фактическая цена продажи одной единицы товара.',
-    },
-    {
-      id: 'metric-profit-per-unit',
-      title: 'Прибыль / ед.',
-      metric: metrics.profitPerUnit,
-      format: (v: number) => formatCurrency(v),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
-      description: 'Чистая прибыль на единицу',
-      section: 'metrics',
-      faq: 'Средняя чистая прибыль, приходящаяся на одну проданную единицу товара.',
-    },
-    {
-      id: 'metric-inventory-value',
-      title: 'Стоимость склада',
-      metric: metrics.inventoryValue,
-      format: (v: number) => formatCurrency(v),
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`,
-      description: 'Текущий остаток × себестоимость',
-      section: 'metrics',
-      faq: 'Оценка стоимости текущих остатков по закупочной себестоимости.',
-    },
-    {
-      id: 'metric-inventory-turnover',
-      title: 'Оборачиваемость',
-      metric: metrics.inventoryTurnover,
-      format: (v: number) => `${v.toFixed(1)} дн`,
-      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)} дн`,
+      id: 'metric-sales-turnover',
+      title: 'Оборач. по продажам',
+      metric: metricValue('salesTurnover'),
+      format: (v: number) => `${v.toFixed(2)} Дн.`,
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)} Дн.`,
       invertColors: true,
-      description: 'Дней до обнуления склада',
+      description: 'Оборачиваемость по прод., Дн.',
+      faq: tooltip(['salesTurnover'], 'Оборачиваемость по прод., Дн.'),
       section: 'metrics',
-      faq: 'Прогноз количества дней до распродажи текущего остатка при текущем темпе продаж.',
+    },
+    {
+      id: 'metric-orders-turnover',
+      title: 'Оборач. по заказам',
+      metric: metricValue('ordersTurnover'),
+      format: (v: number) => `${v.toFixed(2)} Дн.`,
+      formatDelta: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)} Дн.`,
+      invertColors: true,
+      description: 'Оборачиваемость по зак., Дн.',
+      faq: tooltip(['ordersTurnover'], 'Оборачиваемость по зак., Дн.'),
+      section: 'metrics',
+    },
+    {
+      id: 'metric-sales-units',
+      title: 'Продажи, шт.',
+      metric: metricValue('sales'),
+      format: formatNumber,
+      description: 'Продажи в штуках, шт',
+      faq: tooltip(['salesCount'], 'Продажи в штуках, шт'),
+      section: 'metrics',
     },
     {
       id: 'detail-cost-breakdown',
@@ -802,17 +1100,23 @@ export function DashboardPage() {
         customMetricId: customMetric.id,
       };
     }),
-  ], [metrics, widgetDocuments, customMetrics, formulaMetricValues]);
+  ];
+  }, [widgetDocuments, customMetrics, formulaMetricValues, productMetricTooltips]);
 
   const availableWidgetDefs = useMemo(
-    () =>
-      widgetDefs.filter(widget =>
-        reportMode === 'financial' ? true : widget.id !== FINANCIAL_TOTAL_PAID_WIDGET_ID
-      ),
-    [reportMode, widgetDefs]
+    () => widgetDefs,
+    [widgetDefs]
   );
-  const defaultWidgetIds = useMemo(() => availableWidgetDefs.map(widget => widget.id), [availableWidgetDefs]);
+  const defaultWidgetIds = useMemo(() => {
+    const availableIds = new Set(availableWidgetDefs.map(widget => widget.id));
+    const orderedDefaults = DEFAULT_PRODUCT_METRIC_WIDGET_ORDER.filter(id => availableIds.has(id));
+    const remainingIds = availableWidgetDefs
+      .map(widget => widget.id)
+      .filter(id => !orderedDefaults.includes(id as typeof DEFAULT_PRODUCT_METRIC_WIDGET_ORDER[number]));
+    return [...orderedDefaults, ...remainingIds];
+  }, [availableWidgetDefs]);
   const [selectedWidgetIds, setSelectedWidgetIds] = useState<string[]>(defaultWidgetIds);
+  const [hiddenMetricWidgetIds, setHiddenMetricWidgetIds] = useState<string[]>([]);
   const [draftWidgetIds, setDraftWidgetIds] = useState<string[]>(defaultWidgetIds);
   const [profiles, setProfiles] = useState<WidgetProfile[]>(() => {
     if (typeof window === 'undefined') return [];
@@ -830,6 +1134,7 @@ export function DashboardPage() {
     setSelectedWidgetIds(current =>
       current.length > 0 ? current.filter(id => defaultWidgetIds.includes(id)) : defaultWidgetIds
     );
+    setHiddenMetricWidgetIds(current => current.filter(id => defaultWidgetIds.includes(id)));
     setDraftWidgetIds(current =>
       current.length > 0 ? current.filter(id => defaultWidgetIds.includes(id)) : defaultWidgetIds
     );
@@ -885,27 +1190,54 @@ export function DashboardPage() {
   }, [isProfileMenuOpen]);
 
   const orderedSelectedWidgetIds = selectedWidgetIds.filter(id =>
-    availableWidgetDefs.some(widget => widget.id === id)
+    availableWidgetDefs.some(widget => widget.id === id) && !hiddenMetricWidgetIds.includes(id)
   );
   const visibleMetricDefs = orderedSelectedWidgetIds
     .map(id => availableWidgetDefs.find(widget => widget.id === id && widget.section === 'metrics'))
     .filter((widget): widget is WidgetDefinition => Boolean(widget));
+  const metricWidgetDefs = useMemo(
+    () => availableWidgetDefs.filter(widget => widget.section === 'metrics'),
+    [availableWidgetDefs]
+  );
+  const editableMetricDefs = useMemo(
+    () => orderWidgetDefinitions(metricWidgetDefs, selectedWidgetIds),
+    [metricWidgetDefs, selectedWidgetIds]
+  );
   const apiAnalyticsRows = useMemo(
     () => buildAnalyticsRowsFromApi(productReportingData.rows),
     [productReportingData.rows]
   );
   const topMarginArticles = useMemo(
-    () => (apiAnalyticsRows.length > 0 ? buildTopMarginArticlesFromApi(apiAnalyticsRows) : buildTopMarginArticles(records, products)),
-    [apiAnalyticsRows, products, records]
+    () =>
+      productReportingData.marginTop
+        ? buildMarginLeaderboardRowsFromApi(productReportingData.marginTop, 'product')
+        : apiAnalyticsRows.length > 0
+          ? buildTopMarginArticlesFromApi(apiAnalyticsRows)
+          : buildTopMarginArticles(records, products),
+    [apiAnalyticsRows, productReportingData.marginTop, products, records]
   );
   const topMarginCategories = useMemo(
-    () => (apiAnalyticsRows.length > 0 ? buildTopMarginCategoriesFromApi(apiAnalyticsRows) : buildTopMarginCategories(records, products)),
-    [apiAnalyticsRows, products, records]
+    () =>
+      productReportingData.marginCategories
+        ? buildMarginLeaderboardRowsFromApi(productReportingData.marginCategories, 'category')
+        : apiAnalyticsRows.length > 0
+          ? buildTopMarginCategoriesFromApi(apiAnalyticsRows)
+          : buildTopMarginCategories(records, products),
+    [apiAnalyticsRows, productReportingData.marginCategories, products, records]
   );
   const visibleTopMarginArticles =
-    articleMarginLimit === 'all' ? topMarginArticles : topMarginArticles.slice(0, articleMarginLimit);
+    productReportingData.marginTop || articleMarginLimit === 'all' ? topMarginArticles : topMarginArticles.slice(0, articleMarginLimit);
   const visibleTopMarginCategories =
-    categoryMarginLimit === 'all' ? topMarginCategories : topMarginCategories.slice(0, categoryMarginLimit);
+    productReportingData.marginCategories || categoryMarginLimit === 'all' ? topMarginCategories : topMarginCategories.slice(0, categoryMarginLimit);
+  const totalMarginProfit = Math.max(Number(reportingSummaryMetrics?.profit ?? productMetricTotals.profit), 0);
+  const articleMarginRemainder = useMemo(
+    () => buildMarginLeaderboardRemainder(topMarginArticles, visibleTopMarginArticles.length, totalMarginProfit, productReportingData.marginTop),
+    [productReportingData.marginTop, topMarginArticles, totalMarginProfit, visibleTopMarginArticles.length]
+  );
+  const categoryMarginRemainder = useMemo(
+    () => buildMarginLeaderboardRemainder(topMarginCategories, visibleTopMarginCategories.length, totalMarginProfit, productReportingData.marginCategories),
+    [productReportingData.marginCategories, topMarginCategories, totalMarginProfit, visibleTopMarginCategories.length]
+  );
   const revenueStructureItems = useMemo(
     () => {
       if (productReportingData.overview?.summary) {
@@ -923,12 +1255,12 @@ export function DashboardPage() {
   });
 
   const openWidgetModal = useCallback(() => {
-    setDraftWidgetIds(selectedWidgetIds);
+    setDraftWidgetIds(selectedWidgetIds.filter(id => !hiddenMetricWidgetIds.includes(id)));
     setSelectedProfileId(DEFAULT_WIDGET_PROFILE_ID);
     setWidgetSearch('');
     setProfileName('');
     setIsWidgetModalOpen(true);
-  }, [selectedWidgetIds]);
+  }, [hiddenMetricWidgetIds, selectedWidgetIds]);
 
   const closeWidgetModal = useCallback(() => {
     setIsWidgetModalOpen(false);
@@ -943,6 +1275,7 @@ export function DashboardPage() {
 
   const closeCreateMetricModal = useCallback(() => {
     setIsCreateMetricModalOpen(false);
+    setIsDeleteMetricConfirmOpen(false);
     setEditingCustomMetricId(null);
     setMetricName('');
     setMetricFormula('');
@@ -1013,6 +1346,40 @@ export function DashboardPage() {
     });
   };
 
+  const toggleSelectedWidget = (widgetId: string) => {
+    if (!selectedWidgetIds.includes(widgetId)) {
+      setSelectedWidgetIds(current => [...current, widgetId]);
+      setHiddenMetricWidgetIds(current => current.filter(id => id !== widgetId));
+      return;
+    }
+
+    setHiddenMetricWidgetIds(current =>
+      current.includes(widgetId) ? current.filter(id => id !== widgetId) : [...current, widgetId]
+    );
+  };
+
+  const moveSelectedWidget = (
+    draggedId: string,
+    targetId: string,
+    position: 'before' | 'after' = 'before'
+  ) => {
+    if (draggedId === targetId) return;
+
+    setSelectedWidgetIds(current => {
+      if (!current.includes(draggedId) || !current.includes(targetId)) {
+        return current;
+      }
+
+      const next = [...current];
+      const fromIndex = next.indexOf(draggedId);
+      next.splice(fromIndex, 1);
+      const targetIndex = next.indexOf(targetId);
+      const insertIndex = position === 'after' ? targetIndex + 1 : targetIndex;
+      next.splice(insertIndex, 0, draggedId);
+      return next;
+    });
+  };
+
   const applyProfile = (profile: WidgetProfile | null) => {
     if (!profile) {
       setDraftWidgetIds(defaultWidgetIds);
@@ -1067,6 +1434,17 @@ export function DashboardPage() {
     closeCreateMetricModal();
   };
 
+  const deleteCustomMetric = () => {
+    if (!editingCustomMetricId) return;
+
+    setCustomMetrics(current => current.filter(metric => metric.id !== editingCustomMetricId));
+    setSelectedWidgetIds(current => current.filter(id => id !== editingCustomMetricId));
+    setDraftWidgetIds(current => current.filter(id => id !== editingCustomMetricId));
+    closeCreateMetricModal();
+  };
+
+  const metricPendingDeletion = customMetrics.find(metric => metric.id === editingCustomMetricId);
+
   return (
     <div className="p-6">
       <div className="flex items-start justify-between gap-4 mb-6">
@@ -1076,142 +1454,6 @@ export function DashboardPage() {
           </h1>
         </div>
       </div>
-
-      <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold text-slate-900">Live API snapshot</div>
-            <p className="mt-1 text-sm text-slate-500">Backend summary for the selected period and active organization.</p>
-          </div>
-          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            {analytics.accountIds.length > 0 ? `${analytics.accountIds.length} кабинетов` : analytics.loading ? 'Загрузка кабинетов' : 'Кабинеты не найдены'}
-          </div>
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          {analytics.summary?.metrics ? [
-            { label: 'Sales', value: analytics.summary.metrics.sales },
-            { label: 'Commission', value: analytics.summary.metrics.commission },
-            { label: 'Logistics', value: analytics.summary.metrics.logistics },
-            { label: 'Orders', value: analytics.summary.metrics.ordersCount },
-            { label: 'Stock', value: analytics.summary.metrics.stockBalance },
-          ].map(item => (
-            <div key={item.label} className="rounded-2xl bg-slate-50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{item.label}</div>
-              <div className="mt-2 text-2xl font-semibold text-slate-950">
-                {Number(item.value ?? 0).toLocaleString('ru-RU')}
-              </div>
-            </div>
-          )) : Array.from({ length: 5 }).map((_, index) => (
-            <div key={`analytics-metric-placeholder-${index}`} className="rounded-2xl bg-slate-50 p-4">
-              <div className="h-3 w-20 animate-pulse rounded bg-slate-200" />
-              <div className="mt-3 h-8 w-28 animate-pulse rounded bg-slate-200" />
-            </div>
-          ))}
-        </div>
-        {analytics.error && (
-          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {analytics.error}
-          </div>
-        )}
-      </div>
-
-      <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold text-slate-900">Товарный отчет API</div>
-            <p className="mt-1 text-sm text-slate-500">KPI из `POST /api/v1/reporting/products/summary`, топ товаров из `products/overview`</p>
-          </div>
-          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            {productReportingData.loading ? 'Загрузка' : productReportingMeta?.isPartial ? 'Частичные данные' : 'Готово'}
-          </div>
-        </div>
-        {productReportingData.error && (
-          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {productReportingData.error}
-          </div>
-        )}
-        <div className="mt-4 flex flex-wrap gap-2">
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            {productReportingData.rows.length.toLocaleString('ru-RU')} строк в таблице
-          </span>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            Обновлено: {formatUpdatedAt(productReportingMeta?.updatedAt)}
-          </span>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            Фильтр SKU: {filters.sku.length > 0 ? filters.sku.length : 'все'}
-          </span>
-          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-            productReportingMeta?.taxConfigured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-          }`}>
-            Налоги: {productReportingMeta?.taxConfigured ? 'настроены' : 'нет настроек'}
-          </span>
-          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-            productReportingMeta?.productCostsConfigured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-          }`}>
-            Себестоимость: {productReportingMeta?.productCostsConfigured ? 'настроена' : 'нет настроек'}
-          </span>
-          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-            productReportingMeta?.economicsConfigured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-          }`}>
-            Экономика: {productReportingMeta?.economicsConfigured ? 'полная' : 'неполная'}
-          </span>
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          {productSummarySnapshot ? Object.entries(productSummarySnapshot).slice(0, 5).map(([label, value]) => (
-            <div key={label} className="rounded-2xl bg-slate-50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</div>
-              <div className="mt-2 text-2xl font-semibold text-slate-950">
-                {Number(value ?? 0).toLocaleString('ru-RU')}
-              </div>
-            </div>
-          )) : Array.from({ length: 5 }).map((_, index) => (
-            <div key={`product-summary-placeholder-${index}`} className="rounded-2xl bg-slate-50 p-4">
-              <div className="h-3 w-20 animate-pulse rounded bg-slate-200" />
-              <div className="mt-3 h-8 w-28 animate-pulse rounded bg-slate-200" />
-            </div>
-          ))}
-        </div>
-        <div className="mt-5 grid gap-3">
-          {productReportingData.loading && (productReportingData.overview?.topProducts?.length ?? 0) === 0 ? Array.from({ length: 4 }).map((_, index) => (
-            <div key={`top-product-placeholder-${index}`} className="rounded-2xl bg-slate-50 px-4 py-3">
-              <div className="h-4 w-2/5 animate-pulse rounded bg-slate-200" />
-              <div className="mt-2 h-3 w-3/5 animate-pulse rounded bg-slate-200" />
-            </div>
-          )) : (productReportingData.overview?.topProducts ?? []).length > 0 ? productReportingData.overview!.topProducts!.slice(0, 5).map((item, index) => (
-            <div key={`${item.dimension?.marketplaceArticle ?? item.dimension?.productName ?? index}`} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
-              <div className="min-w-0">
-                <div className="font-medium text-slate-900">
-                  {item.dimension?.productName ?? item.dimension?.marketplaceArticle ?? `Товар ${index + 1}`}
-                </div>
-                <div className="text-xs text-slate-500">
-                  {[item.dimension?.vendorCode, item.dimension?.brand, item.dimension?.marketplace, item.dimension?.accountName]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                {Object.entries(item.metrics ?? {}).slice(0, 3).map(([metric, value]) => (
-                  <span key={metric} className="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-700 shadow-sm">
-                    {metric}: {Number(value ?? 0).toLocaleString('ru-RU')}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )) : (
-            <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-400">
-              Для выбранных фильтров backend пока не вернул товарные данные.
-            </div>
-          )}
-        </div>
-      </div>
-
-      {!loading && records.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-24 text-slate-400">
-          <TrendingUp size={40} className="mb-3 opacity-30" />
-          <div className="text-lg font-medium">Нет данных за выбранный период</div>
-          <div className="text-sm mt-1">Измените фильтры или диапазон дат</div>
-        </div>
-      )}
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -1235,6 +1477,22 @@ export function DashboardPage() {
           </div>
           <button
             type="button"
+            onClick={() => {
+              setIsWidgetEditMode(current => !current);
+              setDraggedWidgetId(null);
+              setDragOverWidgetId(null);
+            }}
+            className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+              isWidgetEditMode
+                ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            <GripVertical size={15} />
+            {isWidgetEditMode ? 'Готово' : 'Редактировать'}
+          </button>
+          <button
+            type="button"
             onClick={openWidgetModal}
             className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
           >
@@ -1244,22 +1502,95 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-1">
-        {visibleMetricDefs.map(def => (
-          <MetricCard
-            key={def.id}
-            title={def.title}
-            metric={def.metric!}
-            format={def.format!}
-            formatDelta={def.formatDelta}
-            invertColors={def.invertColors}
-            isLoading={isMetricsLoading}
-            isPlaceholder={showMetricPlaceholders}
-            faq={def.faq}
-            documents={def.documents}
-            onEdit={def.customMetricId ? () => editCustomMetric(def.customMetricId!) : undefined}
-          />
-        ))}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {(isWidgetEditMode ? editableMetricDefs : visibleMetricDefs).map(def => {
+                const isOrdered = selectedWidgetIds.includes(def.id);
+                const isVisible = isOrdered && !hiddenMetricWidgetIds.includes(def.id);
+          return (
+            <div
+              key={def.id}
+              draggable={isWidgetEditMode && isOrdered}
+              onDragStart={event => {
+                if (!isWidgetEditMode || !isOrdered) return;
+                setDraggedWidgetId(def.id);
+                setDragOverWidgetId(def.id);
+                setDragInsertPosition('before');
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', def.id);
+              }}
+              onDragEnd={() => {
+                setDraggedWidgetId(null);
+                setDragOverWidgetId(null);
+              }}
+              onDragOver={event => {
+                if (!isWidgetEditMode || !isOrdered) return;
+                event.preventDefault();
+                const rect = event.currentTarget.getBoundingClientRect();
+                const nextPosition = event.clientY > rect.top + rect.height / 2 ? 'after' : 'before';
+                const draggedId = event.dataTransfer.getData('text/plain') || draggedWidgetId;
+                setDragOverWidgetId(def.id);
+                setDragInsertPosition(nextPosition);
+                if (draggedId) {
+                  moveSelectedWidget(draggedId, def.id, nextPosition);
+                }
+              }}
+              onDrop={event => {
+                if (!isWidgetEditMode || !isOrdered) return;
+                event.preventDefault();
+                setDraggedWidgetId(null);
+                setDragOverWidgetId(null);
+              }}
+              className={`relative transition ${isWidgetEditMode && !isVisible ? 'opacity-45 grayscale' : ''} ${
+                isWidgetEditMode && draggedWidgetId === def.id ? 'scale-[0.98] opacity-60' : ''
+              }`}
+            >
+              {isWidgetEditMode && (
+                <>
+                  {dragOverWidgetId === def.id && draggedWidgetId !== def.id && isVisible && (
+                    <div className={`absolute left-2 right-2 z-20 h-0.5 rounded-full bg-blue-500 ${
+                      dragInsertPosition === 'before' ? 'top-0 -translate-y-1/2' : 'bottom-0 translate-y-1/2'
+                    }`} />
+                  )}
+                  <div className="absolute left-2 top-2 z-30 flex items-center gap-1">
+                    <div
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border bg-white text-slate-500 shadow-sm ${
+                        isOrdered ? 'cursor-grab border-slate-200 active:cursor-grabbing' : 'cursor-not-allowed border-slate-100 opacity-60'
+                      }`}
+                      title={isOrdered ? 'Перетащить виджет' : 'Включите виджет перед перемещением'}
+                    >
+                      <GripVertical size={15} />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleSelectedWidget(def.id)}
+                    className={`absolute right-2 top-2 z-30 inline-flex h-7 items-center gap-1 rounded-lg border bg-white px-2 text-xs font-semibold shadow-sm transition-colors ${
+                      isVisible
+                        ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                        : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                    }`}
+                  >
+                    {isVisible ? <Eye size={13} /> : <EyeOff size={13} />}
+                    {isVisible ? 'Вкл' : 'Скрыт'}
+                  </button>
+                </>
+              )}
+              <MetricCard
+                title={def.title}
+                metric={def.metric!}
+                format={def.format!}
+                formatDelta={def.formatDelta}
+                invertColors={def.invertColors}
+                isLoading={isMetricsLoading && isVisible}
+                isPlaceholder={showMetricPlaceholders && isVisible}
+                isEditMode={isWidgetEditMode}
+                faq={def.faq}
+                documents={def.documents}
+                onEdit={def.customMetricId ? () => editCustomMetric(def.customMetricId!) : undefined}
+              />
+            </div>
+          );
+        })}
       </div>
 
       {(productReportingData.loading || visibleTopMarginArticles.length > 0) && (
@@ -1270,6 +1601,11 @@ export function DashboardPage() {
             subtitle="Список товаров с наилучшей маржинальностью в выбранном периоде."
             items={visibleTopMarginArticles}
             limit={articleMarginLimit}
+            totalCount={articleMarginRemainder.totalCount}
+            totalProfit={articleMarginRemainder.totalProfit}
+            selectedProfit={articleMarginRemainder.selectedProfit}
+            hiddenCount={articleMarginRemainder.hiddenCount}
+            hiddenProfit={articleMarginRemainder.hiddenProfit}
             onLimitChange={setArticleMarginLimit}
             emptyMessage={productReportingData.loading ? 'Загружаем маржинальные артикулы...' : 'Для выбранных фильтров пока нет артикулов с продажами.'}
           />
@@ -1279,6 +1615,11 @@ export function DashboardPage() {
             subtitle="Категории товаров, которые дают лучший процент маржи."
             items={visibleTopMarginCategories}
             limit={categoryMarginLimit}
+            totalCount={categoryMarginRemainder.totalCount}
+            totalProfit={categoryMarginRemainder.totalProfit}
+            selectedProfit={categoryMarginRemainder.selectedProfit}
+            hiddenCount={categoryMarginRemainder.hiddenCount}
+            hiddenProfit={categoryMarginRemainder.hiddenProfit}
             onLimitChange={setCategoryMarginLimit}
             emptyMessage={productReportingData.loading ? 'Загружаем категории...' : 'Для выбранных фильтров пока нет категорий с продажами.'}
           />
@@ -1299,7 +1640,7 @@ export function DashboardPage() {
 
       {isWidgetModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4"
+          className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/45 p-4"
           onMouseDown={event => {
             if (event.target === event.currentTarget) {
               closeWidgetModal();
@@ -1535,6 +1876,7 @@ export function DashboardPage() {
                 type="button"
                 onClick={() => {
                   setSelectedWidgetIds(draftWidgetIds);
+                  setHiddenMetricWidgetIds([]);
                   setIsWidgetModalOpen(false);
                 }}
                 disabled={draftWidgetIds.length === 0}
@@ -1549,7 +1891,7 @@ export function DashboardPage() {
 
       {isCreateMetricModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4"
+          className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/45 p-4"
           onMouseDown={event => {
             if (event.target === event.currentTarget) {
               closeCreateMetricModal();
@@ -1650,7 +1992,19 @@ export function DashboardPage() {
               </div>
             </form>
 
-            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
+            <div className="flex flex-col gap-3 border-t border-slate-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                {editingCustomMetricId && (
+                  <button
+                    type="button"
+                    onClick={() => setIsDeleteMetricConfirmOpen(true)}
+                    className="rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50"
+                  >
+                    Удалить метрику
+                  </button>
+                )}
+              </div>
+              <div className="flex justify-end gap-3">
               <button
                 type="button"
                 onClick={closeCreateMetricModal}
@@ -1665,6 +2019,33 @@ export function DashboardPage() {
                 className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
               >
                 {editingCustomMetricId ? 'Сохранить изменения' : 'Создать метрику'}
+              </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {isDeleteMetricConfirmOpen && (
+        <div className="fixed inset-0 z-[240] flex items-center justify-center bg-slate-950/55 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="text-lg font-semibold text-slate-950">Удалить метрику?</div>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Метрика {metricPendingDeletion?.name ? `«${metricPendingDeletion.name}»` : ''} будет удалена из виджетов. Это действие нельзя отменить.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsDeleteMetricConfirmOpen(false)}
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={deleteCustomMetric}
+                className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-rose-700"
+              >
+                Удалить
               </button>
             </div>
           </div>
@@ -1986,7 +2367,8 @@ function buildFormulaMetricValues(
   summaryComparisons: Record<
     string,
     { previous?: number | null; delta?: number | null; deltaPercent?: number | null } | null
-  > | null = null
+  > | null = null,
+  daysInRange = 1
 ) {
   const summaryMetric = (keys: string[], fallback: number) => {
     const value = findMetricNumber(summaryMetrics, keys);
@@ -2026,8 +2408,8 @@ function buildFormulaMetricValues(
   const gmroiPreviousSource = summaryPrevious(['gmroi'], gmroiCurrentSource);
   const gmroiCurrent = summaryMetric(['gmroi'], gmroiCurrentSource);
   const gmroiPrevious = summaryMetric(['gmroi'], gmroiPreviousSource);
-  const gmroiYearCurrent = summaryMetric(['gmroiYear'], gmroiCurrent * 12);
-  const gmroiYearPrevious = summaryPrevious(['gmroiYear'], gmroiPrevious * 12);
+  const gmroiYearCurrent = summaryMetric(['gmroiYear'], gmroiCurrent * 365 / Math.max(daysInRange, 1));
+  const gmroiYearPrevious = summaryPrevious(['gmroiYear'], gmroiPrevious * 365 / Math.max(daysInRange, 1));
 
   const stockBalanceCurrent = summaryMetric(['stockBalance', 'userWarehouseStockBalance'], inventoryValue);
   const stockBalancePrevious = summaryPrevious(['stockBalance', 'userWarehouseStockBalance'], stockBalanceCurrent * 0.9);
@@ -2039,6 +2421,8 @@ function buildFormulaMetricValues(
   const stockBalanceInWayFromClientPrevious = summaryPrevious(['stockBalanceInWayFromClient'], stockBalanceInWayFromClientCurrent);
   const totalPaidCurrent = summaryMetric(['totalPaid'], metrics.profit.current);
   const totalPaidPrevious = summaryPrevious(['totalPaid'], metrics.profit.previous);
+  const toTransferCurrent = summaryMetric(['toTransfer'], totalPaidCurrent);
+  const toTransferPrevious = summaryPrevious(['toTransfer'], totalPaidPrevious);
   const netMarketplaceRewardCurrent = summaryMetric(['netMarketplaceReward', 'wbFinalReward'], metrics.commission.current);
   const netMarketplaceRewardPrevious = summaryPrevious(['netMarketplaceReward', 'wbFinalReward'], metrics.commission.previous);
   const drrCurrent = summaryMetric(['drr', 'drrSales'], metrics.drr.current);
@@ -2101,6 +2485,8 @@ function buildFormulaMetricValues(
   );
   const totalSalesCurrent = summaryMetric(['totalSales'], salesCurrentValue);
   const totalSalesPrevious = summaryPrevious(['totalSales'], salesPreviousValue);
+  const totalSalesAmountCurrent = summaryMetric(['sales'], salesCurrentValue);
+  const totalSalesAmountPrevious = summaryPrevious(['sales'], salesPreviousValue);
   const returnsUnitsCurrent = summaryMetric(['returnsUnits', 'refunds'], 0);
   const returnsUnitsPrevious = summaryPrevious(['returnsUnits', 'refunds'], 0);
   const averageLogisticsCostCurrent = summaryMetric(
@@ -2121,7 +2507,7 @@ function buildFormulaMetricValues(
     averagePriceBeforeSPP: { current: avgBeforeDiscountCurrent, previous: avgBeforeDiscountPrevious },
     realisation: { current: metrics.revenue.current, previous: metrics.revenue.previous },
     sales: { current: sales, previous: salesPrevious },
-    toTransfer: { current: totalPaidCurrent, previous: totalPaidPrevious },
+    toTransfer: { current: toTransferCurrent, previous: toTransferPrevious },
     returns: { current: returns, previous: returnsPrevious },
     costOfSales: { current: costOfSalesCurrent, previous: costOfSalesPrevious },
     fines: { current: finesCurrent, previous: finesPrevious },
@@ -2133,9 +2519,14 @@ function buildFormulaMetricValues(
     storage: { current: metrics.storageCost.current, previous: metrics.storageCost.previous },
     rejectionsAndReturns: { current: returnsUnitsCurrent, previous: returnsUnitsPrevious },
     totalSales: { current: totalSalesCurrent, previous: totalSalesPrevious },
+    totalSalesAmount: { current: totalSalesAmountCurrent, previous: totalSalesAmountPrevious },
     averageRedemption: { current: metrics.buyoutRate.current, previous: metrics.buyoutRate.previous },
     averageProfitPerPiece: { current: averageProfitPerPieceCurrent, previous: averageProfitPerPiecePrevious },
     tax: { current: metrics.taxes.current, previous: metrics.taxes.previous },
+    taxBase: {
+      current: summaryMetric(['taxBase'], salesCurrentValue - metrics.storageCost.current - acceptanceSumCurrent - finesCurrent - otherDeductionCurrent - advertisingExpenseCurrent),
+      previous: summaryPrevious(['taxBase'], salesPreviousValue - metrics.storageCost.previous - acceptanceSumPrevious - finesPrevious - otherDeductionPrevious - advertisingExpensePrevious),
+    },
     profit: { current: metrics.profit.current, previous: metrics.profit.previous },
     profitWithoutExpense: { current: profitWithoutExpenseCurrent, previous: profitWithoutExpensePrevious },
     roi: { current: metrics.roi.current, previous: metrics.roi.previous },
@@ -2454,12 +2845,121 @@ function buildTopMarginCategoriesFromApi(rows: AnalyticsTableRow[]): MarginLeade
     .sort((a, b) => b.margin - a.margin || b.profit - a.profit || b.revenue - a.revenue);
 }
 
+type MarginLeaderboardApiResponse = {
+  summary?: {
+    totalProducts?: number | null;
+    returnedProducts?: number | null;
+    otherProducts?: number | null;
+    totalCategories?: number | null;
+    returnedCategories?: number | null;
+    otherCategories?: number | null;
+    totalProfit?: number | null;
+    returnedProfit?: number | null;
+    otherProfit?: number | null;
+  } | null;
+  items?: Array<{
+    kind?: string | null;
+    dimension?: {
+      id?: string | null;
+      label?: string | null;
+      vendorCode?: string | null;
+      marketplaceArticle?: string | null;
+      productName?: string | null;
+      brand?: string | null;
+      category?: string | null;
+      accountName?: string | null;
+    } | null;
+    metrics?: Record<string, number | null> | null;
+    profit?: number | null;
+    profitSharePercent?: number | null;
+    productCount?: number | null;
+  } | null> | null;
+};
+
+function buildMarginLeaderboardRowsFromApi(
+  response: MarginLeaderboardApiResponse,
+  variant: 'product' | 'category'
+): MarginLeaderboardRow[] {
+  return (response.items ?? [])
+    .filter((item): item is NonNullable<NonNullable<MarginLeaderboardApiResponse['items']>[number]> => Boolean(item))
+    .filter(item => item.kind !== 'Other')
+    .map((item, index) => {
+      const dimension = item.dimension ?? {};
+      const metrics = item.metrics ?? {};
+      const revenue = Number(metrics.realisation ?? metrics.sales ?? metrics.revenue ?? 0);
+      const profit = Number(item.profit ?? metrics.profit ?? 0);
+      const margin = Number(metrics.profitability ?? metrics.marginality ?? (revenue > 0 ? (profit / revenue) * 100 : 0));
+      const title =
+        variant === 'product'
+          ? dimension.productName ?? dimension.label ?? dimension.marketplaceArticle ?? dimension.vendorCode ?? `Товар ${index + 1}`
+          : dimension.label ?? dimension.category ?? dimension.id ?? 'Без категории';
+      const subtitle =
+        variant === 'product'
+          ? [dimension.marketplaceArticle ?? dimension.id, dimension.vendorCode, dimension.brand].filter(Boolean).join(' · ')
+          : `${Number(item.productCount ?? 0)} артикулов`;
+
+      return {
+        id: dimension.id ?? dimension.marketplaceArticle ?? title,
+        title,
+        subtitle,
+        revenue,
+        profit,
+        margin,
+        profitSharePercent: Number(item.profitSharePercent ?? 0),
+        kind: item.kind ?? undefined,
+        productCount: Number(item.productCount ?? 0),
+      };
+    });
+}
+
+function buildMarginLeaderboardRemainder(
+  items: MarginLeaderboardRow[],
+  visibleCount: number,
+  totalProfit: number,
+  apiResponse?: MarginLeaderboardApiResponse | null
+) {
+  if (apiResponse?.summary) {
+    const summary = apiResponse.summary;
+    const selectedProfit = Number(summary.returnedProfit ?? items.reduce((sum, item) => sum + Math.max(item.profit, 0), 0));
+    const safeTotalProfit = Math.max(Number(summary.totalProfit ?? totalProfit), selectedProfit);
+
+    return {
+      totalCount: Number(summary.totalProducts ?? summary.totalCategories ?? items.length),
+      hiddenCount: Number(summary.otherProducts ?? summary.otherCategories ?? 0),
+      totalProfit: safeTotalProfit,
+      selectedProfit,
+      hiddenProfit: Math.max(Number(summary.otherProfit ?? safeTotalProfit - selectedProfit), 0),
+    };
+  }
+
+  let selectedProfit = 0;
+
+  for (let index = 0; index < visibleCount; index += 1) {
+    selectedProfit += Math.max(items[index]?.profit ?? 0, 0);
+  }
+
+  const safeTotalProfit = Math.max(totalProfit, selectedProfit);
+
+  return {
+    totalCount: items.length,
+    hiddenCount: Math.max(items.length - visibleCount, 0),
+    totalProfit: safeTotalProfit,
+    selectedProfit,
+    hiddenProfit: Math.max(safeTotalProfit - selectedProfit, 0),
+  };
+}
+
 function MarginLeaderboardCard({
   title,
   alias,
   subtitle,
   items,
   limit,
+  totalCount,
+  totalProfit,
+  selectedProfit,
+  hiddenCount,
+  hiddenProfit,
   onLimitChange,
   emptyMessage,
 }: {
@@ -2468,6 +2968,11 @@ function MarginLeaderboardCard({
   subtitle: string;
   items: MarginLeaderboardRow[];
   limit: number | 'all';
+  totalCount: number;
+  totalProfit: number;
+  selectedProfit: number;
+  hiddenCount: number;
+  hiddenProfit: number;
   onLimitChange: (value: number | 'all') => void;
   emptyMessage: string;
 }) {
@@ -2475,7 +2980,9 @@ function MarginLeaderboardCard({
   const [viewMode, setViewMode] = useState<'circle' | 'list'>('circle');
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
+  const [manualLimit, setManualLimit] = useState('');
   const optionsRef = useRef<HTMLDivElement | null>(null);
+  const selectedProfitPercent = totalProfit > 0 ? (selectedProfit / totalProfit) * 100 : 0;
 
   useEffect(() => {
     if (!isOptionsOpen) return;
@@ -2514,7 +3021,7 @@ function MarginLeaderboardCard({
           <SectionInfoTooltip text={subtitle} />
         </div>
         <div className="flex items-center gap-3">
-          <div className="hidden text-xs text-slate-400 sm:block">{items.length} элементов</div>
+          <div className="hidden text-xs text-slate-400 sm:block">{totalCount} элементов</div>
           <ChevronDown
             size={18}
             className={`shrink-0 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
@@ -2552,11 +3059,11 @@ function MarginLeaderboardCard({
                 onClick={() => setIsOptionsOpen(current => !current)}
                 className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
               >
-                Параметры
+                {limit === 'all' ? 'Все' : `Топ ${limit}`}
                 <ChevronDown size={14} className={`transition-transform ${isOptionsOpen ? 'rotate-180' : ''}`} />
               </button>
               {isOptionsOpen && (
-                <div className="absolute right-0 top-full z-20 mt-2 w-52 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+                <div className="absolute right-0 top-full z-20 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
                   <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                     Диапазон
                   </div>
@@ -2587,6 +3094,36 @@ function MarginLeaderboardCard({
                       Топ {option}
                     </button>
                   ))}
+                  <div className="mt-2 border-t border-slate-100 pt-2">
+                    <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Свой лимит
+                    </div>
+                    <div className="flex gap-2 px-2 pb-1">
+                      <input
+                        type="number"
+                        min={1}
+                        value={manualLimit}
+                        onChange={event => setManualLimit(event.target.value)}
+                        placeholder="Напр. 25"
+                        className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-2 text-sm text-slate-700 outline-none focus:border-blue-300"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const parsedLimit = Number.parseInt(manualLimit, 10);
+                          if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
+                            onLimitChange('all');
+                          } else {
+                            onLimitChange(parsedLimit);
+                          }
+                          setIsOptionsOpen(false);
+                        }}
+                        className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800"
+                      >
+                        OK
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -2597,16 +3134,27 @@ function MarginLeaderboardCard({
               {emptyMessage}
             </div>
           ) : viewMode === 'circle' ? (
-            <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start">
-              <MarginPieChart
-                items={items}
-                hoveredItemId={hoveredItemId}
-                onHoverChange={setHoveredItemId}
+            <>
+              <MarginTotalRatio
+                selectedCount={items.length}
+                totalCount={totalCount}
+                selectedProfit={selectedProfit}
+                totalProfit={totalProfit}
+                percent={selectedProfitPercent}
               />
-              <div className="max-h-[32rem] space-y-1.5 overflow-y-auto pr-2 lg:pt-0.5">
-                {items.map((item, index) => {
+              <div className="mt-4 grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start">
+                <MarginPieChart
+                  items={items}
+                  hiddenProfit={hiddenProfit}
+                  hiddenCount={hiddenCount}
+                  hoveredItemId={hoveredItemId}
+                  onHoverChange={setHoveredItemId}
+                />
+                <div className="max-h-[32rem] space-y-1.5 overflow-y-auto pr-2 lg:pt-0.5">
+                  {items.map((item, index) => {
                   const tone = getMarginChartColor(index);
                   const isActive = hoveredItemId === item.id;
+                  const displayPercent = item.profitSharePercent ?? item.margin;
 
                   return (
                     <div
@@ -2626,18 +3174,46 @@ function MarginLeaderboardCard({
                       </div>
                       <div className="shrink-0 text-right">
                         <div className="text-xs font-semibold" style={{ color: tone }}>
-                          {item.margin.toFixed(1)}%
+                          {displayPercent.toFixed(1)}%
                         </div>
-                        <div className="text-[11px] text-slate-400">{formatCurrency(item.profit)}</div>
+                        <div className="text-[11px] text-slate-400">доля прибыли</div>
                       </div>
                     </div>
                   );
-                })}
+                  })}
+                  {hiddenCount > 0 && (
+                    <div
+                      onMouseEnter={() => setHoveredItemId('__other__')}
+                      onMouseLeave={() => setHoveredItemId(null)}
+                      className={`flex items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors ${
+                        hoveredItemId === '__other__' ? 'border-slate-300 bg-slate-100' : 'border-slate-100 bg-slate-50/70'
+                      }`}
+                    >
+                      <MetricLegendThumb label="Остальное" color="#cbd5e1" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-semibold text-slate-500">Остальное</div>
+                        <div className="truncate text-[11px] text-slate-400">прибыль вне выбранного топа</div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-xs font-semibold text-slate-500">{formatCurrency(hiddenProfit)}</div>
+                        <div className="text-[11px] text-slate-400">прибыль</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            </>
           ) : (
-            <div className="max-h-[32rem] space-y-2 overflow-y-auto pr-2">
-              {items.map((item, index) => (
+            <>
+              <MarginTotalRatio
+                selectedCount={items.length}
+                totalCount={totalCount}
+                selectedProfit={selectedProfit}
+                totalProfit={totalProfit}
+                percent={selectedProfitPercent}
+              />
+              <div className="mt-4 max-h-[32rem] space-y-2 overflow-y-auto pr-2">
+                {items.map((item, index) => (
                 <div
                   key={item.id}
                   className="flex items-center gap-3 rounded-xl border border-slate-100 px-3 py-3 transition-colors hover:bg-slate-50"
@@ -2655,13 +3231,14 @@ function MarginLeaderboardCard({
                   </div>
                   <div className="shrink-0 text-right">
                     <div className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                      {item.margin.toFixed(1)}%
+                      {(item.profitSharePercent ?? item.margin).toFixed(1)}%
                     </div>
-                    <div className="mt-1 text-xs text-slate-400">{formatCurrency(item.revenue)}</div>
+                    <div className="mt-1 text-xs text-slate-400">доля прибыли</div>
                   </div>
                 </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       )}
@@ -2671,17 +3248,35 @@ function MarginLeaderboardCard({
 
 function MarginPieChart({
   items,
+  hiddenProfit,
+  hiddenCount,
   hoveredItemId,
   onHoverChange,
 }: {
   items: MarginLeaderboardRow[];
+  hiddenProfit: number;
+  hiddenCount: number;
   hoveredItemId: string | null;
   onHoverChange: (itemId: string | null) => void;
 }) {
   const chartItems = items.slice(0, 8);
+  const hiddenChartItem: MarginLeaderboardRow | null = hiddenCount > 0
+    ? {
+        id: '__other__',
+        title: 'Остальное',
+        subtitle: 'Прибыль вне выбранного топа',
+        revenue: 0,
+        profit: hiddenProfit,
+        margin: 0,
+      }
+    : null;
+  const chartEntries = hiddenChartItem ? [...chartItems, hiddenChartItem] : chartItems;
   const normalizedValues = chartItems.map(item => Math.max(item.profit, 0));
+  if (hiddenChartItem) {
+    normalizedValues.push(Math.max(hiddenChartItem.profit, 0));
+  }
   const total = normalizedValues.reduce((sum, value) => sum + value, 0);
-  const activeItem = chartItems.find(item => item.id === hoveredItemId) ?? chartItems[0] ?? null;
+  const activeItem = chartEntries.find(item => item.id === hoveredItemId) ?? chartEntries[0] ?? null;
   let startAngle = -Math.PI / 2;
 
   return (
@@ -2693,24 +3288,25 @@ function MarginPieChart({
         <div className="relative h-[220px] w-[220px]">
           <svg viewBox="0 0 220 220" className="h-full w-full overflow-visible">
             <g className="apexcharts-inner apexcharts-graphical" transform="translate(110 110)">
-              {chartItems.map((item, index) => {
+              {chartEntries.map((item, index) => {
                 const value = normalizedValues[index];
-                const sliceAngle = total > 0 ? (value / total) * Math.PI * 2 : (Math.PI * 2) / Math.max(chartItems.length, 1);
+                const sliceAngle = total > 0 ? (value / total) * Math.PI * 2 : (Math.PI * 2) / Math.max(chartEntries.length, 1);
                 const endAngle = startAngle + sliceAngle;
                 const path = describePieSlice(0, 0, hoveredItemId === item.id ? 90 : 84, startAngle, endAngle);
                 startAngle = endAngle;
+                const isOther = item.id === '__other__';
 
                 return (
                   <path
                     key={item.id}
                     d={path}
-                    fill={getMarginChartColor(index)}
+                    fill={isOther ? '#cbd5e1' : getMarginChartColor(index)}
                     opacity={hoveredItemId && hoveredItemId !== item.id ? 0.32 : 0.96}
                     className="cursor-pointer transition-all duration-200"
                     onMouseEnter={() => onHoverChange(item.id)}
                     onMouseLeave={() => onHoverChange(null)}
                   >
-                    <title>{`${item.title}: маржа ${item.margin.toFixed(2)}%, прибыль ${formatCurrency(item.profit)}, выручка ${formatCurrency(item.revenue)}`}</title>
+                    <title>{isOther ? `Остальное: прибыль ${formatCurrency(item.profit)}` : `${item.title}: маржа ${item.margin.toFixed(2)}%, прибыль ${formatCurrency(item.profit)}, выручка ${formatCurrency(item.revenue)}`}</title>
                   </path>
                 );
               })}
@@ -2724,8 +3320,10 @@ function MarginPieChart({
           <div className="mt-1 text-xs text-slate-400">{activeItem.subtitle}</div>
           <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
             <div>
-              <div className="text-slate-400">Маржа</div>
-              <div className="font-semibold text-slate-800">{activeItem.margin.toFixed(2)}%</div>
+              <div className="text-slate-400">{activeItem.profitSharePercent !== undefined ? 'Доля прибыли' : 'Маржа'}</div>
+              <div className="font-semibold text-slate-800">
+                {activeItem.id === '__other__' ? '-' : `${(activeItem.profitSharePercent ?? activeItem.margin).toFixed(2)}%`}
+              </div>
             </div>
             <div>
               <div className="text-slate-400">Прибыль</div>
@@ -2738,6 +3336,40 @@ function MarginPieChart({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function MarginTotalRatio({
+  selectedCount,
+  totalCount,
+  selectedProfit,
+  totalProfit,
+  percent,
+}: {
+  selectedCount: number;
+  totalCount: number;
+  selectedProfit: number;
+  totalProfit: number;
+  percent: number;
+}) {
+  const safePercent = Math.max(0, Math.min(percent, 100));
+
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3">
+      <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+        <div className="font-semibold uppercase tracking-[0.12em] text-slate-500">Соотношение к общей прибыли</div>
+        <div className="shrink-0 font-semibold text-slate-700">
+          {safePercent.toFixed(1)}%
+        </div>
+      </div>
+      <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+        <div className="h-full rounded-full bg-sky-500" style={{ width: `${safePercent}%` }} />
+      </div>
+      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
+        <span>Топ: {formatCurrency(selectedProfit)} · {selectedCount} из {totalCount}</span>
+        <span>Всего: {formatCurrency(totalProfit)}</span>
+      </div>
     </div>
   );
 }
@@ -3811,6 +4443,7 @@ function buildAnalyticsRowsFromApi(
     const storage = getMetricNumber(metrics, ['storage']);
     const returns = getMetricNumber(metrics, ['returns', 'returnsUnits']);
     const totalPaid = getMetricNumber(metrics, ['totalPaid']);
+    const toTransfer = getMetricNumber(metrics, ['toTransfer', 'totalPaid']);
     const taxes = getMetricNumber(metrics, ['tax', 'taxes']);
     const advertisingExpense = getMetricNumber(metrics, ['advertisingExpense', 'advertisingExpenseSum']);
     const costOfSales = getMetricNumber(metrics, ['costOfSales']);
@@ -3874,7 +4507,7 @@ function buildAnalyticsRowsFromApi(
       turnoverSales: getMetricNumber(metrics, ['salesTurnover']),
       turnoverOrders: getMetricNumber(metrics, ['ordersTurnover']),
       sales,
-      toTransfer: totalPaid,
+      toTransfer,
       returns,
       costOfSales,
       fines,

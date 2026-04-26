@@ -12,6 +12,7 @@ const SUMMARY_PRIORITY_METRICS = [
   'totalSales',
   'netMarketplaceReward',
   'orders',
+  'toTransfer',
   'profit',
   'ordersCount',
   'stockBalance',
@@ -28,6 +29,7 @@ const SUMMARY_PRIORITY_METRICS = [
   'averageRedemption',
   'averagePriceBeforeSPP',
   'averagePriceAfterSPP',
+  'orderPrice',
   'averageLogisticsCost',
   'averageProfitPerPiece',
   'salesTurnover',
@@ -41,6 +43,8 @@ const SUMMARY_PRIORITY_METRICS = [
   'roi',
   'gmroi',
   'gmroiYear',
+  'shareInTotalRevenue',
+  'shareInTotalProfit',
   'acceptanceSum',
   'fines',
   'otherDeduction',
@@ -61,6 +65,7 @@ const PRODUCT_SUMMARY_METRICS = [
   'totalPaid',
   'netMarketplaceReward',
   'orders',
+  'toTransfer',
   'ordersCount',
   'salesCount',
   'stockBalance',
@@ -68,10 +73,13 @@ const PRODUCT_SUMMARY_METRICS = [
   'averageRedemption',
   'averagePriceBeforeSPP',
   'averagePriceAfterSPP',
+  'orderPrice',
   'averageLogisticsCost',
   'averageProfitPerPiece',
   'salesTurnover',
   'ordersTurnover',
+  'shareInTotalRevenue',
+  'shareInTotalProfit',
   'logistics',
   'storage',
   'returns',
@@ -94,6 +102,31 @@ const PRODUCT_SUMMARY_METRICS = [
   'capitalizationByPrice',
   'userWarehouseStockBalance',
   'userWarehouseCapitalizationByCost',
+  'cost',
+  'currentPrice',
+  'oldPrice',
+  'marketingPrice',
+  'minimumPrice',
+  'netPrice',
+  'vatRate',
+  'sellerDiscountPercent',
+  'marketplaceDiscountPercent',
+  'orderedUnits',
+  'deliveredUnits',
+  'cancellations',
+  'hitsViewSearch',
+  'hitsViewPdp',
+  'hitsView',
+  'hitsToCartSearch',
+  'hitsToCartPdp',
+  'hitsToCart',
+  'sessionViewSearch',
+  'sessionViewPdp',
+  'sessionView',
+  'convToCartSearch',
+  'convToCartPdp',
+  'convToCart',
+  'positionCategory',
   'gmroi',
   'gmroiYear',
 ] as const;
@@ -164,12 +197,57 @@ type ProductRowsResponse = {
   meta?: ResponseMeta | null;
 };
 
+type ProductMarginDimension = {
+  id?: string | null;
+  label?: string | null;
+  vendorCode?: string | null;
+  marketplaceArticle?: string | null;
+  productName?: string | null;
+  brand?: string | null;
+  category?: string | null;
+  accountName?: string | null;
+};
+
+type ProductMarginItem = {
+  rank?: number | null;
+  kind?: string | null;
+  dimension?: ProductMarginDimension | null;
+  metrics?: Record<string, number | null> | null;
+  profit?: number | null;
+  profitSharePercent?: number | null;
+  cumulativeProfitSharePercent?: number | null;
+  productCount?: number | null;
+};
+
+type ProductMarginResponse = {
+  summary?: {
+    totalProducts?: number | null;
+    returnedProducts?: number | null;
+    otherProducts?: number | null;
+    totalCategories?: number | null;
+    returnedCategories?: number | null;
+    otherCategories?: number | null;
+    totalProfit?: number | null;
+    returnedProfit?: number | null;
+    otherProfit?: number | null;
+  } | null;
+  items?: ProductMarginItem[] | null;
+  meta?: ResponseMeta | null;
+};
+
 type ProductMetricsCatalogResponse = {
   metrics?: Array<{
     key?: string | null;
     id?: string | null;
     slug?: string | null;
     header?: string | null;
+    label?: string | null;
+    meta?: {
+      hint?: string | null;
+      suffix?: string | null;
+      group?: string | null;
+    } | null;
+    description?: string | null;
   }> | null;
   cards?: Array<{
     id?: string | null;
@@ -184,20 +262,32 @@ type ProductMetricsCatalogResponse = {
 };
 
 type ProductMetricCardDefinition = NonNullable<ProductMetricsCatalogResponse['cards']>[number];
+type ProductMetricDefinition = NonNullable<ProductMetricsCatalogResponse['metrics']>[number];
 
 export interface ProductReportingData {
   summary: ProductSummaryResponse | null;
   overview: ProductOverviewResponse | null;
+  marginTop: ProductMarginResponse | null;
+  marginCategories: ProductMarginResponse | null;
   rows: ProductReportingRow[];
   metricsCatalog: string[];
   metricCards: ProductMetricCardDefinition[];
+  metricDefinitions: ProductMetricDefinition[];
   loading: boolean;
   error: string | null;
 }
 
-export function useProductReportingData(options?: { enabled?: boolean; limit?: number; accountIds?: number[] }) {
+export function useProductReportingData(options?: {
+  enabled?: boolean;
+  limit?: number;
+  accountIds?: number[];
+  marginProductLimit?: number;
+  marginCategoryLimit?: number;
+}) {
   const enabled = options?.enabled ?? true;
   const limit = options?.limit ?? 50;
+  const marginProductLimit = options?.marginProductLimit ?? 10;
+  const marginCategoryLimit = options?.marginCategoryLimit ?? 10;
   const accountIds = useMemo(() => options?.accountIds ?? [], [options?.accountIds]);
   const accountIdsKey = useMemo(() => accountIds.join(','), [accountIds]);
   const { session } = usePlatform();
@@ -206,9 +296,12 @@ export function useProductReportingData(options?: { enabled?: boolean; limit?: n
   const [state, setState] = useState<ProductReportingData>({
     summary: null,
     overview: null,
+    marginTop: null,
+    marginCategories: null,
     rows: [],
     metricsCatalog: [],
     metricCards: [],
+    metricDefinitions: [],
     loading: false,
     error: null,
   });
@@ -227,9 +320,12 @@ export function useProductReportingData(options?: { enabled?: boolean; limit?: n
       setState({
         summary: null,
         overview: null,
+        marginTop: null,
+        marginCategories: null,
         rows: [],
         metricsCatalog: [],
         metricCards: [],
+        metricDefinitions: [],
         loading: false,
         error: null,
       });
@@ -261,10 +357,11 @@ export function useProductReportingData(options?: { enabled?: boolean; limit?: n
           .map(item => item.key ?? item.slug ?? item.id ?? item.header)
           .filter((item): item is string => Boolean(item));
         const metricCards = metricsCatalogResponse.cards ?? [];
+        const metricDefinitions = metricsCatalogResponse.metrics ?? [];
         const selectedMetrics = metricsCatalog.length > 0 ? metricsCatalog : [...PRODUCT_REPORT_METRICS_CATALOG];
         const overviewMetrics = preferMetrics(SUMMARY_PRIORITY_METRICS, selectedMetrics);
 
-        const [summary, overview, table] = await Promise.all([
+        const [summary, overview, table, marginTop, marginCategories] = await Promise.all([
           apiRequest<ProductSummaryResponse>('/reporting/products/summary', {
             method: 'POST',
             token: session.accessToken,
@@ -296,6 +393,24 @@ export function useProductReportingData(options?: { enabled?: boolean; limit?: n
               limit,
             }),
           }),
+          apiRequest<ProductMarginResponse>('/reporting/products/margin-top', {
+            method: 'POST',
+            token: session.accessToken,
+            body: JSON.stringify({
+              ...baseRequest,
+              limit: marginProductLimit,
+              includeOthers: true,
+            }),
+          }),
+          apiRequest<ProductMarginResponse>('/reporting/products/margin-categories', {
+            method: 'POST',
+            token: session.accessToken,
+            body: JSON.stringify({
+              ...baseRequest,
+              limit: marginCategoryLimit,
+              includeOthers: true,
+            }),
+          }),
         ]);
 
         if (cancelled) return;
@@ -303,9 +418,12 @@ export function useProductReportingData(options?: { enabled?: boolean; limit?: n
         setState({
           summary: summary ?? null,
           overview: overview ?? null,
+          marginTop: marginTop ?? null,
+          marginCategories: marginCategories ?? null,
           rows: table.rows ?? [],
           metricsCatalog,
           metricCards,
+          metricDefinitions,
           loading: false,
           error: null,
         });
@@ -314,9 +432,12 @@ export function useProductReportingData(options?: { enabled?: boolean; limit?: n
         setState({
           summary: null,
           overview: null,
+          marginTop: null,
+          marginCategories: null,
           rows: [],
           metricsCatalog: [],
           metricCards: [],
+          metricDefinitions: [],
           loading: false,
           error: error instanceof Error ? error.message : 'Не удалось загрузить товарный отчет.',
         });
@@ -335,6 +456,8 @@ export function useProductReportingData(options?: { enabled?: boolean; limit?: n
     filters.dateEnd,
     filters.dateStart,
     limit,
+    marginCategoryLimit,
+    marginProductLimit,
     reportMode,
     requestFilters,
     session?.accessToken,

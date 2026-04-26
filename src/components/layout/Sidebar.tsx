@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   BarChart3,
   ChevronRight,
@@ -36,6 +36,8 @@ const navItems: NavItem[] = [
   { id: 'settings', label: 'Настройки', icon: Settings },
 ];
 
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'aistats-sidebar-collapsed';
+
 interface SidebarProps {
   currentPage: Page;
   onNavigate: (page: Page) => void;
@@ -44,7 +46,14 @@ interface SidebarProps {
 }
 
 export function Sidebar({ currentPage, onNavigate, isMobileOpen = false, onMobileClose }: SidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true';
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(isCollapsed));
+  }, [isCollapsed]);
 
   const handleNavigate = (page: Page) => {
     onNavigate(page);
