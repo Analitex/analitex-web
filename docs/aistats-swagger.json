@@ -993,7 +993,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AuthTokenResponse"
+                  "$ref": "#/components/schemas/RegisterResponse"
                 }
               }
             }
@@ -1020,6 +1020,52 @@
           },
           "401": {
             "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/request-email-verification": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsIdentityRequestEmailVerificationEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestEmailVerificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/verify-email": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsIdentityVerifyEmailEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
           }
         }
       }
@@ -1576,6 +1622,62 @@
         }
       }
     },
+    "/api/v1/dev/emails": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsDevGetDevelopmentEmailsEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DevelopmentEmailResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dev/analytics/recalculate": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsDevRecalculateAnalyticsEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecalculateAnalyticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecalculateAnalyticsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/v1/config/custom-metrics": {
       "get": {
         "tags": [
@@ -1922,6 +2024,232 @@
           }
         }
       }
+    },
+    "/api/v1/admin/marketplace-connections/{connectionId}/maintenance-plan": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminGetAdminMarketplaceMaintenancePlanEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMarketplaceMaintenancePlanResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/marketplace-connections/{connectionId}/sync": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminStartAdminMarketplaceMaintenanceSyncEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminStartMarketplaceMaintenanceSyncRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMarketplaceMaintenanceSyncResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/marketplace-connections/{connectionId}/maintenance-schedule/preview": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminPreviewAdminMarketplaceMaintenanceScheduleEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminMaintenanceSchedulePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMaintenanceSchedulePreviewResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/marketplace-connections/{connectionId}/maintenance-schedules": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminListAdminMarketplaceMaintenanceSchedulesEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminMaintenanceScheduleResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminCreateAdminMarketplaceMaintenanceScheduleEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertAdminMaintenanceScheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMaintenanceScheduleResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/marketplace-maintenance-schedules/{scheduleId}": {
+      "put": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminUpdateAdminMarketplaceMaintenanceScheduleEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertAdminMaintenanceScheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMaintenanceScheduleResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminDeleteAdminMarketplaceMaintenanceScheduleEndpoint",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/analytics/recalculate": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminRecalculateAdminAnalyticsEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminRecalculateAnalyticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminRecalculateAnalyticsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1934,6 +2262,445 @@
         "properties": {
           "token": {
             "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminMaintenancePlanItem": {
+        "required": [
+          "cadence",
+          "description",
+          "label",
+          "operation",
+          "syncKinds"
+        ],
+        "type": "object",
+        "properties": {
+          "operation": {
+            "$ref": "#/components/schemas/MarketplaceMaintenanceOperation"
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "syncKinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "cadence": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminMaintenanceSchedulePreviewRequest": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "$ref": "#/components/schemas/MarketplaceMaintenanceOperation"
+          },
+          "anchorDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "dateFrom": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "syncKinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminMaintenanceSchedulePreviewResponse": {
+        "required": [
+          "anchorDate",
+          "dateFrom",
+          "dateTo",
+          "marketplace",
+          "marketplaceConnectionId",
+          "notes",
+          "operation",
+          "recalculateRequest",
+          "steps",
+          "syncKinds",
+          "syncRequest"
+        ],
+        "type": "object",
+        "properties": {
+          "marketplaceConnectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "marketplace": {
+            "$ref": "#/components/schemas/MarketplaceKey"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/MarketplaceMaintenanceOperation"
+          },
+          "anchorDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "syncKinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "syncRequest": {
+            "$ref": "#/components/schemas/AdminStartMarketplaceMaintenanceSyncRequest"
+          },
+          "recalculateRequest": {
+            "$ref": "#/components/schemas/AdminRecalculateAnalyticsRequest"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminMaintenanceScheduleStep"
+            },
+            "nullable": true
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminMaintenanceScheduleResponse": {
+        "required": [
+          "createdAt",
+          "enabled",
+          "id",
+          "marketplace",
+          "marketplaceConnectionId",
+          "operation",
+          "runAtUtc",
+          "syncKinds",
+          "timeZoneId",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "marketplaceConnectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "marketplace": {
+            "$ref": "#/components/schemas/MarketplaceKey"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/MarketplaceMaintenanceOperation"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "runAtUtc": {
+            "type": "string",
+            "nullable": true
+          },
+          "timeZoneId": {
+            "type": "string",
+            "nullable": true
+          },
+          "syncKinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "lastPlannedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "lastEnqueuedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "lastRecalculatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminMaintenanceScheduleStep": {
+        "required": [
+          "action",
+          "description",
+          "endpoint",
+          "order"
+        ],
+        "type": "object",
+        "properties": {
+          "order": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "action": {
+            "type": "string",
+            "nullable": true
+          },
+          "endpoint": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminMarketplaceMaintenancePlanResponse": {
+        "required": [
+          "connectionName",
+          "marketplace",
+          "marketplaceConnectionId",
+          "notes",
+          "plans"
+        ],
+        "type": "object",
+        "properties": {
+          "marketplaceConnectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "marketplace": {
+            "$ref": "#/components/schemas/MarketplaceKey"
+          },
+          "connectionName": {
+            "type": "string",
+            "nullable": true
+          },
+          "plans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminMaintenancePlanItem"
+            },
+            "nullable": true
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminMarketplaceMaintenanceSyncResponse": {
+        "required": [
+          "dateFrom",
+          "dateTo",
+          "enqueuedAt",
+          "marketplace",
+          "marketplaceConnectionId",
+          "nextStep",
+          "operation",
+          "syncKinds",
+          "syncRunIds"
+        ],
+        "type": "object",
+        "properties": {
+          "marketplaceConnectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "marketplace": {
+            "$ref": "#/components/schemas/MarketplaceKey"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/MarketplaceMaintenanceOperation"
+          },
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "syncKinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "syncRunIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "nullable": true
+          },
+          "enqueuedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "nextStep": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminRecalculateAnalyticsRequest": {
+        "type": "object",
+        "properties": {
+          "syncRunIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "nullable": true
+          },
+          "connectionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "dateFrom": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "syncKinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "dryRun": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminRecalculateAnalyticsResponse": {
+        "required": [
+          "artifactCount",
+          "dryRun",
+          "recalculatedAt",
+          "syncRunIds"
+        ],
+        "type": "object",
+        "properties": {
+          "syncRunIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "nullable": true
+          },
+          "artifactCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "recalculatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminStartMarketplaceMaintenanceSyncRequest": {
+        "required": [
+          "dateFrom",
+          "dateTo"
+        ],
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/MarketplaceMaintenanceOperation"
+          },
+          "syncKinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "nullable": true
           }
         },
@@ -2035,6 +2802,7 @@
           "email",
           "firstName",
           "id",
+          "isEmailVerified",
           "lastName",
           "status"
         ],
@@ -2062,6 +2830,14 @@
           },
           "status": {
             "$ref": "#/components/schemas/UserStatus"
+          },
+          "emailVerifiedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "isEmailVerified": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -2542,6 +3318,51 @@
               "$ref": "#/components/schemas/CustomMetricResponse"
             },
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DevelopmentEmailResponse": {
+        "required": [
+          "id",
+          "metadata",
+          "sentAt",
+          "subject",
+          "textBody",
+          "toEmail"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "toEmail": {
+            "type": "string",
+            "nullable": true
+          },
+          "toName": {
+            "type": "string",
+            "nullable": true
+          },
+          "subject": {
+            "type": "string",
+            "nullable": true
+          },
+          "textBody": {
+            "type": "string",
+            "nullable": true
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "sentAt": {
+            "type": "string",
+            "format": "date-time"
           }
         },
         "additionalProperties": false
@@ -3544,6 +4365,16 @@
         "enum": [
           0,
           1
+        ],
+        "type": "integer",
+        "format": "int32"
+      },
+      "MarketplaceMaintenanceOperation": {
+        "enum": [
+          0,
+          1,
+          2,
+          3
         ],
         "type": "integer",
         "format": "int32"
@@ -5409,6 +6240,7 @@
           "amount",
           "key",
           "label",
+          "labelRu",
           "managerDescription"
         ],
         "type": "object",
@@ -5418,6 +6250,10 @@
             "nullable": true
           },
           "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "labelRu": {
             "type": "string",
             "nullable": true
           },
@@ -5445,6 +6281,7 @@
           "effect",
           "key",
           "label",
+          "labelRu",
           "managerDescription",
           "shareOfRealisationPercent"
         ],
@@ -5455,6 +6292,10 @@
             "nullable": true
           },
           "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "labelRu": {
             "type": "string",
             "nullable": true
           },
@@ -6067,6 +6908,69 @@
         },
         "additionalProperties": false
       },
+      "RecalculateAnalyticsRequest": {
+        "type": "object",
+        "properties": {
+          "syncRunIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "nullable": true
+          },
+          "connectionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "dateFrom": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "syncKinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecalculateAnalyticsResponse": {
+        "required": [
+          "artifactCount",
+          "recalculatedAt",
+          "syncRunIds"
+        ],
+        "type": "object",
+        "properties": {
+          "syncRunIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "nullable": true
+          },
+          "artifactCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "recalculatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
       "RegisterRequest": {
         "required": [
           "email",
@@ -6093,6 +6997,27 @@
             "nullable": true
           },
           "password": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RegisterResponse": {
+        "required": [
+          "nextAction",
+          "requiresEmailVerification",
+          "user"
+        ],
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/AuthenticatedUserResponse"
+          },
+          "requiresEmailVerification": {
+            "type": "boolean"
+          },
+          "nextAction": {
             "type": "string",
             "nullable": true
           }
@@ -6145,6 +7070,19 @@
         ],
         "type": "integer",
         "format": "int32"
+      },
+      "RequestEmailVerificationRequest": {
+        "required": [
+          "email"
+        ],
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
       },
       "RequestPasswordResetRequest": {
         "required": [
@@ -6939,6 +7877,43 @@
         },
         "additionalProperties": false
       },
+      "UpsertAdminMaintenanceScheduleRequest": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "$ref": "#/components/schemas/MarketplaceMaintenanceOperation"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "runAtUtc": {
+            "type": "string",
+            "nullable": true
+          },
+          "timeZoneId": {
+            "type": "string",
+            "nullable": true
+          },
+          "syncKinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "UpsertMarketplaceFinanceSettingsRequest": {
         "type": "object",
         "properties": {
@@ -6962,6 +7937,7 @@
           "email",
           "firstName",
           "id",
+          "isEmailVerified",
           "lastName",
           "status",
           "updatedAt"
@@ -6990,6 +7966,14 @@
           },
           "status": {
             "$ref": "#/components/schemas/UserStatus"
+          },
+          "emailVerifiedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "isEmailVerified": {
+            "type": "boolean"
           },
           "createdAt": {
             "type": "string",
@@ -7048,6 +8032,24 @@
             "items": {
               "type": "string"
             },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "VerifyEmailRequest": {
+        "required": [
+          "code",
+          "email"
+        ],
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": {
+            "type": "string",
             "nullable": true
           }
         },

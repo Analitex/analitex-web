@@ -51,10 +51,10 @@ export function buildFormulaMetricValues(summaryMetrics: Record<string, number |
     tax: metric('tax'),
     taxBase: metric('taxBase'),
     profit: metric('profit'),
-    profitWithoutExpense: metric('profitWithoutExpense'),
+    profitWithoutExpense: metric('profit'),
     roi: metric('roi'),
     profitability: metric('profitability'),
-    marginality: metric('marginality'),
+    marginality: metric('profitability'),
     advertisingExpense: metric('advertisingExpense'),
     advertisingExpenseBonus: metric('advertisingExpenseBonus'),
     advertisingExpenseSum: metric('advertisingExpenseSum'),
@@ -72,6 +72,7 @@ export function buildFormulaMetricValues(summaryMetrics: Record<string, number |
     netMarketplaceReward: metric('netMarketplaceReward'),
     totalPaid: metric('totalPaid'),
     stockBalance: metric('stockBalance'),
+    stockBalanceOverall: metric('stockBalanceOverall'),
     stockBalanceInWh: metric('stockBalanceInWh'),
     stockBalanceInWayToClient: metric('stockBalanceInWayToClient'),
     stockBalanceInWayFromClient: metric('stockBalanceInWayFromClient'),
@@ -88,7 +89,7 @@ export function buildFormulaMetricValues(summaryMetrics: Record<string, number |
     gmroiYear: metric('gmroiYear'),
     salesTurnover: metric('salesTurnover'),
     ordersTurnover: metric('ordersTurnover'),
-    marginalityWithoutExpense: metric('marginalityWithoutExpense'),
+    marginalityWithoutExpense: metric('profitability'),
   };
 }
 

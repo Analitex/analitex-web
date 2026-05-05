@@ -48,7 +48,6 @@ export function buildAnalyticsRowsFromApi(rows: ProductReportingApiRow[]) {
     const logistics = getMetricNumber(metrics, ['logistics']);
     const storage = getMetricNumber(metrics, ['storage']);
     const returns = getMetricNumber(metrics, ['returns']);
-    const totalPaid = getMetricNumber(metrics, ['totalPaid']);
     const toTransfer = getMetricNumber(metrics, ['toTransfer']);
     const tax = getMetricNumber(metrics, ['tax']);
     const advertisingExpense = getMetricNumber(metrics, ['advertisingExpense']);

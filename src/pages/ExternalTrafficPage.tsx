@@ -76,7 +76,20 @@ export function ExternalTrafficPage() {
     () => (filters.marketplace.length > 0 ? filters.marketplace : ['Ozon']),
     [filters.marketplace]
   );
-  const requestAccountIds = analytics.accountIds.length > 0 ? analytics.accountIds : undefined;
+  const requestAccountIds = useMemo(
+    () => (analytics.accountIds.length > 0 ? analytics.accountIds : undefined),
+    [analytics.accountIds]
+  );
+  const requestFilters = useMemo(
+    () => ({
+      productIds: filters.sku,
+      groupIds: [],
+      brandIds: filters.brand,
+      categoryIds: filters.category,
+      tags: [],
+    }),
+    [filters.brand, filters.category, filters.sku]
+  );
 
   useEffect(() => {
     if (!session?.accessToken) {
@@ -100,6 +113,7 @@ export function ExternalTrafficPage() {
             mode: reportMode === 'financial' ? 'Financial' : 'Management',
             accountIds: requestAccountIds,
             marketplaces: requestMarketplaces,
+            filters: requestFilters,
             sort: { metric: 'ordersAmount', direction: 'Desc' },
             page: 1,
             limit: 50,
@@ -124,7 +138,7 @@ export function ExternalTrafficPage() {
     return () => {
       cancelled = true;
     };
-  }, [filters.dateEnd, filters.dateStart, reportMode, requestAccountIds, requestMarketplaces, session?.accessToken]);
+  }, [filters.dateEnd, filters.dateStart, reportMode, requestAccountIds, requestFilters, requestMarketplaces, session?.accessToken]);
 
   useEffect(() => {
     if (!session?.accessToken || !selectedSource) {
@@ -147,6 +161,7 @@ export function ExternalTrafficPage() {
             mode: reportMode === 'financial' ? 'Financial' : 'Management',
             accountIds: requestAccountIds,
             marketplaces: requestMarketplaces,
+            filters: requestFilters,
             sourceKey: selectedSource.sourceKey,
             vendorTag: selectedSource.vendorTag,
           }),
@@ -169,7 +184,7 @@ export function ExternalTrafficPage() {
     return () => {
       cancelled = true;
     };
-  }, [filters.dateEnd, filters.dateStart, reportMode, requestAccountIds, requestMarketplaces, selectedSource, session?.accessToken]);
+  }, [filters.dateEnd, filters.dateStart, reportMode, requestAccountIds, requestFilters, requestMarketplaces, selectedSource, session?.accessToken]);
 
   const totals = useMemo(() => {
     return rows.reduce(

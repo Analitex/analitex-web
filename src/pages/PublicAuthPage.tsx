@@ -16,11 +16,11 @@ export type AuthMode = 'login' | 'register';
 interface PublicAuthPageProps {
   mode: AuthMode;
   onModeChange: (mode: AuthMode) => void;
-  onResetPassword: () => void;
   onAcceptInvite: () => void;
+  onVerifyEmail: (email: string) => void;
 }
 
-export function PublicAuthPage({ mode, onModeChange, onResetPassword, onAcceptInvite }: PublicAuthPageProps) {
+export function PublicAuthPage({ mode, onModeChange, onAcceptInvite, onVerifyEmail }: PublicAuthPageProps) {
   const { register, login, requestPasswordReset, apiError } = usePlatform();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRequestingReset, setIsRequestingReset] = useState(false);
@@ -28,7 +28,6 @@ export function PublicAuthPage({ mode, onModeChange, onResetPassword, onAcceptIn
   const [privacyConsent, setPrivacyConsent] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [consentError, setConsentError] = useState<string | null>(null);
-  const [showExtraRegistration, setShowExtraRegistration] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const firstFieldRef = useRef<HTMLInputElement | null>(null);
 
@@ -77,9 +76,21 @@ export function PublicAuthPage({ mode, onModeChange, onResetPassword, onAcceptIn
 
     try {
       if (mode === 'register') {
-        await register(registerForm);
+        const result = await register(registerForm);
+        if (result.requiresEmailVerification) {
+          onVerifyEmail(result.user.email);
+        }
       } else {
-        await login(loginForm);
+        try {
+          await login(loginForm);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '';
+          if (message.toLowerCase().includes('not verified') || message.toLowerCase().includes('не подтверж')) {
+            onVerifyEmail(loginForm.email);
+          } else {
+            setResetNotice(message || 'Не удалось войти.');
+          }
+        }
       }
     } finally {
       setIsSubmitting(false);
@@ -347,13 +358,6 @@ export function PublicAuthPage({ mode, onModeChange, onResetPassword, onAcceptIn
                 <div className="flex flex-wrap gap-4">
                   <button
                     type="button"
-                    onClick={onResetPassword}
-                    className="font-medium text-slate-500 transition-colors hover:text-slate-900"
-                  >
-                    У меня уже есть код сброса
-                  </button>
-                  <button
-                    type="button"
                     onClick={onAcceptInvite}
                     className="font-medium text-slate-500 transition-colors hover:text-slate-900"
                   >
@@ -365,6 +369,7 @@ export function PublicAuthPage({ mode, onModeChange, onResetPassword, onAcceptIn
           </div>
         </section>
       </div>
+
     </div>
   );
 }

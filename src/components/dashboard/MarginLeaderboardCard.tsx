@@ -52,7 +52,6 @@ export function MarginLeaderboardCard({
   const [viewMode, setViewMode] = useState<'circle' | 'list'>('circle');
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const selectedProfitPercent = totalProfit > 0 ? (selectedProfit / totalProfit) * 100 : 0;
 
   return (
     <div className="self-start rounded-xl border border-slate-200 bg-white p-5">
@@ -710,40 +709,6 @@ function MarginImagePreview({ item, className }: { item: MarginLeaderboardRow; c
         document.body
       )}
     </span>
-  );
-}
-
-function MarginTotalRatio({
-  selectedCount,
-  totalCount,
-  selectedProfit,
-  totalProfit,
-  percent,
-}: {
-  selectedCount: number;
-  totalCount: number;
-  selectedProfit: number;
-  totalProfit: number;
-  percent: number;
-}) {
-  const safePercent = Math.max(0, Math.min(percent, 100));
-
-  return (
-    <div className="rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3">
-      <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-        <div className="font-semibold uppercase tracking-[0.12em] text-slate-500">Соотношение к общей прибыли</div>
-        <div className="shrink-0 font-semibold text-slate-700">
-          {safePercent.toFixed(1)}%
-        </div>
-      </div>
-      <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
-        <div className="h-full rounded-full bg-sky-500" style={{ width: `${safePercent}%` }} />
-      </div>
-      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
-        <span>Топ: {formatCurrency(selectedProfit)} · {selectedCount} из {totalCount}</span>
-        <span>Всего: {formatCurrency(totalProfit)}</span>
-      </div>
-    </div>
   );
 }
 

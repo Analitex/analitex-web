@@ -252,7 +252,7 @@ function getConnectorFields(marketplace: 'Wildberries' | 'Ozon') {
 }
 
 export function AuthPage() {
-  const { session, register, login, logout } = usePlatform();
+  const { session, register, login, logout, requestEmailVerification, verifyEmail } = usePlatform();
   const [registerForm, setRegisterForm] = useState({
     firstName: 'Anna',
     lastName: 'Ivanova',
@@ -264,6 +264,10 @@ export function AuthPage() {
     email: 'owner@company.com',
     password: 'secret',
   });
+  const [verificationForm, setVerificationForm] = useState({
+    email: 'owner@company.com',
+    code: '',
+  });
 
   const authMe = session
     ? {
@@ -273,6 +277,8 @@ export function AuthPage() {
         email: session.user.email,
         phone: session.user.phone,
         status: session.user.status,
+        emailVerifiedAt: session.user.emailVerifiedAt,
+        isEmailVerified: session.user.isEmailVerified,
       }
     : null;
 
@@ -282,7 +288,7 @@ export function AuthPage() {
         <SectionTitle
           eyebrow="Авторизация"
           title="Регистрация, вход и текущий пользователь"
-          description="Эта страница повторяет auth-endpoints из документации. Регистрация сразу создает сессию; вход меняет активный bearer-токен."
+          description="Регистрация создает пользователя и отправляет код подтверждения. После verify-email пользователь входит через login и получает bearer-токен."
         />
       </Surface>
 
@@ -324,7 +330,12 @@ export function AuthPage() {
 
           <button
             type="button"
-            onClick={() => void register(registerForm)}
+            onClick={() =>
+              void register(registerForm).then(result => {
+                setVerificationForm(current => ({ ...current, email: result.user.email }));
+                setLoginForm(current => ({ ...current, email: result.user.email, password: registerForm.password }));
+              })
+            }
             className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
           >
             Создать аккаунт
@@ -382,6 +393,49 @@ export function AuthPage() {
         </Surface>
       </div>
 
+      <Surface>
+        <SectionTitle
+          eyebrow="Подтверждение почты"
+          title="Email verification"
+          description="Эти действия вызывают POST /api/v1/auth/request-email-verification и POST /api/v1/auth/verify-email."
+        />
+        <div className="mt-5 grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px]">
+          <label>
+            <div className="mb-2 text-sm font-medium text-slate-600">Эл. почта</div>
+            <input
+              type="email"
+              value={verificationForm.email}
+              onChange={event => setVerificationForm(current => ({ ...current, email: event.target.value }))}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition-colors focus:border-blue-500"
+            />
+          </label>
+          <label>
+            <div className="mb-2 text-sm font-medium text-slate-600">Код</div>
+            <input
+              value={verificationForm.code}
+              onChange={event => setVerificationForm(current => ({ ...current, code: event.target.value }))}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition-colors focus:border-blue-500"
+            />
+          </label>
+        </div>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => void requestEmailVerification(verificationForm.email)}
+            className="inline-flex items-center gap-2 rounded-2xl border border-blue-200 px-4 py-3 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-50"
+          >
+            Отправить код
+          </button>
+          <button
+            type="button"
+            onClick={() => void verifyEmail(verificationForm)}
+            className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+          >
+            Подтвердить почту
+          </button>
+        </div>
+      </Surface>
+
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <Surface>
           <div className="flex items-center justify-between gap-3">
@@ -414,6 +468,8 @@ export function AuthPage() {
               'PUT /api/v1/users/me',
               'POST /api/v1/users/me/change-password',
               'DELETE /api/v1/users/me',
+              'POST /api/v1/auth/request-email-verification',
+              'POST /api/v1/auth/verify-email',
               'POST /api/v1/users/request-password-reset',
               'POST /api/v1/users/reset-password',
             ].map(route => (

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
 import { usePlatform } from '../context/PlatformContext';
 
@@ -21,8 +21,20 @@ export function PublicResetPasswordPage({ onSuccess }: PublicResetPasswordPagePr
 
   const tokenFromQuery = useMemo(() => {
     if (typeof window === 'undefined') return '';
-    return new URLSearchParams(window.location.search).get('token') ?? '';
+    const params = new URLSearchParams(window.location.search);
+    const queryToken = params.get('resetToken') ?? params.get('token');
+    if (queryToken) return queryToken;
+    const pathMatch = window.location.pathname.match(/^\/reset-password\/([^/?#]+)\/?$/);
+    return pathMatch?.[1] ? decodeURIComponent(pathMatch[1]) : '';
   }, []);
+
+  const hasLinkToken = Boolean(tokenFromQuery);
+
+  useEffect(() => {
+    if (tokenFromQuery) {
+      setStep(2);
+    }
+  }, [tokenFromQuery]);
 
   const handleSendCode = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -53,7 +65,7 @@ export function PublicResetPasswordPage({ onSuccess }: PublicResetPasswordPagePr
 
     try {
       await resetPassword({
-        token: form.code.trim() || tokenFromQuery,
+        resetToken: form.code.trim() || tokenFromQuery,
         newPassword: form.newPassword,
       });
       setNotice('Пароль успешно обновлен.');
@@ -116,7 +128,9 @@ export function PublicResetPasswordPage({ onSuccess }: PublicResetPasswordPagePr
               <p className="mt-2 text-sm leading-6 text-slate-500">
                 {step === 1
                   ? 'Введите адрес почты, чтобы отправить письмо для восстановления.'
-                  : 'Введите код из письма и задайте новый пароль для аккаунта.'}
+                  : hasLinkToken
+                    ? 'Ссылка подтверждена. Задайте новый пароль для аккаунта.'
+                    : 'Введите код из письма и задайте новый пароль для аккаунта.'}
               </p>
             </div>
 
@@ -161,19 +175,22 @@ export function PublicResetPasswordPage({ onSuccess }: PublicResetPasswordPagePr
               </form>
             ) : (
               <form className="mt-5 space-y-4" onSubmit={handleReset}>
-                <Field
-                  label="Код из письма"
-                  value={form.code || tokenFromQuery}
-                  onChange={value => setForm(current => ({ ...current, code: value }))}
-                  placeholder="Введите код из письма"
-                  autoFocus
-                />
+                {!hasLinkToken && (
+                  <Field
+                    label="Код из письма"
+                    value={form.code}
+                    onChange={value => setForm(current => ({ ...current, code: value }))}
+                    placeholder="Введите код из письма"
+                    autoFocus
+                  />
+                )}
                 <Field
                   label="Новый пароль"
                   type="password"
                   value={form.newPassword}
                   onChange={value => setForm(current => ({ ...current, newPassword: value }))}
                   placeholder="••••••••"
+                  autoFocus={hasLinkToken}
                 />
                 <Field
                   label="Подтвердите пароль"
@@ -187,13 +204,14 @@ export function PublicResetPasswordPage({ onSuccess }: PublicResetPasswordPagePr
                   <button
                     type="button"
                     onClick={() => setStep(1)}
+                    disabled={hasLinkToken}
                     className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
                   >
-                    Назад
+                    {hasLinkToken ? 'Ссылка получена' : 'Назад'}
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmitting || !form.code.trim() || !form.newPassword}
+                    disabled={isSubmitting || !(form.code.trim() || tokenFromQuery) || !form.newPassword}
                     className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     {isSubmitting ? (

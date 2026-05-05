@@ -1,9 +1,12 @@
 import { API_BASE_URL } from './env';
 
 type ApiErrorBody = {
+  title?: string;
+  detail?: string;
   message?: string;
   errors?: Record<string, string[]>;
   statusCode?: number;
+  errorCode?: string;
 };
 
 export class ApiError extends Error {
@@ -61,7 +64,7 @@ function resolveApiErrorMessage(details?: ApiErrorBody, fallback = 'Request fail
     return flattenedErrors[0];
   }
 
-  return details?.message || fallback;
+  return details?.detail || details?.message || details?.title || fallback;
 }
 
 export async function apiPing() {

@@ -99,6 +99,7 @@ export type Page =
   | 'history'
   | 'settings'
   | 'accept-invite'
+  | 'verify-email'
   | 'reset-password'
   | 'dashboard'
   | 'summary'

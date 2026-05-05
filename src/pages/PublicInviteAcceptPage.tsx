@@ -1,43 +1,78 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
 import { usePlatform } from '../context/PlatformContext';
 
 interface PublicInviteAcceptPageProps {
   onSuccess: () => void;
   onGoToLogin: () => void;
+  onGoToRegister: () => void;
 }
 
-export function PublicInviteAcceptPage({ onSuccess, onGoToLogin }: PublicInviteAcceptPageProps) {
-  const { acceptInvitation, apiError } = usePlatform();
-  const [token, setToken] = useState('');
+const PENDING_INVITE_TOKEN_KEY = 'aistats-pending-invite-token';
+
+export function PublicInviteAcceptPage({ onSuccess, onGoToLogin, onGoToRegister }: PublicInviteAcceptPageProps) {
+  const { acceptInvitation, session, apiError } = usePlatform();
+  const acceptInvitationRef = useRef(acceptInvitation);
+  const onSuccessRef = useRef(onSuccess);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [needsAuth, setNeedsAuth] = useState(false);
 
-  const tokenFromQuery = useMemo(() => {
+  const inviteToken = useMemo(() => {
     if (typeof window === 'undefined') return '';
-    return new URLSearchParams(window.location.search).get('token') ?? '';
+    const params = new URLSearchParams(window.location.search);
+    const queryToken = params.get('token') ?? params.get('inviteToken');
+    if (queryToken) return queryToken;
+    const pathMatch = window.location.pathname.match(/^\/accept-invite\/([^/?#]+)\/?$/);
+    if (pathMatch?.[1]) return decodeURIComponent(pathMatch[1]);
+    return window.sessionStorage.getItem(PENDING_INVITE_TOKEN_KEY) ?? '';
   }, []);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const inviteToken = token.trim() || tokenFromQuery;
+  useEffect(() => {
+    acceptInvitationRef.current = acceptInvitation;
+    onSuccessRef.current = onSuccess;
+  }, [acceptInvitation, onSuccess]);
+
+  useEffect(() => {
     if (!inviteToken) {
-      setNotice('Укажите токен приглашения.');
+      setNotice('Ссылка приглашения недействительна или устарела. Попросите отправить приглашение еще раз.');
       return;
     }
 
-    setIsSubmitting(true);
-    setNotice(null);
-    try {
-      await acceptInvitation(inviteToken);
-      setNotice('Приглашение принято. Теперь можно продолжить работу.');
-      onSuccess();
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Не удалось принять приглашение.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    let cancelled = false;
+    const accept = async () => {
+      setIsSubmitting(true);
+      setNotice('Проверяем приглашение...');
+      setNeedsAuth(false);
+
+      try {
+        await acceptInvitationRef.current(inviteToken);
+        if (cancelled) return;
+        window.sessionStorage.removeItem(PENDING_INVITE_TOKEN_KEY);
+        setNotice('Приглашение принято. Открываем рабочее пространство.');
+        onSuccessRef.current();
+      } catch (error) {
+        if (cancelled) return;
+        window.sessionStorage.setItem(PENDING_INVITE_TOKEN_KEY, inviteToken);
+        setNeedsAuth(true);
+        setNotice(
+          session
+            ? error instanceof Error ? error.message : 'Не удалось принять приглашение.'
+            : 'Войдите или создайте аккаунт, чтобы присоединиться к команде.'
+        );
+      } finally {
+        if (!cancelled) {
+          setIsSubmitting(false);
+        }
+      }
+    };
+
+    void accept();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteToken, session]);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[linear-gradient(180deg,#f8fbff_0%,#f3f7fc_100%)] text-slate-900">
@@ -59,15 +94,15 @@ export function PublicInviteAcceptPage({ onSuccess, onGoToLogin }: PublicInviteA
               Приглашение
             </div>
             <h1 className="mt-5 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-              Присоединитесь к рабочему пространству в один клик
+              Вас пригласили в команду
             </h1>
             <p className="mt-4 max-w-xl text-sm leading-7 text-slate-600 sm:text-base">
-              Подтвердите приглашение и получите доступ к организации без лишних шагов.
+              Подтвердите приглашение, чтобы открыть доступ к отчетам, магазинам и настройкам вашей организации.
             </p>
 
             <div className="mt-7 grid gap-4 sm:grid-cols-2">
-              <InviteCard title="Быстрое подключение" text="Введите токен или используйте ссылку из письма." />
-              <InviteCard title="Без лишних шагов" text="После подтверждения вы сразу продолжите работу." />
+              <InviteCard title="Рабочее пространство" text="Вы попадете в организацию, куда вас пригласил владелец или администратор." />
+              <InviteCard title="Доступ к данным" text="После подтверждения откроются разделы, доступные для вашей роли." />
             </div>
           </div>
         </section>
@@ -81,7 +116,7 @@ export function PublicInviteAcceptPage({ onSuccess, onGoToLogin }: PublicInviteA
             <div className="mt-6">
               <h2 className="text-2xl font-semibold text-slate-950">Подтвердите приглашение</h2>
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Введите токен из письма или используйте параметр token из ссылки.
+                Если вы открыли ссылку из письма, приглашение уже подставлено. Остается только подтвердить вход в команду.
               </p>
             </div>
 
@@ -96,41 +131,34 @@ export function PublicInviteAcceptPage({ onSuccess, onGoToLogin }: PublicInviteA
               </div>
             )}
 
-            <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
-              <Field
-                label="Токен приглашения"
-                value={token || tokenFromQuery}
-                onChange={value => setToken(value)}
-                placeholder="Введите токен приглашения"
-                autoFocus
-              />
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    Подтверждаем...
-                  </>
-                ) : (
-                  <>
-                    Принять приглашение
+            <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+              {isSubmitting ? (
+                <div className="flex items-center gap-3 text-sm text-slate-700">
+                  <Loader2 size={18} className="animate-spin text-sky-700" />
+                  Проверяем доступ к команде...
+                </div>
+              ) : needsAuth ? (
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={onGoToRegister}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+                  >
+                    Создать аккаунт
                     <ArrowRight size={16} />
-                  </>
-                )}
-              </button>
-            </form>
-
-            <button
-              type="button"
-              onClick={onGoToLogin}
-              className="mt-4 inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-            >
-              Перейти к входу
-            </button>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onGoToLogin}
+                    className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                  >
+                    У меня уже есть аккаунт
+                  </button>
+                </div>
+              ) : (
+                <div className="text-sm text-slate-600">Ожидаем подтверждение приглашения.</div>
+              )}
+            </div>
           </div>
         </section>
       </div>
@@ -144,32 +172,5 @@ function InviteCard({ title, text }: { title: string; text: string }) {
       <div className="text-sm font-semibold text-slate-950">{title}</div>
       <p className="mt-2 text-sm leading-6 text-slate-600">{text}</p>
     </div>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  autoFocus,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  autoFocus?: boolean;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-sm font-medium text-slate-600">{label}</span>
-      <input
-        autoFocus={autoFocus}
-        value={value}
-        placeholder={placeholder}
-        onChange={event => onChange(event.target.value)}
-        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
-      />
-    </label>
   );
 }

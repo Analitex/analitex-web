@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useFilters } from '../context/FilterContext';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useReportMode } from '../context/ReportModeContext';
 import { useAnalyticsWorkspaceData } from '../hooks/useAnalyticsWorkspaceData';
 import { useProductReportingData } from '../hooks/useProductReportingData';
@@ -30,7 +29,7 @@ import {
   formatCustomMetricDelta,
   formatCustomMetricValue,
 } from '../lib/dashboardMetrics';
-import { Activity, ArrowDownWideNarrow, ArrowUpWideNarrow, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, GripVertical, Pin, Search, Settings2, TrendingUp, X } from 'lucide-react';
+import { Activity, ArrowDownWideNarrow, ArrowUpWideNarrow, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, GripVertical, Pin, Search, Settings2, X } from 'lucide-react';
 import type { MetricValue } from '../types';
 
 const WIDGET_PROFILES_STORAGE_KEY = 'dashboard-widget-profiles';
@@ -117,7 +116,7 @@ const AVAILABLE_FORMULA_METRICS = [
   { label: 'Компенсация', value: 'compensation' },
   { label: 'Итоговое вознаграждение ВБ', value: 'netMarketplaceReward' },
   { label: 'Итого к оплате', value: 'totalPaid' },
-  { label: 'Остатки на складах МП', value: 'stockBalance' },
+  { label: 'Остатки', value: 'stockBalanceOverall' },
   { label: 'Остатки на складах WB (за вычетом в пути)', value: 'stockBalanceInWh' },
   { label: 'В пути к клиентам', value: 'stockBalanceInWayToClient' },
   { label: 'В пути от клиентов', value: 'stockBalanceInWayFromClient' },
@@ -272,7 +271,6 @@ const ANALYTICS_COLUMNS: AnalyticsColumnDefinition[] = [
 ];
 
 const DEFAULT_PINNED_ANALYTICS_COLUMN_IDS = ['photo', 'article', 'toTransfer'];
-const PINNED_ANALYTICS_COLUMN_IDS = DEFAULT_PINNED_ANALYTICS_COLUMN_IDS;
 const ANALYTICS_TABLE_PINNING_VERSION = 1;
 const MAX_PINNED_ANALYTICS_COLUMNS = 4;
 
@@ -281,7 +279,6 @@ function getDefaultAnalyticsColumnIds() {
 }
 
 export function DashboardPage() {
-  const { filters } = useFilters();
   const { reportMode } = useReportMode();
   const analytics = useAnalyticsWorkspaceData({
     includeTrends: false,
@@ -649,10 +646,10 @@ export function DashboardPage() {
     {
       id: 'metric-stock-balance',
       title: 'Остатки',
-      metric: metricValue('stockBalance'),
+      metric: metricValue('stockBalanceOverall'),
       format: formatNumber,
       description: 'Остатки, шт',
-      faq: tooltip(['stockBalance', 'stockBalanceOverall'], 'Остатки, шт'),
+      faq: tooltip(['stockBalanceOverall'], 'Остатки, шт'),
       section: 'metrics',
     },
     {
@@ -3208,17 +3205,4 @@ function orderAnalyticsColumns(columns: AnalyticsColumnDefinition[], orderedIds:
   const rank = new Map(normalizeAnalyticsColumnOrder(orderedIds).map((id, index) => [id, index]));
   return [...columns].sort((left, right) => (rank.get(String(left.id)) ?? 999) - (rank.get(String(right.id)) ?? 999));
 }
-
-function formatCurrencyDetailed(value: number) {
-  return new Intl.NumberFormat('ru-RU', {
-    style: 'currency',
-    currency: 'RUB',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
-
-
-
-
 

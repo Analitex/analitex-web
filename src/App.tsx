@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { PlatformProvider, usePlatform } from './context/PlatformContext';
 import { FilterProvider } from './context/FilterContext';
 import { ReportModeProvider } from './context/ReportModeContext';
@@ -17,6 +17,7 @@ import { AIInsightsPage } from './pages/AllInsightPage';
 import { PublicAuthPage } from './pages/PublicAuthPage';
 import { PublicInviteAcceptPage } from './pages/PublicInviteAcceptPage';
 import { PublicResetPasswordPage } from './pages/PublicResetPasswordPage';
+import { PublicVerifyEmailPage } from './pages/PublicVerifyEmailPage';
 import { OrganizationSetupPage } from './pages/OrganizationSetupPage';
 import {
   ActionHistoryPage,
@@ -45,6 +46,7 @@ type MainPage =
   | 'accept-invite'
   | 'login'
   | 'register'
+  | 'verify-email'
   | 'reset-password'
   | 'setup';
 type DevPage = 'home' | 'auth' | 'organizations' | 'connections' | 'analytics' | 'docs' | 'history';
@@ -56,8 +58,11 @@ type RouteState =
 const DEFAULT_SETTINGS_TAB: SettingsTabId = 'profile';
 const SETTINGS_TAB_PATTERN = /^\/settings(?:\/([^/?#]+))?\/?$/;
 const AUTH_ROUTE_PATTERN = /^\/(login|register)\/?$/;
-const PUBLIC_FLOW_ROUTE_PATTERN = /^\/(reset-password|accept-invite)\/?$/;
+const PUBLIC_FLOW_ROUTE_PATTERN = /^\/(reset-password|accept-invite|verify-email)\/?$/;
+const RESET_PASSWORD_TOKEN_ROUTE_PATTERN = /^\/reset-password\/([^/?#]+)\/?$/;
+const ACCEPT_INVITE_TOKEN_ROUTE_PATTERN = /^\/accept-invite\/([^/?#]+)\/?$/;
 const DEV_ROUTE_PATTERN = /^\/dev(?:\/platform)?(?:\/([^/?#]+))?\/?$/;
+const PENDING_INVITE_TOKEN_KEY = 'aistats-pending-invite-token';
 const DEV_PAGES = new Set<DevPage>(['home', 'auth', 'organizations', 'connections', 'analytics', 'docs', 'history']);
 
 function normalizeSettingsTab(value: string | undefined): SettingsTabId {
@@ -76,6 +81,8 @@ function normalizeMainPage(pathname: string): MainPage {
       return 'login';
     case '/register':
       return 'register';
+    case '/verify-email':
+      return 'verify-email';
     case '/reset-password':
       return 'reset-password';
     case '/accept-invite':
@@ -115,11 +122,19 @@ function parseRoute(pathname: string): RouteState {
     return { mode: 'main', page: authMatch[1] as 'login' | 'register', settingsTab: DEFAULT_SETTINGS_TAB };
   }
 
+  if (RESET_PASSWORD_TOKEN_ROUTE_PATTERN.test(pathname)) {
+    return { mode: 'main', page: 'reset-password', settingsTab: DEFAULT_SETTINGS_TAB };
+  }
+
+  if (ACCEPT_INVITE_TOKEN_ROUTE_PATTERN.test(pathname)) {
+    return { mode: 'main', page: 'accept-invite', settingsTab: DEFAULT_SETTINGS_TAB };
+  }
+
   const publicFlowMatch = pathname.match(PUBLIC_FLOW_ROUTE_PATTERN);
   if (publicFlowMatch) {
     return {
       mode: 'main',
-      page: publicFlowMatch[1] as 'reset-password' | 'accept-invite',
+      page: publicFlowMatch[1] as 'reset-password' | 'accept-invite' | 'verify-email',
       settingsTab: DEFAULT_SETTINGS_TAB,
     };
   }
@@ -158,6 +173,8 @@ function pathForRoute(route: RouteState) {
       return '/login';
     case 'register':
       return '/register';
+    case 'verify-email':
+      return '/verify-email';
     case 'reset-password':
       return '/reset-password';
     case 'accept-invite':
@@ -186,6 +203,7 @@ function isMainPage(page: Page): page is Exclude<MainPage, 'login' | 'register'>
     page === 'ai' ||
     page === 'settings' ||
     page === 'accept-invite' ||
+    page === 'verify-email' ||
     page === 'reset-password'
   );
 }
@@ -322,7 +340,8 @@ function NotificationToast({
 }
 
 function AppRouter() {
-  const { recordAction, session, organizations, isWorkspaceHydrated } = usePlatform();
+  const { recordAction, session, organizations, isWorkspaceHydrated, acceptInvitation } = usePlatform();
+  const acceptInvitationRef = useRef(acceptInvitation);
   const [route, setRoute] = useState<RouteState>(() => {
     if (typeof window === 'undefined') return { mode: 'main', page: 'dashboard', settingsTab: DEFAULT_SETTINGS_TAB };
     return parseRoute(window.location.pathname);
@@ -433,11 +452,44 @@ function AppRouter() {
     setRoute(nextRoute);
   };
 
+  const goToVerifyEmail = (email: string, replace = false) => {
+    const nextRoute: RouteState = { mode: 'main', page: 'verify-email', settingsTab: DEFAULT_SETTINGS_TAB };
+    const query = email.trim() ? `?email=${encodeURIComponent(email.trim())}` : '';
+    const nextPath = `${pathForRoute(nextRoute)}${query}`;
+    if (replace) {
+      window.history.replaceState(null, '', nextPath);
+    } else if (`${window.location.pathname}${window.location.search}` !== nextPath) {
+      window.history.pushState(null, '', nextPath);
+    }
+    setRoute(nextRoute);
+  };
+
+  useEffect(() => {
+    acceptInvitationRef.current = acceptInvitation;
+  }, [acceptInvitation]);
+
+  useEffect(() => {
+    if (!session?.accessToken || !isWorkspaceHydrated) return;
+    const pendingInviteToken = window.sessionStorage.getItem(PENDING_INVITE_TOKEN_KEY);
+    if (!pendingInviteToken) return;
+
+    window.sessionStorage.removeItem(PENDING_INVITE_TOKEN_KEY);
+    void acceptInvitationRef.current(pendingInviteToken)
+      .then(() => {
+        const nextRoute: RouteState = { mode: 'main', page: 'dashboard', settingsTab: DEFAULT_SETTINGS_TAB };
+        window.history.replaceState(null, '', pathForRoute(nextRoute));
+        setRoute(nextRoute);
+      })
+      .catch(() => {
+        window.sessionStorage.setItem(PENDING_INVITE_TOKEN_KEY, pendingInviteToken);
+      });
+  }, [isWorkspaceHydrated, session?.accessToken]);
+
   useEffect(() => {
     if (route.mode !== 'main') return;
     if (!isWorkspaceHydrated) return;
 
-    if (!session && route.page !== 'login' && route.page !== 'register' && route.page !== 'reset-password' && route.page !== 'accept-invite') {
+    if (!session && route.page !== 'login' && route.page !== 'register' && route.page !== 'verify-email' && route.page !== 'reset-password' && route.page !== 'accept-invite') {
       const nextRoute: RouteState = { mode: 'main', page: 'login', settingsTab: DEFAULT_SETTINGS_TAB };
       const nextPath = pathForRoute(nextRoute);
       if (window.location.pathname !== nextPath) {
@@ -521,8 +573,8 @@ function AppRouter() {
         <PublicAuthPage
           mode={route.page}
           onModeChange={mode => goToAuth(mode)}
-          onResetPassword={() => navigate('reset-password')}
           onAcceptInvite={() => navigate('accept-invite')}
+          onVerifyEmail={email => goToVerifyEmail(email)}
         />
         <NotificationStack />
       </>
@@ -538,11 +590,11 @@ function AppRouter() {
     );
   }
 
-  if (route.page === 'accept-invite') {
+  if (route.page === 'verify-email') {
     return (
       <>
-        <PublicInviteAcceptPage
-          onSuccess={() => (session ? navigate('dashboard') : goToAuth('login', true))}
+        <PublicVerifyEmailPage
+          onSuccess={() => goToAuth('login', true)}
           onGoToLogin={() => goToAuth('login', true)}
         />
         <NotificationStack />
@@ -550,7 +602,20 @@ function AppRouter() {
     );
   }
 
-  if (session && !isWorkspaceHydrated && route.page !== 'login' && route.page !== 'register') {
+  if (route.page === 'accept-invite') {
+    return (
+      <>
+        <PublicInviteAcceptPage
+          onSuccess={() => (session ? navigate('dashboard') : goToAuth('login', true))}
+          onGoToLogin={() => goToAuth('login', true)}
+          onGoToRegister={() => goToAuth('register', true)}
+        />
+        <NotificationStack />
+      </>
+    );
+  }
+
+  if (session && !isWorkspaceHydrated && route.page !== 'login' && route.page !== 'register' && route.page !== 'verify-email') {
     return (
       <>
         <WorkspaceLoader />

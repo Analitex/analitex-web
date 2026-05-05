@@ -23,9 +23,15 @@ Dashboard metrics are API-owned. The web app must not reconstruct built-in KPI v
 - `ordersTurnover`
 - table totals from `POST /api/v1/reporting/products/query` via `summary.total` and `summary.page`
 
+## Temporary business mapping
+
+- `profitWithoutExpense` is displayed as `profit`.
+- `marginality` is displayed as `profitability`.
+- `marginalityWithoutExpense` is displayed as `profitability`.
+
 ## Remaining API/business-layer gaps
 
-- `marginalityWithoutExpense` when `profitWithoutExpense` must display a separate percentage from `profitability`.
+- Separate `profitWithoutExpense`, `marginality`, and `marginalityWithoutExpense` values when they must differ from `profit` / `profitability`.
 - `expense` if operating expense should be a first-class metric instead of a revenue-structure item.
 - `drrSum` and `drrBonus` if those separate ad-efficiency cards remain enabled.
 

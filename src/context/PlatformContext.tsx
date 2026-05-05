@@ -10,6 +10,8 @@ export interface PlatformUser {
   email: string;
   phone: string;
   status: 'Active' | 'Invited' | 'Inactive';
+  emailVerifiedAt?: string | null;
+  isEmailVerified: boolean;
 }
 
 export interface AuthSession {
@@ -17,6 +19,12 @@ export interface AuthSession {
   tokenType: 'Bearer';
   expiresAt: string;
   user: PlatformUser;
+}
+
+export interface RegisterResult {
+  user: PlatformUser;
+  requiresEmailVerification: boolean;
+  nextAction?: string | null;
 }
 
 export interface Organization {
@@ -112,9 +120,11 @@ interface PlatformContextValue {
   actionHistory: ActionRecord[];
   notifications: NotificationItem[];
   apiError: string | null;
-  register: (input: { firstName: string; lastName: string; email: string; phone: string; password: string }) => Promise<AuthSession>;
+  register: (input: { firstName: string; lastName: string; email: string; phone: string; password: string }) => Promise<RegisterResult>;
   login: (input: { email: string; password: string }) => Promise<AuthSession>;
   logout: () => void;
+  requestEmailVerification: (email: string) => Promise<void>;
+  verifyEmail: (input: { email: string; code: string }) => Promise<void>;
   createOrganization: (name: string) => Organization;
   renameOrganization: (organizationId: string, name: string) => Promise<Organization>;
   selectOrganization: (organizationId: string) => void;
@@ -141,7 +151,7 @@ interface PlatformContextValue {
   updateProfile: (input: { firstName: string; lastName: string; email: string; phone: string }) => Promise<PlatformUser>;
   changePassword: (input: { currentPassword: string; newPassword: string }) => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
-  resetPassword: (input: { token: string; newPassword: string }) => Promise<void>;
+  resetPassword: (input: { resetToken: string; newPassword: string }) => Promise<void>;
   deleteCurrentUser: () => Promise<void>;
   loadSettingsTabData: (tab: 'shops' | 'users' | 'metrics') => Promise<void>;
   recordAction: (action: Omit<ActionRecord, 'id' | 'timestamp'>) => void;
@@ -206,6 +216,8 @@ type ApiUser = {
   email?: string | null;
   phone?: string | null;
   status?: string | number;
+  emailVerifiedAt?: string | null;
+  isEmailVerified?: boolean;
 };
 
 type ApiOrganization = {
@@ -288,6 +300,11 @@ type ApiCustomMetric = {
 };
 
 type ApiProfileResponse = ApiUser;
+type ApiRegisterResponse = {
+  user?: ApiUser | null;
+  requiresEmailVerification?: boolean;
+  nextAction?: string | null;
+};
 
 function mapUserStatus(value: unknown): PlatformUser['status'] {
   if (typeof value === 'string') {
@@ -363,6 +380,8 @@ function mapAuthUser(user: ApiUser): PlatformUser {
     email: user.email ?? '',
     phone: user.phone ?? '',
     status: mapUserStatus(user.status),
+    emailVerifiedAt: user.emailVerifiedAt ?? null,
+    isEmailVerified: Boolean(user.isEmailVerified),
   };
 }
 
@@ -383,6 +402,8 @@ function mapMember(member: ApiMember): OrganizationMember {
     email: member.email ?? '',
     phone: member.phone ?? '',
     status: mapUserStatus(member.status),
+    emailVerifiedAt: null,
+    isEmailVerified: false,
     role: mapRole(member.role),
   };
 }
@@ -611,33 +632,36 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     setConnectors(CONNECTOR_CATALOG as MarketplaceConnectorDefinition[]);
     setIsWorkspaceHydrated(false);
     try {
-      const response = await apiRequest<{ accessToken?: string; tokenType?: string; expiresAt?: string; user?: ApiUser }>('/auth/register', {
+      const response = await apiRequest<ApiRegisterResponse>('/auth/register', {
         method: 'POST',
         body: JSON.stringify(input),
       });
-      if (!response.accessToken || !response.expiresAt || !response.user) {
+      if (!response.user) {
         throw new Error('Backend returned incomplete registration payload.');
       }
-      const nextSession: AuthSession = {
-        accessToken: response.accessToken,
-        tokenType: response.tokenType === 'Bearer' ? 'Bearer' : 'Bearer',
-        expiresAt: response.expiresAt,
-        user: mapAuthUser(response.user),
+      const nextUser = mapAuthUser(response.user);
+      const result: RegisterResult = {
+        user: nextUser,
+        requiresEmailVerification: Boolean(response.requiresEmailVerification),
+        nextAction: response.nextAction ?? null,
       };
-      setUsers(current => [...current.filter(item => item.email !== nextSession.user.email), nextSession.user]);
-      setSession(nextSession);
-      setIsWorkspaceHydrated(false);
+      setUsers(current => [...current.filter(item => item.email !== nextUser.email), nextUser]);
+      setSession(null);
+      setIsWorkspaceHydrated(true);
+      setApiError(null);
       enqueueNotification({
         tone: 'success',
-        title: 'Регистрация завершена',
-        message: `${nextSession.user.email} успешно зарегистрирован.`,
+        title: 'Регистрация создана',
+        message: result.requiresEmailVerification
+          ? `Мы отправили код подтверждения на ${nextUser.email}.`
+          : `${nextUser.email} успешно зарегистрирован.`,
       });
       recordAction({
         kind: 'auth',
         title: 'Registered account',
-        description: `${nextSession.user.email} registered through the backend API.`,
+        description: `${nextUser.email} registered through the backend API.`,
       });
-      return nextSession;
+      return result;
     } catch (error) {
       setApiError(error instanceof Error ? error.message : 'Failed to register.');
       setIsWorkspaceHydrated(true);
@@ -672,6 +696,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       setUsers(current => [...current.filter(item => item.email !== nextSession.user.email), nextSession.user]);
       setSession(nextSession);
       setIsWorkspaceHydrated(false);
+      setApiError(null);
       enqueueNotification({
         tone: 'success',
         title: 'Вход выполнен',
@@ -710,6 +735,49 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       kind: 'auth',
       title: 'Logged out',
       description: 'Current session was cleared.',
+    });
+  };
+
+  const requestEmailVerification: PlatformContextValue['requestEmailVerification'] = async email => {
+    await apiRequest<void>('/auth/request-email-verification', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+    setApiError(null);
+    enqueueNotification({
+      tone: 'info',
+      title: 'Код отправлен',
+      message: `Проверьте почту ${email}.`,
+    });
+    recordAction({
+      kind: 'auth',
+      title: 'Requested email verification',
+      description: `Email verification requested for ${email}.`,
+    });
+  };
+
+  const verifyEmail: PlatformContextValue['verifyEmail'] = async input => {
+    await apiRequest<void>('/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    setUsers(current =>
+      current.map(user =>
+        user.email === input.email
+          ? { ...user, emailVerifiedAt: new Date().toISOString(), isEmailVerified: true }
+          : user
+      )
+    );
+    setApiError(null);
+    enqueueNotification({
+      tone: 'success',
+      title: 'Почта подтверждена',
+      message: 'Теперь можно войти в аккаунт.',
+    });
+    recordAction({
+      kind: 'auth',
+      title: 'Verified email',
+      description: `${input.email} verified email through the backend API.`,
     });
   };
 
@@ -819,8 +887,15 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
   const acceptInvitation: PlatformContextValue['acceptInvitation'] = async token => {
     await apiRequest<void>('/invitations/accept', {
       method: 'POST',
+      token: session?.accessToken,
       body: JSON.stringify({ token }),
     });
+    if (session?.accessToken) {
+      const orgs = await apiRequest<ApiOrganization[]>('/users/me/organizations', { token: session.accessToken });
+      const nextOrganizations = (orgs ?? []).map(mapOrganization);
+      setOrganizations(nextOrganizations);
+      setSelectedOrganizationId(nextOrganizations[0]?.id ?? '');
+    }
     enqueueNotification({
       tone: 'success',
       title: 'Приглашение принято',
@@ -1108,6 +1183,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       method: 'POST',
       body: JSON.stringify(input),
     });
+    setApiError(null);
     recordAction({
       kind: 'auth',
       title: 'Reset password',
@@ -1210,6 +1286,8 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     register,
     login,
     logout,
+    requestEmailVerification,
+    verifyEmail,
     createOrganization,
     renameOrganization,
     selectOrganization,

@@ -56,7 +56,10 @@ type BreakdownRow = {
 
 type BreakdownResponse = {
   rows?: BreakdownRow[];
-  summary?: { total?: number; page?: number };
+  summary?: {
+    total?: Partial<AnalyticsMetricRecord>;
+    page?: Partial<AnalyticsMetricRecord>;
+  };
   pagination?: { total?: number; page?: number; limit?: number };
   meta?: { isPartial?: boolean };
 };
@@ -176,9 +179,9 @@ export function useAnalyticsWorkspaceData(options?: {
       groupIds: [],
       brandIds: filters.brand,
       categoryIds: filters.category,
-      tags: filters.marketplace,
+      tags: [],
     }),
-    [filters.brand, filters.category, filters.marketplace, filters.sku]
+    [filters.brand, filters.category, filters.sku]
   );
 
   const requestKey = useMemo(
@@ -297,33 +300,12 @@ export function useAnalyticsWorkspaceData(options?: {
               .map(item => item.id)
               .filter((id): id is number => Number.isInteger(id));
 
-            const selectedProductIds =
-              filters.sku.length > 0
-                ? filters.sku
-                : (filterOptions.products ?? [])
-                    .map(item => item.id)
-                    .filter((id): id is string => Boolean(id));
-
-            const selectedBrandIds =
-              filters.brand.length > 0
-                ? filters.brand
-                : (filterOptions.brands ?? [])
-                    .map(item => item.id)
-                    .filter((id): id is string => Boolean(id));
-
-            const selectedCategoryIds =
-              filters.category.length > 0
-                ? filters.category
-                : (filterOptions.categories ?? [])
-                    .map(item => item.id)
-                    .filter((id): id is string => Boolean(id));
-
             const analyticsFilters: AnalyticsQueryFilters = {
-              productIds: selectedProductIds,
-              groupIds: (filterOptions.groups ?? []).map(item => item.id).filter((id): id is number => Number.isInteger(id)),
-              brandIds: selectedBrandIds,
-              categoryIds: selectedCategoryIds,
-              tags: filters.marketplace,
+              productIds: filters.sku,
+              groupIds: [],
+              brandIds: filters.brand,
+              categoryIds: filters.category,
+              tags: [],
             };
 
             const analyticsBaseRequest = {
@@ -336,6 +318,8 @@ export function useAnalyticsWorkspaceData(options?: {
             const maybeAccountIds = accountIds.length > 0 ? { accountIds } : {};
 
             const selectedMetrics = metricKeys.length > 0 ? metricKeys : DEFAULT_ANALYTICS_METRICS;
+            const trendsMetrics = selectedMetrics.filter(metric => OVERVIEW_SUMMARY_METRICS.includes(metric)).slice(0, 6);
+            const breakdownMetrics = selectedMetrics.filter(metric => OVERVIEW_SUMMARY_METRICS.includes(metric));
 
             const [summary, trends, breakdown, explanation] = await Promise.all([
               includeSummary
@@ -357,7 +341,7 @@ export function useAnalyticsWorkspaceData(options?: {
                       ...analyticsBaseRequest,
                       ...maybeAccountIds,
                       grain: 'Day',
-                      metrics: selectedMetrics.slice(0, 6),
+                      metrics: trendsMetrics.length > 0 ? trendsMetrics : OVERVIEW_SUMMARY_METRICS.slice(0, 6),
                     }),
                   })
                 : Promise.resolve(null),
@@ -369,7 +353,7 @@ export function useAnalyticsWorkspaceData(options?: {
                       ...analyticsBaseRequest,
                       ...maybeAccountIds,
                       groupBy: breakdownGroupBy,
-                      metrics: selectedMetrics,
+                      metrics: breakdownMetrics.length > 0 ? breakdownMetrics : OVERVIEW_SUMMARY_METRICS,
                       sort: { metric: 'sales', direction: 'Desc' },
                       page: 1,
                       limit: 25,

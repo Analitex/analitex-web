@@ -59,7 +59,7 @@ Operational endpoints:
 
 ### `POST /api/v1/auth/register`
 
-Creates a new active user account and immediately returns a bearer token.
+Creates a new active user account, sends an email verification code, and does not sign the user in yet.
 
 Request:
 
@@ -77,17 +77,18 @@ Response:
 
 ```json
 {
-  "accessToken": "jwt",
-  "tokenType": "Bearer",
-  "expiresAt": "2026-04-18T18:00:00Z",
   "user": {
     "id": "guid",
     "firstName": "Anna",
     "lastName": "Ivanova",
     "email": "owner@company.com",
     "phone": "+79990000000",
-    "status": "Active"
-  }
+    "status": "Active",
+    "emailVerifiedAt": null,
+    "isEmailVerified": false
+  },
+  "requiresEmailVerification": true,
+  "nextAction": "Verify email, then sign in."
 }
 ```
 
@@ -115,7 +116,9 @@ Response:
     "lastName": "Ivanova",
     "email": "owner@company.com",
     "phone": "+79990000000",
-    "status": "Active"
+    "status": "Active",
+    "emailVerifiedAt": "2026-04-17T17:55:00Z",
+    "isEmailVerified": true
   }
 }
 ```
@@ -123,6 +126,36 @@ Response:
 ### `GET /api/v1/auth/me`
 
 Returns the authenticated user from the JWT context.
+
+### `POST /api/v1/auth/request-email-verification`
+### `POST /api/v1/auth/verify-email`
+
+Email verification endpoints.
+
+Request verification request:
+
+```json
+{
+  "email": "owner@company.com"
+}
+```
+
+Verify request:
+
+```json
+{
+  "email": "owner@company.com",
+  "code": "123456"
+}
+```
+
+Current behavior:
+- verification codes are numeric and currently expire after `15` minutes
+- requesting a new code replaces the previous code for the same email
+- email verification state is exposed in auth/profile responses as `emailVerifiedAt` and `isEmailVerified`
+- register does not return a bearer token; the user must verify email and then call `POST /api/v1/auth/login`
+- current default policy requires verified email for login: `AiStats:Auth:RequireVerifiedEmailForLogin = true`
+- when the password is correct but the email is still unverified, `POST /api/v1/auth/login` returns a validation-style error with message `Email address is not verified.`
 
 ## Users
 
@@ -134,8 +167,14 @@ Returns the authenticated user from the JWT context.
 Current profile management endpoints for the signed-in user.
 
 Also available:
+- `POST /api/v1/auth/request-email-verification`
+- `POST /api/v1/auth/verify-email`
 - `POST /api/v1/users/request-password-reset`
 - `POST /api/v1/users/reset-password`
+
+Current behavior:
+- changing the user email resets `emailVerifiedAt` to `null`
+- password reset now issues a token and sends it through the configured email sender
 
 ## Organizations
 
@@ -372,12 +411,39 @@ Mode-specific reporting behavior:
 - `Management` mode keeps product-level management math from normalized product aggregates
 - `Financial` mode currently changes unfiltered summary/detail behavior for metrics backed by account-level finance totals
 - current financial-mode account-level overlay applies to:
+  - `realisation` for Ozon from finance total `accruals_for_sale`
   - `totalPaid`
   - `commission`
   - `logistics`
   - `returns`
   - `compensation`
   - `otherDeduction`
+- Ozon financial summary currently treats account-level finance totals as source of truth for:
+  - `realisation = accruals_for_sale`
+  - `sales = realisation - compensation` when realization discount/co-investment data is available
+  - `commission = sale_commission + others_amount`
+  - `logistics = processing_and_delivery + refunds_and_cancellations`
+  - `returns` remains product-attributed from Ozon finance refund operations instead of using account-level `refunds_and_cancellations`, because that account-level bucket is already included in logistics
+  - `totalPaid = accruals_for_sale - commission - logistics - services_amount`
+  - if Ozon catalog rows expose VAT and tax settings are configured, `taxBase = sales - VAT` and `tax = VAT + taxBase * taxRatePercent`
+- Ozon service expenses are classified as:
+  - `advertisingExpense`: CPC and cost-per-order promotion operations
+  - `storage`: marketplace storage service operations
+  - `otherDeduction`: remaining Ozon service expenses after advertising and storage
+  - `financeDeduction`: full Ozon `services_amount` service-expense pool
+- Ozon product source priority:
+  - finance rows contribute final product `realisation`, `sales`, `salesCount`, and `totalSales`
+  - Ozon finance `ClientReturnAgentOperation` rows are treated as financial refunds and reduce net `totalSales`
+  - Ozon `/v1/returns/list` is treated as operational return workflow data for return-count style metrics, not the primary financial refund amount source
+  - realization-by-day rows, when available, reduce product `sales` by Ozon-funded discounts/points and store that bucket as `compensation`
+  - Ozon currently gates `/v1/finance/realization/by-day` behind Premium Plus; if the seller token receives `403 Data is available only with a Premium plus subscription`, this discount/co-investment bucket remains unavailable from Ozon API
+  - when realization-by-day is unavailable, reporting falls back to posting-side discount-point evidence, currently `Максимальный бустинг`, Ozon bonus/points labels, and Ozon Bank credit-card grace-period labels
+  - commerce/posting rows contribute order-side `orders` and `ordersCount`; Ozon posting product prices are treated as unit prices and multiplied by product quantity for order amount/count
+  - this avoids using order/posting dates as final sales units while still preserving order widgets
+- Ozon stock reporting currently counts FBO catalog stock as marketplace stock; FBS offer stock is exposed in source detail and is not counted as in-way stock
+- `capitalizationByPrice` uses sales-derived average price when available; for stocked products without sales in the selected period it falls back to the latest non-zero catalog snapshot price
+- remaining known Ozon parity gaps are capitalization by retail price and small source/timing differences in stock and co-investment compensation
+- current configured Ozon `costOfSales` uses accounting unit cost (`costPerUnit + fulfillmentPerUnit + vatPerUnit`) multiplied by net sold pieces after financial refunds
 - for unfiltered `products/query`, those financial-mode totals are also allocated across product rows proportionally:
   - `commission`, `logistics`, `returns` use their management-mode row share when available
   - `compensation`, `otherDeduction`, `totalPaid` use sales share
@@ -493,6 +559,11 @@ Current sync progress behavior:
 - `Running` runs move through connector fetch, artifact persistence, normalization, and finalization stages
 - `Succeeded` runs finish at `progressPercent = 100`
 - `Failed` and `Cancelled` runs keep the last progress marker plus an explanatory `progressMessage`
+- the background worker can process independent sync runs in parallel
+- default sync worker concurrency is `4` and can be overridden with configuration key `MarketplaceSync:WorkerConcurrency`
+- Wildberries request pacing remains per connection and API family, so parallel finance/catalog/orders/sales/stocks/ads runs do not share one global delay
+- strict WB API families still serialize their own requests through per-family pacers to avoid avoidable `429` responses
+- WB statistics `orders`/`sales` requests are paced at roughly one request per minute per connection because the live API returns seller-level `X-Ratelimit-Limit: 1` with ~60 second retry/reset windows
 
 Current retry behavior:
 - sync runs are created with up to `3` total attempts
@@ -510,6 +581,15 @@ Important:
 - WB and Ozon first-sync rows are persisted into typed staging tables
 - the artifact response exposes metadata only and marks storage as `typed-staging`
 - the normal web dashboard should not need this endpoint for everyday rendering
+- WB finance staging now preserves report-level audit fields for reconciliation:
+  - `sourceReportId`
+  - `sourceRrdId`
+  - `reportDateFrom`
+  - `reportDateTo`
+  - `reportCreatedAt`
+  - raw WB money fields such as `rawForPay`, `rawDeduction`, `rawPaidStorage`, `rawDeliveryService`, `rawRebillLogisticCost`, `rawPenalty`, `rawAdditionalPayment`, `rawVw`, and `rawAcquiringFee`
+- these fields are intended for debugging/accounting reconciliation, not normal dashboard rendering
+- XLSX report files are still not stored; if official XLSX audit is required, add a separate report-file/object-storage path instead of putting binary files into the main reporting tables
 
 Example response:
 
@@ -529,6 +609,253 @@ Example response:
   }
 ]
 ```
+
+### `POST /api/v1/dev/analytics/recalculate`
+
+Development-only maintenance endpoint.
+
+Purpose:
+- rebuild analytics read models from already stored typed staging artifacts
+- do not call marketplace APIs
+- useful after formula/read-model changes during development
+
+Request by sync run ids:
+
+```json
+{
+  "syncRunIds": ["guid", "guid"]
+}
+```
+
+Request by connection scope:
+
+```json
+{
+  "connectionId": "guid",
+  "dateFrom": "2026-01-01",
+  "dateTo": "2026-03-31",
+  "syncKinds": ["finance", "stocks", "orders", "sales", "performanceProducts"]
+}
+```
+
+Response:
+
+```json
+{
+  "syncRunIds": ["guid", "guid"],
+  "artifactCount": 5,
+  "recalculatedAt": "2026-05-02T10:00:00Z"
+}
+```
+
+Current behavior:
+- available only when the API runs in `Development`
+- requires authenticated access and marketplace-connection management permission
+- reuses the same normalization pipeline as regular sync finalization
+- replaces read-model rows per sync run through the normal idempotent repository replace operations
+- if source staging data is missing or incomplete, recalculation cannot recover missing marketplace data
+
+### `GET /api/v1/dev/emails`
+
+Development-only public email inbox endpoint.
+
+Purpose:
+- inspect verification codes, password reset tokens, and invitation emails without a real mailbox
+- expose exact email payloads and metadata for local frontend and QA work
+
+Current behavior:
+- available only when the API runs in `Development`
+- also requires `AiStats:Email:Development:ExposePublicInbox = true`
+- returns newest messages first
+- each item includes:
+  - `toEmail`
+  - `subject`
+  - `textBody`
+  - `metadata`
+  - `sentAt`
+- verification emails expose `metadata.kind = email_verification` and `metadata.code`
+- password reset emails expose `metadata.kind = password_reset` and `metadata.resetToken`
+
+## Admin Marketplace Maintenance
+
+These endpoints are intended for the future web admin console. They are protected and require organization owner/admin access for the target connection.
+
+### `GET /api/v1/admin/marketplace-connections/{connectionId}/maintenance-plan`
+
+Returns backend-recommended sync presets for the connection:
+- `DailyIncremental` for fresh preliminary dashboard data
+- `WeeklyFinalization` for settled week refreshes
+- `HistoricalBackfill` for onboarding, formula changes, and source corrections
+
+Response shape:
+- `marketplaceConnectionId`
+- `marketplace`
+- `connectionName`
+- `plans[]`
+  - `operation`
+  - `label`
+  - `syncKinds`
+  - `cadence`
+  - `description`
+- `notes[]`
+
+### `POST /api/v1/admin/marketplace-connections/{connectionId}/sync`
+
+Enqueues an admin maintenance sync. If `syncKinds` is empty and `operation` is not `Custom`, backend uses the recommended marketplace preset.
+
+Request:
+
+```json
+{
+  "dateFrom": "2026-04-20",
+  "dateTo": "2026-04-26",
+  "operation": "WeeklyFinalization",
+  "syncKinds": []
+}
+```
+
+Response:
+
+```json
+{
+  "marketplaceConnectionId": "guid",
+  "marketplace": "Ozon",
+  "operation": "WeeklyFinalization",
+  "dateFrom": "2026-04-20",
+  "dateTo": "2026-04-26",
+  "syncKinds": ["catalog", "postings", "finance", "returns", "stocks", "analytics", "performanceProducts", "performanceOrders", "performancePhrases", "performanceExternalTraffic"],
+  "syncRunIds": ["guid"],
+  "enqueuedAt": "2026-05-04T10:00:00Z",
+  "nextStep": "Poll the returned sync runs. When they succeed, call POST /api/v1/admin/analytics/recalculate for the same connection/range/kinds."
+}
+```
+
+### `POST /api/v1/admin/marketplace-connections/{connectionId}/maintenance-schedule/preview`
+
+Returns the concrete date range and payloads the web admin console should use for a daily, weekly, historical, or custom maintenance run. This endpoint does not enqueue jobs.
+
+Request:
+
+```json
+{
+  "operation": "WeeklyFinalization",
+  "anchorDate": "2026-05-04",
+  "syncKinds": []
+}
+```
+
+For `WeeklyFinalization`, the default range is the previous full ISO week before `anchorDate`. For `DailyIncremental`, the default range is `anchorDate - 1 day`. For `HistoricalBackfill` and `Custom`, send explicit `dateFrom` and `dateTo`.
+
+Response shape:
+- `marketplaceConnectionId`
+- `marketplace`
+- `operation`
+- `anchorDate`
+- `dateFrom`
+- `dateTo`
+- `syncKinds`
+- `syncRequest`
+- `recalculateRequest`
+- `steps[]`
+- `notes[]`
+
+### `GET /api/v1/admin/marketplace-connections/{connectionId}/maintenance-schedules`
+### `POST /api/v1/admin/marketplace-connections/{connectionId}/maintenance-schedules`
+### `PUT /api/v1/admin/marketplace-maintenance-schedules/{scheduleId}`
+### `DELETE /api/v1/admin/marketplace-maintenance-schedules/{scheduleId}`
+
+Persists admin-console schedule configuration for future automatic marketplace maintenance. These endpoints do not execute schedules by themselves yet.
+
+Create/update request:
+
+```json
+{
+  "operation": "WeeklyFinalization",
+  "enabled": true,
+  "runAtUtc": "03:00",
+  "timeZoneId": "UTC",
+  "syncKinds": [],
+  "startDate": null,
+  "endDate": null
+}
+```
+
+Response item shape:
+- `id`
+- `marketplaceConnectionId`
+- `marketplace`
+- `operation`
+- `enabled`
+- `runAtUtc`
+- `timeZoneId`
+- `syncKinds`
+- `startDate`
+- `endDate`
+- `lastPlannedAt`
+- `lastEnqueuedAt`
+- `lastRecalculatedAt`
+- `createdAt`
+- `updatedAt`
+
+Current behavior:
+- empty `syncKinds` on non-`Custom` schedules are resolved to the backend marketplace preset before saving
+- `Custom` schedules require explicit `syncKinds`
+- `runAtUtc` is stored as a UTC wall-clock time, for example `03:00`
+- schedule responses expose:
+  - `lastPlannedAt` when the automatic scheduler resolves a due run
+  - `lastEnqueuedAt` when that due run is successfully enqueued
+  - `lastRecalculatedAt` when admin recalculation matches the schedule connection/range/sync-kind scope
+- PostgreSQL deployments require the matching `marketplace_maintenance_schedules` migration before these endpoints can be used
+- automatic execution is opt-in and disabled by default
+- to enable automatic execution, configure `MarketplaceMaintenanceScheduler:Enabled = true`
+- scheduler polling uses `MarketplaceMaintenanceScheduler:PollIntervalSeconds`, default `60`, minimum `15`
+- automatic execution enqueues sync runs only; existing sync finalization performs normalization as usual
+- `DailyIncremental` runs for yesterday, once per UTC day after `runAtUtc`
+- `WeeklyFinalization` runs for the previous full ISO week, once per UTC day after `runAtUtc`
+- `HistoricalBackfill` and `Custom` schedules require `startDate` and `endDate`
+- `HistoricalBackfill` and `Custom` are treated as one-shot automatic schedules: after one successful planning/enqueue pass, they will not run again unless the schedule is edited
+
+### `POST /api/v1/admin/analytics/recalculate`
+
+Rebuilds normalized read models from existing sync artifacts. Use this after completed admin syncs, formula changes, cost imports, or source corrections.
+
+Request by connection scope:
+
+```json
+{
+  "connectionId": "guid",
+  "dateFrom": "2026-04-20",
+  "dateTo": "2026-04-26",
+  "syncKinds": ["finance", "postings", "returns", "stocks"],
+  "dryRun": false
+}
+```
+
+Request by explicit sync runs:
+
+```json
+{
+  "syncRunIds": ["guid", "guid"],
+  "dryRun": true
+}
+```
+
+Response:
+
+```json
+{
+  "syncRunIds": ["guid"],
+  "artifactCount": 4,
+  "dryRun": false,
+  "recalculatedAt": "2026-05-04T10:05:00Z"
+}
+```
+
+Operational recommendation:
+- run daily incremental syncs for freshness
+- run weekly finalization syncs after marketplace week data settles
+- run recalculation after finalization syncs succeed
+- use `dryRun = true` to preview which artifacts would be recalculated
 
 ## Analytics Query Model
 
@@ -672,6 +999,7 @@ Already available and exposed in `GET /api/v1/reporting/product-metrics`:
 - `fines`
 - `compensation`
 - `advertisingExpense`
+- `financeDeduction`
 - `costOfSales`
 - `averagePriceAfterSPP`
 - `averageLogisticsCost`
@@ -908,6 +1236,7 @@ Response shape:
 - `items[]`
   - `key`
   - `label`
+  - `labelRu`
   - `effect`: `expense`, `income`, or `profit`
   - `amount`
   - `shareOfRealisationPercent`
@@ -915,39 +1244,48 @@ Response shape:
   - `sourceMetrics[]`
 - `breakdowns`
   - dictionary of grouped detail arrays keyed by stable group key
+  - each detail row includes `key`, `label`, `labelRu`, `amount`, `managerDescription`, and `sourceMetrics[]`
 - `meta`
 
 Current `items[]` taxonomy:
 - `marketplace_discount`
   - label: `Marketplace discount`
+  - Russian label: `Скидка маркетплейса`
   - manager description: marketplace-funded customer discount and marketplace wallet/co-investment impact; bridges realisation before marketplace discounts to actual seller sales
   - source metrics: `marketplaceDiscount`
 - `cost_of_sales`
   - label: `Cost of sales`
+  - Russian label: `Себестоимость продаж`
   - manager description: configured product cost, fulfillment cost, and VAT cost multiplied by sold units
   - source metrics: `costOfSales`
 - `profit`
   - label: `Profit`
+  - Russian label: `Прибыль`
   - manager description: final profit after marketplace expenses, advertising, configured cost of sales, and configured tax
   - source metrics: `profit`
 - `logistics`
   - label: `Logistics`
+  - Russian label: `Логистика`
   - manager description: marketplace logistics costs for delivery, return, cancellation, and logistics correction operations
   - source metrics: `logistics`
 - `tax`
   - label: `Tax`
+  - Russian label: `Налоги`
   - manager description: configured tax calculated from the selected marketplace/account tax policy
   - source metrics: `tax`
 - `commission`
   - label: `Commission`
+  - Russian label: `Комиссия`
   - manager description: net marketplace commission after marketplace discount and acquiring decomposition where available
   - source metrics: `commission`
 - `advertising`
   - label: `Advertising`
+  - Russian label: `Реклама`
   - manager description: marketplace advertising spend attributed to the selected reporting scope
   - source metrics: `advertisingExpense`
 - `other_marketplace_expenses`
   - label: `Other marketplace expenses`
+  - Russian label: `Прочие расходы маркетплейса`
   - manager description: storage, paid acceptance, fines, and other deductions minus marketplace compensations
   - source metrics: `storage`, `acceptanceSum`, `fines`, `otherDeduction`, `compensation`
 
@@ -968,6 +1306,7 @@ Current `breakdowns` groups:
   - `paid_acceptance`
   - `fines`
   - `other_deduction`
+  - `finance_deduction`
   - `compensation`
 - `costOfSales`
 - `tax`
@@ -976,6 +1315,7 @@ Current `breakdowns` groups:
 
 Frontend usage:
 - render `items[]` as the main revenue-structure/waterfall blocks
+- use `labelRu` for the current Russian UI; keep `label` as the stable English fallback
 - use `shareOfRealisationPercent` directly for percentage labels
 - use `managerDescription` in tooltips/help text
 - use `breakdowns` for drawers, popovers, or expandable rows
@@ -1196,6 +1536,12 @@ Current behavior:
 - powered by `analytics_product_period_aggregates`
 - Ozon organic funnel metrics are merged from `analytics_product_traffic_daily_facts`
 - row identity and dimension enrichment now prefer canonical `analytics_product_catalog`
+- normalization also writes a compact parallel daily read model, `analytics_product_daily_facts`
+  - one row per marketplace/account/product identity/date
+  - numeric metrics only plus a stable product identity key
+  - no repeated product names, images, brand labels, category labels, or price snapshot text fields
+  - current API reads still use `analytics_product_period_aggregates` until the compact model is migrated, backfilled, and size-checked
+  - this is the intended path for scalable long-term product metrics while keeping the frontend contract stable
 - stable row `id` includes marketplace and account scope to avoid cross-shop collisions
 - intended as the main table API for the new frontend
 - richer than the old generic breakdown endpoint for product screens
@@ -1279,6 +1625,15 @@ Wildberries reporting formulas currently fixed in code:
   - unidentified-product fines stay on the residual synthetic `marketplaceArticle = "0"` row instead of being smeared across visible products
   - residual synthetic WB rows preserve informational metrics such as `netMarketplaceReward`, so table/margin totals can reconcile with account-level KPI cards
   - WB voluntary compensation is displayed as `compensation`, not as `commission`; financial reporting subtracts compensation from commission-like raw rows before recomputing derived values
+- `financeDeduction`
+  - official marketplace financial-report deductions, kept separate from product-attributed advertising
+  - for WB this comes directly from finance report row field `deduction`
+  - WB rows such as `Удержание` / `Оказание услуг «WB Продвижение»` are exposed here for reconciliation with official weekly reports
+  - this metric is not automatically subtracted in management profit formulas while `advertisingExpense` is also present, to avoid double-counting WB promotion spend
+  - use this metric for accounting/report reconciliation, not campaign/product ad-efficiency attribution
+- `otherDeduction`
+  - marketplace deductions not assigned to a more specific group and not already represented by advertising, storage, fines, or compensation
+  - for WB, promotion-service deductions are intentionally exposed as `financeDeduction`, not `otherDeduction`
 - `costOfSales`
   - when product cost config exists, reporting derives `costOfSales = cost * soldUnits`
   - for WB financial rows, raw-finance count overrides can adjust `salesCount`, `totalSales`, `returnsCount`, and `refunds`
@@ -1306,7 +1661,11 @@ Wildberries reporting formulas currently fixed in code:
 - `stockBalance`
   - product row `stockBalance` is marketplace/seller warehouse visible stock
   - `stockBalanceOverall` is `stockBalanceInWh + stockBalanceInWayToClient + stockBalanceInWayFromClient`
+  - dashboard stock cards should use `stockBalanceOverall`; `stockBalance` is narrower and excludes in-way quantities
   - source drilldown rows preserve source-bucket quantities, including `В пути до получателей` and `В пути возвраты на склад WB`
+- `capitalizationByPrice`
+  - values current/latest stock and in-way quantities by the product's average realisation price in the selected period
+  - if a stocked article has no selected-period sales price, reporting falls back to the selected-scope average sale price after marketplace discounts as a conservative estimate
 
 Wildberries parity notes:
 - Article `558517903`, week `2026-04-13..2026-04-19`, is the current focused WB parity check.
@@ -2401,6 +2760,26 @@ Notes for the web app:
 - connection, sync, and custom-metric validation failures are expected to come back as `400` responses
 - marketplace upstream API failures are now normalized into clearer messages when the provider returns structured error payloads
 - sync-run failures also expose the latest failure text through the sync-run resource `error` field
+- input/shape validation still commonly uses the FastEndpoints validation-style payload
+- business-flow errors can return standard `application/problem+json` instead, with:
+  - `detail`
+  - `status`
+  - `title`
+  - `errorCode` in `extensions`
+
+Example business-flow error:
+
+```json
+{
+  "type": "https://www.rfc-editor.org/rfc/rfc9110#name-400-bad-request",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Email address is not verified.",
+  "instance": "/api/v1/auth/login",
+  "errorCode": "email_not_verified",
+  "traceId": "0HNLAPSOCTC2P:00000004"
+}
+```
 
 Recommended dashboard load sequence:
 
@@ -2470,6 +2849,9 @@ Already usable:
 
 Still evolving:
   - `commission`, `logistics`, `storage`, and `returns` are now sync-backed, but deeper financial decomposition is still limited
+  - product metric breakdown storage is moving from denormalized `analytics_product_metric_breakdowns` rows to compact grouped `analytics_product_metric_breakdown_facts` rows
+  - reporting reads compact breakdown facts first and falls back to legacy breakdown rows for already-synced historical data
+  - after the next migration is created/applied, rerunning a sync replaces the legacy rows for that sync run with compact facts
   - Ozon finance historical pulls are chunked month-by-month in the connector for safer backfills
   - real connector coverage is stronger than before, but still not feature-complete for every marketplace report family
   - no build/test verification has been run automatically

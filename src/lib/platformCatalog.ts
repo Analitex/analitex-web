@@ -10,10 +10,14 @@ export const WEB_API_ROUTES = [
   'POST /auth/register',
   'POST /auth/login',
   'GET /auth/me',
+  'POST /auth/request-email-verification',
+  'POST /auth/verify-email',
   'GET /users/me',
   'PUT /users/me',
   'POST /users/me/change-password',
   'DELETE /users/me',
+  'POST /users/request-password-reset',
+  'POST /users/reset-password',
   'GET /users/me/organizations',
   'POST /organizations',
   'GET /organizations/{organizationId}/members',
@@ -50,7 +54,11 @@ export const WEB_API_ROUTES = [
   'GET /config/marketplace-connections/{connectionId}/product-costs',
   'PUT /config/marketplace-connections/{connectionId}/product-costs',
   'GET /reporting/product-metrics',
+  'POST /reporting/products/summary',
   'POST /reporting/products/overview',
+  'POST /reporting/products/margin-top',
+  'POST /reporting/products/margin-categories',
+  'POST /reporting/products/revenue-structure',
   'POST /reporting/products/query',
   'POST /reporting/products',
   'POST /reporting/products/details',
@@ -68,6 +76,7 @@ export const WEB_API_ROUTES = [
   'DELETE /config/custom-metrics/{id}',
   'POST /config/custom-metrics/validate',
   'POST /config/custom-metrics/preview',
+  'GET /dev/emails',
 ];
 
 export const CONNECTOR_CATALOG = [
@@ -228,9 +237,17 @@ export const RECOMMENDED_LOAD_SEQUENCE = [
 
 export const RECOMMENDED_PRODUCT_LOAD_SEQUENCE = [
   'GET /api/v1/reporting/product-metrics',
+  'POST /api/v1/reporting/products/summary',
   'POST /api/v1/reporting/products/overview',
+  'POST /api/v1/reporting/products/margin-top',
+  'POST /api/v1/reporting/products/margin-categories',
+  'POST /api/v1/reporting/products/revenue-structure',
   'POST /api/v1/reporting/products/query',
   'POST /api/v1/reporting/products/details',
+  'POST /api/v1/reporting/products/metric-breakdowns',
+  'POST /api/v1/reporting/products/stock-history',
+  'POST /api/v1/reporting/products/traffic-history',
+  'POST /api/v1/reporting/products/stock-sources',
 ] as const;
 
 export const FIRST_OWNER_FLOW = [
