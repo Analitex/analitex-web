@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
+export type CalendarDateAvailability = {
+  date: string;
+  state: 'complete' | 'partial' | 'available';
+};
+
 interface DateRangePickerProps {
   start: string;
   end: string;
   onChange: (start: string, end: string) => void;
+  availableDates?: CalendarDateAvailability[];
+  onVisibleRangeChange?: (start: string, end: string) => void;
   className?: string;
   fullWidth?: boolean;
 }
@@ -93,6 +100,10 @@ function getMonthStart(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
+function getMonthEnd(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+}
+
 function addMonths(date: Date, months: number) {
   return new Date(date.getFullYear(), date.getMonth() + months, 1);
 }
@@ -126,7 +137,15 @@ function rangesEqual(leftStart: string, leftEnd: string, rightStart: string, rig
   return leftStart === rightStart && leftEnd === rightEnd;
 }
 
-export function DateRangePicker({ start, end, onChange, className = '', fullWidth = false }: DateRangePickerProps) {
+export function DateRangePicker({
+  start,
+  end,
+  onChange,
+  availableDates = [],
+  onVisibleRangeChange,
+  className = '',
+  fullWidth = false,
+}: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
   const [localStart, setLocalStart] = useState(start);
   const [localEnd, setLocalEnd] = useState(end);
@@ -159,6 +178,13 @@ export function DateRangePicker({ start, end, onChange, className = '', fullWidt
       document.removeEventListener('keydown', handleEscape);
     };
   }, []);
+
+  useEffect(() => {
+    if (!open || !onVisibleRangeChange) return;
+
+    const nextMonth = addMonths(visibleMonth, 1);
+    onVisibleRangeChange(formatIsoDate(visibleMonth), formatIsoDate(getMonthEnd(nextMonth)));
+  }, [onVisibleRangeChange, open, visibleMonth]);
 
   const applyPreset = (preset: (typeof QUICK_RANGES)[number]) => {
     const range = preset.getRange();
@@ -236,6 +262,7 @@ export function DateRangePicker({ start, end, onChange, className = '', fullWidt
   const secondMonth = addMonths(visibleMonth, 1);
   const firstMonthDays = getMonthDays(firstMonth);
   const secondMonthDays = getMonthDays(secondMonth);
+  const availabilityByDate = new Map(availableDates.map(day => [day.date, day.state]));
   const isApplyDisabled = !localStart || !localEnd || localStart > localEnd;
 
   return (
@@ -318,6 +345,7 @@ export function DateRangePicker({ start, end, onChange, className = '', fullWidt
                 onSelect={handleDaySelect}
                 rangeStart={localStart}
                 rangeEnd={localEnd}
+                availabilityByDate={availabilityByDate}
                 showPrev
                 showNext
               />
@@ -330,6 +358,7 @@ export function DateRangePicker({ start, end, onChange, className = '', fullWidt
                 onSelect={handleDaySelect}
                 rangeStart={localStart}
                 rangeEnd={localEnd}
+                availabilityByDate={availabilityByDate}
                 showPrev
               />
               <MonthPanel
@@ -339,6 +368,7 @@ export function DateRangePicker({ start, end, onChange, className = '', fullWidt
                 onSelect={handleDaySelect}
                 rangeStart={localStart}
                 rangeEnd={localEnd}
+                availabilityByDate={availabilityByDate}
                 showNext
               />
             </div>
@@ -380,6 +410,7 @@ function MonthPanel({
   onSelect,
   rangeStart,
   rangeEnd,
+  availabilityByDate,
   showPrev = false,
   showNext = false,
 }: {
@@ -390,6 +421,7 @@ function MonthPanel({
   onSelect: (iso: string) => void;
   rangeStart: string;
   rangeEnd: string;
+  availabilityByDate: Map<string, CalendarDateAvailability['state']>;
   showPrev?: boolean;
   showNext?: boolean;
 }) {
@@ -439,6 +471,7 @@ function MonthPanel({
                 const isSelectedEnd = day.iso === rangeEnd;
                 const isInRange = Boolean(rangeStart && rangeEnd && day.iso >= rangeStart && day.iso <= rangeEnd);
                 const isSingleDay = isSelectedStart && isSelectedEnd;
+                const availabilityState = day.isCurrentMonth ? availabilityByDate.get(day.iso) : undefined;
 
                 return (
                   <td
@@ -461,6 +494,19 @@ function MonthPanel({
                       }`}
                     >
                       {day.date.getDate()}
+                      {availabilityState && (
+                        <span
+                          className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${
+                            isSelectedStart || isSelectedEnd
+                              ? 'bg-white'
+                              : availabilityState === 'complete'
+                                ? 'bg-emerald-500'
+                                : availabilityState === 'partial'
+                                  ? 'bg-amber-500'
+                                  : 'bg-sky-500'
+                          }`}
+                        />
+                      )}
                     </button>
                   </td>
                 );

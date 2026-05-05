@@ -439,6 +439,8 @@ function mapInvitation(invitation: ApiInvitation): Invitation {
 function mapInvitationStatus(value: unknown): Invitation['status'] {
   if (typeof value === 'string') {
     if (value === 'Pending' || value === 'Accepted' || value === 'Revoked') return value;
+    if (value === 'Active') return 'Accepted';
+    if (value === 'Inactive' || value === 'Expired' || value === 'Cancelled') return 'Revoked';
   }
   return value === 1 ? 'Accepted' : value === 2 || value === 3 ? 'Revoked' : 'Pending';
 }

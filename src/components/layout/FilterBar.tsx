@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Info, Menu, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
 import { useFilters } from '../../context/FilterContext';
+import { usePlatform } from '../../context/PlatformContext';
 import { useReportMode } from '../../context/ReportModeContext';
 import { MultiSelect, type MultiSelectOption } from '../filters/MultiSelect';
-import { DateRangePicker } from './DateRangePicker';
+import { DateRangePicker, type CalendarDateAvailability } from './DateRangePicker';
+import { apiRequest } from '../../lib/api';
 import type { Page } from '../../types';
 
 interface FilterBarProps {
@@ -17,6 +19,95 @@ interface FilterBarProps {
 }
 
 const REPORT_MODE_HELP = 'Управленческий режим показывает привычные рабочие метрики сервиса.\n\nФинансовый режим нужен для бухгалтерской точности и суммы к фактическому перечислению от маркетплейса.';
+
+type DataAvailabilityResponse = {
+  days?: Array<{
+    date?: string | null;
+    hasAnyData?: boolean | null;
+    hasCompleteData?: boolean | null;
+    isPartial?: boolean | null;
+  }> | null;
+  ranges?: {
+    anyData?: Array<{ dateFrom?: string | null; dateTo?: string | null }> | null;
+    completeData?: Array<{ dateFrom?: string | null; dateTo?: string | null }> | null;
+  } | null;
+};
+
+type AvailabilityRequestBody = {
+  dateFrom: string;
+  dateTo: string;
+  marketplaces: string[];
+  mode: 'Financial' | 'Management';
+  surface: string;
+  filters: {
+    productIds: string[];
+    groupIds: number[];
+    brandIds: string[];
+    categoryIds: string[];
+    tags: string[];
+  };
+};
+
+function parseIsoDate(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatIsoDate(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function buildAvailabilityWindow(dateIso: string) {
+  const date = parseIsoDate(dateIso);
+  const start = new Date(date.getFullYear(), date.getMonth(), 1);
+  const end = new Date(date.getFullYear(), date.getMonth() + 2, 0);
+  return { start: formatIsoDate(start), end: formatIsoDate(end) };
+}
+
+function expandDateRange(dateFrom: string, dateTo: string) {
+  const dates: string[] = [];
+  const cursor = parseIsoDate(dateFrom);
+  const end = parseIsoDate(dateTo);
+
+  while (cursor <= end) {
+    dates.push(formatIsoDate(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return dates;
+}
+
+function normalizeAvailability(response: DataAvailabilityResponse | null): CalendarDateAvailability[] {
+  const states = new Map<string, CalendarDateAvailability['state']>();
+
+  response?.ranges?.anyData?.forEach(range => {
+    if (!range.dateFrom || !range.dateTo) return;
+    expandDateRange(range.dateFrom, range.dateTo).forEach(date => states.set(date, 'available'));
+  });
+
+  response?.ranges?.completeData?.forEach(range => {
+    if (!range.dateFrom || !range.dateTo) return;
+    expandDateRange(range.dateFrom, range.dateTo).forEach(date => states.set(date, 'complete'));
+  });
+
+  response?.days?.forEach(day => {
+    if (!day.date || !day.hasAnyData) return;
+    states.set(day.date, day.hasCompleteData ? 'complete' : day.isPartial ? 'partial' : 'available');
+  });
+
+  return Array.from(states, ([date, state]) => ({ date, state })).sort((left, right) => left.date.localeCompare(right.date));
+}
+
+function getAvailabilitySurface(page: Page) {
+  if (page === 'finance') return 'Finance';
+  if (page === 'inventory') return 'Stocks';
+  if (page === 'external-traffic' || page === 'search-phrases') return 'Traffic';
+  if (page === 'summary') return 'Overview';
+  return 'ProductReporting';
+}
 
 function getSkuOptions(skus: { id: string; sku: string; name: string }[]) {
   return skus.map(item => ({
@@ -54,9 +145,12 @@ export function FilterBar({
   onOpenMobileNav,
 }: FilterBarProps) {
   const { filters, setFilters, resetFilters } = useFilters();
+  const { session, selectedOrganizationId } = usePlatform();
   const { reportMode, setReportMode } = useReportMode();
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
   const [isReportModeMenuOpen, setIsReportModeMenuOpen] = useState(false);
+  const [availabilityWindow, setAvailabilityWindow] = useState(() => buildAvailabilityWindow(filters.dateStart));
+  const [availableDates, setAvailableDates] = useState<CalendarDateAvailability[]>([]);
   const reportModeRef = useRef<HTMLDivElement | null>(null);
   const supportsReportMode =
     currentPage === 'dashboard' ||
@@ -86,6 +180,36 @@ export function FilterBar({
   const skuOptions = useMemo(() => getSkuOptions(skus), [skus]);
   const marketplaceOptions = useMemo(() => getMarketplaceOptions(marketplaces), [marketplaces]);
   const storeOptions = useMemo(() => getStoreOptions(stores), [stores]);
+  const availabilityRequestBody = useMemo<AvailabilityRequestBody>(
+    () => ({
+        dateFrom: availabilityWindow.start,
+        dateTo: availabilityWindow.end,
+        marketplaces: filters.marketplace,
+        mode: reportMode === 'financial' ? 'Financial' : 'Management',
+        surface: getAvailabilitySurface(currentPage),
+        filters: {
+          productIds: filters.sku,
+          groupIds: [],
+          brandIds: filters.brand,
+          categoryIds: filters.category,
+          tags: [],
+        },
+      }),
+    [
+      availabilityWindow.end,
+      availabilityWindow.start,
+      currentPage,
+      filters.brand,
+      filters.category,
+      filters.marketplace,
+      filters.sku,
+      reportMode,
+    ]
+  );
+  const availabilityRequestKey = useMemo(() => JSON.stringify(availabilityRequestBody), [availabilityRequestBody]);
+  const handleVisibleRangeChange = useCallback((start: string, end: string) => {
+    setAvailabilityWindow(current => (current.start === start && current.end === end ? current : { start, end }));
+  }, []);
 
   useEffect(() => {
     if (!isMobileSheetOpen) return;
@@ -117,6 +241,43 @@ export function FilterBar({
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [isReportModeMenuOpen]);
 
+  useEffect(() => {
+    setAvailabilityWindow(buildAvailabilityWindow(filters.dateStart));
+  }, [filters.dateStart]);
+
+  useEffect(() => {
+    if (!session?.accessToken || !selectedOrganizationId) {
+      setAvailableDates([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadAvailability = async () => {
+      try {
+        const response = await apiRequest<DataAvailabilityResponse>('/metadata/data-availability', {
+          token: session.accessToken,
+          method: 'POST',
+          body: JSON.stringify(availabilityRequestBody),
+        });
+
+        if (!cancelled) {
+          setAvailableDates(normalizeAvailability(response));
+        }
+      } catch {
+        if (!cancelled) {
+          setAvailableDates([]);
+        }
+      }
+    };
+
+    void loadAvailability();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [availabilityRequestBody, availabilityRequestKey, selectedOrganizationId, session?.accessToken]);
+
   return (
     <>
       <div className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
@@ -125,6 +286,8 @@ export function FilterBar({
             start={filters.dateStart}
             end={filters.dateEnd}
             onChange={(start, end) => setFilters({ ...filters, dateStart: start, dateEnd: end })}
+            availableDates={availableDates}
+            onVisibleRangeChange={handleVisibleRangeChange}
           />
 
           <MultiSelect
@@ -305,6 +468,8 @@ export function FilterBar({
               start={filters.dateStart}
               end={filters.dateEnd}
               onChange={(start, end) => setFilters({ ...filters, dateStart: start, dateEnd: end })}
+              availableDates={availableDates}
+              onVisibleRangeChange={handleVisibleRangeChange}
               fullWidth
             />
 

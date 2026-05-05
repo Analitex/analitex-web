@@ -1488,6 +1488,18 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
   const [organizationName, setOrganizationName] = useState('');
   const [busyInvitationId, setBusyInvitationId] = useState<string | null>(null);
   const activeOrganization = organizations.find(org => org.id === selectedOrganizationId);
+  const activeMemberEmails = useMemo(
+    () => new Set(members.map(member => member.email.trim().toLowerCase()).filter(Boolean)),
+    [members]
+  );
+  const pendingInvitations = useMemo(
+    () =>
+      invitations.filter(invitation => {
+        const email = invitation.email.trim().toLowerCase();
+        return invitation.status === 'Pending' && (!email || !activeMemberEmails.has(email));
+      }),
+    [activeMemberEmails, invitations]
+  );
 
   useEffect(() => {
     setOrganizationName(activeOrganization?.name ?? '');
@@ -1709,11 +1721,10 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
             );
           })}
 
-          {invitations.map(invitation => (
+          {pendingInvitations.map(invitation => (
             <div key={invitation.id} className="grid gap-4 px-5 py-5 md:grid-cols-[1.2fr_0.8fr_1fr_0.9fr_0.8fr] md:px-6">
               <div className="space-y-3 md:space-y-1">
                 <div className="font-semibold text-slate-900">{invitation.email}</div>
-                <div className="text-sm text-slate-500">Invitation ID: {invitation.id}</div>
               </div>
               <MobileInfoRow label="Роль" value={invitation.role} />
               <MobileInfoRow label="Контакты" value="—" />

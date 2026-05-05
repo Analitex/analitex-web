@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { ArrowRight, Loader2, MailCheck, RefreshCw, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Loader2, MailCheck, RefreshCw } from 'lucide-react';
 import { usePlatform } from '../context/PlatformContext';
 
 interface PublicVerifyEmailPageProps {
@@ -71,27 +71,9 @@ export function PublicVerifyEmailPage({ onSuccess, onGoToLogin }: PublicVerifyEm
         <div className="absolute right-[-6rem] top-24 h-[22rem] w-[22rem] rounded-full bg-indigo-300/25 blur-3xl" />
       </div>
 
-      <div className="relative mx-auto grid min-h-screen max-w-7xl gap-8 px-4 py-4 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:py-8">
-        <section className="relative overflow-hidden rounded-[2.5rem] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,250,252,0.88))] p-8 shadow-[0_30px_100px_rgba(15,23,42,0.10)] backdrop-blur-xl sm:p-10 lg:flex lg:min-h-[calc(100vh-4rem)] lg:items-start">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(99,102,241,0.08),transparent_30%)]" />
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sky-300/70 to-transparent" />
-
-          <div className="relative max-w-xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">
-              <ShieldCheck size={14} />
-              Подтверждение
-            </div>
-            <h1 className="mt-5 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-              Подтвердите почту перед входом
-            </h1>
-            <p className="mt-4 max-w-xl text-sm leading-7 text-slate-600 sm:text-base">
-              После регистрации AiStats отправляет код на email. Введите его здесь, затем войдите в аккаунт.
-            </p>
-          </div>
-        </section>
-
-        <section className="flex items-start">
-          <div className="w-full rounded-[2.25rem] border border-white/80 bg-white/92 p-6 text-slate-900 shadow-[0_30px_100px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-8 lg:min-h-[calc(100vh-4rem)]">
+      <div className="relative mx-auto flex min-h-screen max-w-xl items-center px-4 py-6 sm:px-6 lg:px-8">
+        <section className="w-full">
+          <div className="w-full rounded-[2.25rem] border border-white/80 bg-white/92 p-6 text-slate-900 shadow-[0_30px_100px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-8">
             <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-100 p-1 text-sm font-semibold">
               <div className="rounded-xl bg-white px-4 py-2 text-slate-950 shadow-sm">Email</div>
             </div>

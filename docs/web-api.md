@@ -2508,6 +2508,74 @@ Current behavior:
   - Ozon categories
 - when no synced data exists yet, the endpoint returns empty filter lists and echoes the requested date range instead of prototype placeholder data
 
+### `POST /api/v1/metadata/data-availability`
+
+Calendar-oriented day availability endpoint.
+
+Purpose:
+- let the web app mark which days have data
+- distinguish between any data and complete data
+- return compressed ranges for fast date-picker highlighting
+
+Request:
+
+```json
+{
+  "dateFrom": "2026-04-01",
+  "dateTo": "2026-04-30",
+  "accountIds": [123456],
+  "marketplaces": ["Wildberries"],
+  "mode": "Financial",
+  "surface": "ProductReporting"
+}
+```
+
+Response:
+
+```json
+{
+  "days": [
+    {
+      "date": "2026-04-01",
+      "hasAnyData": true,
+      "hasCompleteData": true,
+      "isPartial": false,
+      "sources": {
+        "core": true,
+        "finance": true,
+        "traffic": false,
+        "stocks": true
+      }
+    }
+  ],
+  "ranges": {
+    "anyData": [
+      { "dateFrom": "2026-04-01", "dateTo": "2026-04-20" }
+    ],
+    "completeData": [
+      { "dateFrom": "2026-04-01", "dateTo": "2026-04-14" }
+    ]
+  },
+  "meta": {
+    "updatedAt": "2026-05-05T12:00:00Z"
+  }
+}
+```
+
+Current completeness policy:
+- `surface = "Overview"` -> complete when core normalized daily facts exist
+- `surface = "Finance"` -> complete when account finance daily facts exist
+- `surface = "Traffic"` -> complete when product traffic daily facts exist
+- `surface = "Stocks"` -> complete when stock daily snapshots exist
+- `surface = "ProductReporting"`:
+  - `Management` mode -> complete when core normalized daily facts exist
+  - `Financial` mode -> complete when both core and finance daily facts exist
+
+Notes:
+- `hasAnyData` means at least one normalized source exists for that day in the selected scope
+- `isPartial` means some source data exists, but the selected surface is not complete yet
+- this endpoint is driven from normalized daily read models, not raw sync run metadata
+
 ## Custom Metrics
 
 ### `GET /api/v1/config/custom-metrics`
