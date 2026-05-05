@@ -45,6 +45,15 @@ export interface Invitation {
   status: 'Pending' | 'Accepted' | 'Revoked';
 }
 
+export interface InvitationPreview {
+  email: string;
+  role: OrganizationMember['role'];
+  status: Invitation['status'];
+  expiresAt: string;
+  organizationName: string;
+  isExpired: boolean;
+}
+
 export interface MarketplaceConnection {
   id: string;
   organizationId: string;
@@ -120,7 +129,7 @@ interface PlatformContextValue {
   actionHistory: ActionRecord[];
   notifications: NotificationItem[];
   apiError: string | null;
-  register: (input: { firstName: string; lastName: string; email: string; phone: string; password: string }) => Promise<RegisterResult>;
+  register: (input: { firstName: string; lastName: string; email: string; phone: string; password: string; invitationToken?: string }) => Promise<RegisterResult>;
   login: (input: { email: string; password: string }) => Promise<AuthSession>;
   logout: () => void;
   requestEmailVerification: (email: string) => Promise<void>;
@@ -129,6 +138,7 @@ interface PlatformContextValue {
   renameOrganization: (organizationId: string, name: string) => Promise<Organization>;
   selectOrganization: (organizationId: string) => void;
   inviteMember: (input: { email: string; role: OrganizationMember['role'] }) => Invitation;
+  previewInvitation: (token: string) => Promise<InvitationPreview>;
   acceptInvitation: (token: string) => Promise<void>;
   updateMemberRole: (input: { memberId: string; role: OrganizationMember['role'] }) => Promise<void>;
   removeMember: (memberId: string) => Promise<void>;
@@ -243,6 +253,15 @@ type ApiInvitation = {
   email?: string | null;
   role?: string | number;
   status?: string | number;
+};
+
+type ApiInvitationPreview = {
+  email?: string | null;
+  role?: string | number;
+  status?: string | number;
+  expiresAt?: string;
+  organizationName?: string | null;
+  isExpired?: boolean;
 };
 
 type ApiConnector = {
@@ -413,16 +432,25 @@ function mapInvitation(invitation: ApiInvitation): Invitation {
     id: String(invitation.id),
     email: invitation.email ?? '',
     role: mapRole(invitation.role),
-    status:
-      typeof invitation.status === 'string'
-        ? (invitation.status as Invitation['status'])
-        : invitation.status === 1
-          ? 'Accepted'
-          : invitation.status === 2
-            ? 'Revoked'
-            : invitation.status === 3
-              ? 'Revoked'
-              : 'Pending',
+    status: mapInvitationStatus(invitation.status),
+  };
+}
+
+function mapInvitationStatus(value: unknown): Invitation['status'] {
+  if (typeof value === 'string') {
+    if (value === 'Pending' || value === 'Accepted' || value === 'Revoked') return value;
+  }
+  return value === 1 ? 'Accepted' : value === 2 || value === 3 ? 'Revoked' : 'Pending';
+}
+
+function mapInvitationPreview(preview: ApiInvitationPreview): InvitationPreview {
+  return {
+    email: preview.email ?? '',
+    role: mapRole(preview.role),
+    status: mapInvitationStatus(preview.status),
+    expiresAt: preview.expiresAt ?? '',
+    organizationName: preview.organizationName ?? '',
+    isExpired: Boolean(preview.isExpired),
   };
 }
 
@@ -908,6 +936,14 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const previewInvitation: PlatformContextValue['previewInvitation'] = async token => {
+    const response = await apiRequest<ApiInvitationPreview>('/invitations/preview', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+    return mapInvitationPreview(response);
+  };
+
   const updateMemberRole: PlatformContextValue['updateMemberRole'] = async input => {
     await apiRequest<void>(`/organizations/${selectedOrganizationId}/members/${input.memberId}/role`, {
       method: 'PATCH',
@@ -1292,6 +1328,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     renameOrganization,
     selectOrganization,
     inviteMember,
+    previewInvitation,
     acceptInvitation,
     updateMemberRole,
     removeMember,

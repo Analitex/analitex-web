@@ -27,6 +27,7 @@ export const WEB_API_ROUTES = [
   'POST /organizations/{organizationId}/transfer-ownership',
   'GET /organizations/{organizationId}/invitations',
   'POST /organizations/{organizationId}/invitations',
+  'POST /invitations/preview',
   'POST /invitations/accept',
   'POST /invitations/{invitationId}/revoke',
   'GET /marketplaces/connectors',
@@ -252,6 +253,8 @@ export const RECOMMENDED_PRODUCT_LOAD_SEQUENCE = [
 
 export const FIRST_OWNER_FLOW = [
   'POST /api/v1/auth/register',
+  'POST /api/v1/auth/verify-email',
+  'POST /api/v1/auth/login',
   'POST /api/v1/organizations',
   'GET /api/v1/marketplaces/connectors',
   'POST /api/v1/marketplace-connections/connect-shop',

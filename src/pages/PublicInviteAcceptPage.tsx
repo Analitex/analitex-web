@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
-import { usePlatform } from '../context/PlatformContext';
+import { ArrowRight, Loader2 } from 'lucide-react';
+import { usePlatform, type InvitationPreview } from '../context/PlatformContext';
 
 interface PublicInviteAcceptPageProps {
   onSuccess: () => void;
@@ -9,14 +9,17 @@ interface PublicInviteAcceptPageProps {
 }
 
 const PENDING_INVITE_TOKEN_KEY = 'aistats-pending-invite-token';
+const PENDING_INVITE_EMAIL_KEY = 'aistats-pending-invite-email';
 
 export function PublicInviteAcceptPage({ onSuccess, onGoToLogin, onGoToRegister }: PublicInviteAcceptPageProps) {
-  const { acceptInvitation, session, apiError } = usePlatform();
+  const { acceptInvitation, previewInvitation, session, apiError } = usePlatform();
   const acceptInvitationRef = useRef(acceptInvitation);
+  const previewInvitationRef = useRef(previewInvitation);
   const onSuccessRef = useRef(onSuccess);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [needsAuth, setNeedsAuth] = useState(false);
+  const [preview, setPreview] = useState<InvitationPreview | null>(null);
 
   const inviteToken = useMemo(() => {
     if (typeof window === 'undefined') return '';
@@ -30,8 +33,9 @@ export function PublicInviteAcceptPage({ onSuccess, onGoToLogin, onGoToRegister 
 
   useEffect(() => {
     acceptInvitationRef.current = acceptInvitation;
+    previewInvitationRef.current = previewInvitation;
     onSuccessRef.current = onSuccess;
-  }, [acceptInvitation, onSuccess]);
+  }, [acceptInvitation, onSuccess, previewInvitation]);
 
   useEffect(() => {
     if (!inviteToken) {
@@ -40,15 +44,31 @@ export function PublicInviteAcceptPage({ onSuccess, onGoToLogin, onGoToRegister 
     }
 
     let cancelled = false;
-    const accept = async () => {
+    const loadInvite = async () => {
       setIsSubmitting(true);
       setNotice('Проверяем приглашение...');
       setNeedsAuth(false);
 
       try {
+        const nextPreview = await previewInvitationRef.current(inviteToken);
+        if (cancelled) return;
+        setPreview(nextPreview);
+        if (nextPreview.isExpired || nextPreview.status !== 'Pending') {
+          setNotice('Это приглашение больше не активно. Попросите отправить новое приглашение.');
+          return;
+        }
+        window.sessionStorage.setItem(PENDING_INVITE_TOKEN_KEY, inviteToken);
+        window.sessionStorage.setItem(PENDING_INVITE_EMAIL_KEY, nextPreview.email);
+        if (!session?.accessToken) {
+          setNeedsAuth(true);
+          setNotice('Войдите или создайте аккаунт, чтобы присоединиться к команде.');
+          return;
+        }
+
         await acceptInvitationRef.current(inviteToken);
         if (cancelled) return;
         window.sessionStorage.removeItem(PENDING_INVITE_TOKEN_KEY);
+        window.sessionStorage.removeItem(PENDING_INVITE_EMAIL_KEY);
         setNotice('Приглашение принято. Открываем рабочее пространство.');
         onSuccessRef.current();
       } catch (error) {
@@ -67,7 +87,7 @@ export function PublicInviteAcceptPage({ onSuccess, onGoToLogin, onGoToRegister 
       }
     };
 
-    void accept();
+    void loadInvite();
 
     return () => {
       cancelled = true;
@@ -83,41 +103,17 @@ export function PublicInviteAcceptPage({ onSuccess, onGoToLogin, onGoToRegister 
         <div className="absolute right-[-6rem] top-24 h-[22rem] w-[22rem] rounded-full bg-indigo-300/25 blur-3xl" />
       </div>
 
-      <div className="relative mx-auto grid min-h-screen max-w-7xl gap-8 px-4 py-4 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:py-8">
-        <section className="relative overflow-hidden rounded-[2.5rem] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,250,252,0.88))] p-8 shadow-[0_30px_100px_rgba(15,23,42,0.10)] backdrop-blur-xl sm:p-10 lg:flex lg:min-h-[calc(100vh-4rem)] lg:items-start">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(99,102,241,0.08),transparent_30%)]" />
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sky-300/70 to-transparent" />
-
-          <div className="relative max-w-xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">
-              <ShieldCheck size={14} />
-              Приглашение
-            </div>
-            <h1 className="mt-5 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-              Вас пригласили в команду
-            </h1>
-            <p className="mt-4 max-w-xl text-sm leading-7 text-slate-600 sm:text-base">
-              Подтвердите приглашение, чтобы открыть доступ к отчетам, магазинам и настройкам вашей организации.
-            </p>
-
-            <div className="mt-7 grid gap-4 sm:grid-cols-2">
-              <InviteCard title="Рабочее пространство" text="Вы попадете в организацию, куда вас пригласил владелец или администратор." />
-              <InviteCard title="Доступ к данным" text="После подтверждения откроются разделы, доступные для вашей роли." />
-            </div>
-          </div>
-        </section>
-
-        <section className="flex items-start">
-          <div className="w-full rounded-[2.25rem] border border-white/80 bg-white/92 p-6 text-slate-900 shadow-[0_30px_100px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-8 lg:min-h-[calc(100vh-4rem)]">
+      <div className="relative mx-auto flex min-h-screen max-w-xl items-center px-4 py-6 sm:px-6 lg:px-8">
+        <section className="w-full">
+          <div className="w-full rounded-[2.25rem] border border-white/80 bg-white/92 p-6 text-slate-900 shadow-[0_30px_100px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-8">
             <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-100 p-1 text-sm font-semibold">
               <div className="rounded-xl bg-white px-4 py-2 text-slate-950 shadow-sm">Приглашение</div>
             </div>
 
             <div className="mt-6">
-              <h2 className="text-2xl font-semibold text-slate-950">Подтвердите приглашение</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                Если вы открыли ссылку из письма, приглашение уже подставлено. Остается только подтвердить вход в команду.
-              </p>
+              <h2 className="text-2xl font-semibold text-slate-950">
+                Подтвердите приглашение
+              </h2>
             </div>
 
             {apiError && (
@@ -132,6 +128,22 @@ export function PublicInviteAcceptPage({ onSuccess, onGoToLogin, onGoToRegister 
             )}
 
             <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+              {preview && (
+                <div className="mb-4 grid gap-3 rounded-2xl bg-white p-4 text-sm text-slate-600">
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Команда</span>
+                    <span className="font-semibold text-slate-900">{preview.organizationName || 'Команда AiStats'}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Email</span>
+                    <span className="font-semibold text-slate-900">{preview.email}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Роль</span>
+                    <span className="font-semibold text-slate-900">{preview.role}</span>
+                  </div>
+                </div>
+              )}
               {isSubmitting ? (
                 <div className="flex items-center gap-3 text-sm text-slate-700">
                   <Loader2 size={18} className="animate-spin text-sky-700" />
@@ -162,15 +174,6 @@ export function PublicInviteAcceptPage({ onSuccess, onGoToLogin, onGoToRegister 
           </div>
         </section>
       </div>
-    </div>
-  );
-}
-
-function InviteCard({ title, text }: { title: string; text: string }) {
-  return (
-    <div className="rounded-[1.5rem] border border-white/70 bg-white p-4 shadow-sm">
-      <div className="text-sm font-semibold text-slate-950">{title}</div>
-      <p className="mt-2 text-sm leading-6 text-slate-600">{text}</p>
     </div>
   );
 }

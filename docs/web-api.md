@@ -69,7 +69,8 @@ Request:
   "lastName": "Ivanova",
   "email": "owner@company.com",
   "phone": "+79990000000",
-  "password": "secret"
+  "password": "secret",
+  "invitationToken": "optional-invite-token"
 }
 ```
 
@@ -156,6 +157,12 @@ Current behavior:
 - register does not return a bearer token; the user must verify email and then call `POST /api/v1/auth/login`
 - current default policy requires verified email for login: `AiStats:Auth:RequireVerifiedEmailForLogin = true`
 - when the password is correct but the email is still unverified, `POST /api/v1/auth/login` returns a validation-style error with message `Email address is not verified.`
+- register accepts optional `invitationToken`
+- when `invitationToken` is provided:
+  - backend validates the invitation
+  - registration email must match invitation email
+  - backend immediately attaches the new user to the invited organization during registration
+  - after email verification and first sign-in, the user can continue directly into the invited organization without a separate accept call
 
 ## Users
 
@@ -175,6 +182,9 @@ Also available:
 Current behavior:
 - changing the user email resets `emailVerifiedAt` to `null`
 - password reset now issues a token and sends it through the configured email sender
+- when `AiStats:Email:PasswordResets:ApplicationBaseUrl` is configured, password reset emails send a frontend reset link instead of showing only the raw token
+- current canonical reset link format is `/reset-password?resetToken=...`
+- frontend may also support equivalent route variants such as `/reset-password?token=...` or `/reset-password/{token}`, but backend currently emits the canonical query-parameter form
 
 ## Organizations
 
@@ -223,6 +233,44 @@ Request:
   "token": "invite-token"
 }
 ```
+
+Current behavior:
+- invitation emails contain a frontend link, not a direct API URL
+- current canonical frontend route is `/accept-invite?token=...`
+- the frontend should read the token from that route and then call `POST /api/v1/invitations/accept`
+
+### `POST /api/v1/invitations/preview`
+
+Public invite-preview endpoint for the frontend accept-invite screen.
+
+Request:
+
+```json
+{
+  "token": "invite-token"
+}
+```
+
+Response:
+
+```json
+{
+  "email": "manager@company.com",
+  "role": "Manager",
+  "status": "Pending",
+  "expiresAt": "2026-05-12T10:00:00Z",
+  "organizationName": "Acme",
+  "isExpired": false
+}
+```
+
+Recommended frontend invite flow:
+1. user opens `/accept-invite?token=...`
+2. frontend calls `POST /api/v1/invitations/preview`
+3. if the user already has an account, sign in and then call `POST /api/v1/invitations/accept`
+4. if the user does not have an account, register with the same email and include `invitationToken`
+5. verify email
+6. sign in
 
 ### `POST /api/v1/invitations/{invitationId}/revoke`
 
@@ -674,7 +722,7 @@ Current behavior:
   - `metadata`
   - `sentAt`
 - verification emails expose `metadata.kind = email_verification` and `metadata.code`
-- password reset emails expose `metadata.kind = password_reset` and `metadata.resetToken`
+- password reset emails expose `metadata.kind = password_reset`, `metadata.resetToken`, and `metadata.resetUrl`
 
 ## Admin Marketplace Maintenance
 

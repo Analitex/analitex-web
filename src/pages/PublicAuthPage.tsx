@@ -30,9 +30,17 @@ export function PublicAuthPage({ mode, onModeChange, onAcceptInvite, onVerifyEma
   const [consentError, setConsentError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const firstFieldRef = useRef<HTMLInputElement | null>(null);
+  const inviteTokenFromStorage = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    return window.sessionStorage.getItem('aistats-pending-invite-token') ?? '';
+  }, []);
+  const invitedEmailFromStorage = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    return window.sessionStorage.getItem('aistats-pending-invite-email') ?? '';
+  }, []);
 
   const [registerForm, setRegisterForm] = useState({
-    email: 'owner@company.com',
+    email: invitedEmailFromStorage || 'owner@company.com',
     password: 'secret',
     firstName: 'Anna',
     lastName: 'Ivanova',
@@ -40,7 +48,7 @@ export function PublicAuthPage({ mode, onModeChange, onAcceptInvite, onVerifyEma
   });
 
   const [loginForm, setLoginForm] = useState({
-    email: 'owner@company.com',
+    email: invitedEmailFromStorage || 'owner@company.com',
     password: 'secret',
   });
 
@@ -76,7 +84,10 @@ export function PublicAuthPage({ mode, onModeChange, onAcceptInvite, onVerifyEma
 
     try {
       if (mode === 'register') {
-        const result = await register(registerForm);
+        const result = await register({
+          ...registerForm,
+          invitationToken: inviteTokenFromStorage || undefined,
+        });
         if (result.requiresEmailVerification) {
           onVerifyEmail(result.user.email);
         }

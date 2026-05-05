@@ -63,6 +63,7 @@ const RESET_PASSWORD_TOKEN_ROUTE_PATTERN = /^\/reset-password\/([^/?#]+)\/?$/;
 const ACCEPT_INVITE_TOKEN_ROUTE_PATTERN = /^\/accept-invite\/([^/?#]+)\/?$/;
 const DEV_ROUTE_PATTERN = /^\/dev(?:\/platform)?(?:\/([^/?#]+))?\/?$/;
 const PENDING_INVITE_TOKEN_KEY = 'aistats-pending-invite-token';
+const PENDING_INVITE_EMAIL_KEY = 'aistats-pending-invite-email';
 const DEV_PAGES = new Set<DevPage>(['home', 'auth', 'organizations', 'connections', 'analytics', 'docs', 'history']);
 
 function normalizeSettingsTab(value: string | undefined): SettingsTabId {
@@ -476,6 +477,7 @@ function AppRouter() {
     window.sessionStorage.removeItem(PENDING_INVITE_TOKEN_KEY);
     void acceptInvitationRef.current(pendingInviteToken)
       .then(() => {
+        window.sessionStorage.removeItem(PENDING_INVITE_EMAIL_KEY);
         const nextRoute: RouteState = { mode: 'main', page: 'dashboard', settingsTab: DEFAULT_SETTINGS_TAB };
         window.history.replaceState(null, '', pathForRoute(nextRoute));
         setRoute(nextRoute);
