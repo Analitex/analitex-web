@@ -17,7 +17,7 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   CONTAINER_PORT: 3000
-  DEPLOY_PATH: /opt/analitex-app
+  DEPLOY_PATH: /opt/analitex-web
 
 jobs:
   build:
@@ -114,7 +114,7 @@ jobs:
           : "${DEPLOY_USER:?Set DEPLOY_USER variable}"
 
           app_port="${APP_PORT:-3000}"
-          container_name="${CONTAINER_NAME:-analitex-app}"
+          container_name="${CONTAINER_NAME:-analitex-web}"
           deploy_port="${DEPLOY_PORT:-22}"
 
           printf -v remote_env \
