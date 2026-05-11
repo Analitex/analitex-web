@@ -1,0 +1,156 @@
+name: Deploy Docker image
+
+on:
+  push:
+    branches:
+      - production
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-deploy-production
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  CONTAINER_PORT: 3000
+  DEPLOY_PATH: /opt/analitex-app
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      tag: ${{ steps.image.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare image name
+        id: image
+        shell: bash
+        run: |
+          image="${REGISTRY}/${GITHUB_REPOSITORY,,}"
+          tag="${image}:${GITHUB_SHA}"
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.image.outputs.tag }}
+            ${{ steps.image.outputs.image }}:latest
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    env:
+      APP_PORT: ${{ vars.APP_PORT }}
+      CONTAINER_NAME: ${{ vars.CONTAINER_NAME }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          : "${DEPLOY_HOST:?Set DEPLOY_HOST variable}"
+          : "${DEPLOY_SSH_KEY:?Set DEPLOY_SSH_KEY secret}"
+
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -p "${DEPLOY_PORT:-22}" "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload compose file
+        shell: bash
+        run: |
+          : "${DEPLOY_USER:?Set DEPLOY_USER variable}"
+
+          deploy_port="${DEPLOY_PORT:-22}"
+
+          printf -v remote_env 'DEPLOY_PATH=%q' "$DEPLOY_PATH"
+          ssh -i ~/.ssh/deploy_key -p "$deploy_port" "$DEPLOY_USER@$DEPLOY_HOST" "$remote_env bash -s" <<'SCRIPT'
+          set -euo pipefail
+
+          mkdir -p "$DEPLOY_PATH" 2>/dev/null || {
+            sudo mkdir -p "$DEPLOY_PATH"
+            sudo chown "$USER":"$USER" "$DEPLOY_PATH"
+          }
+          SCRIPT
+
+          scp -i ~/.ssh/deploy_key -P "$deploy_port" docker-compose.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/docker-compose.yml"
+
+      - name: Deploy compose stack
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USERNAME: ${{ github.actor }}
+          IMAGE_TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          : "${DEPLOY_USER:?Set DEPLOY_USER variable}"
+
+          app_port="${APP_PORT:-3000}"
+          container_name="${CONTAINER_NAME:-analitex-web}"
+          deploy_port="${DEPLOY_PORT:-22}"
+
+          printf -v remote_env \
+            'APP_PORT=%q CONTAINER_NAME=%q CONTAINER_PORT=%q DEPLOY_PATH=%q GHCR_TOKEN=%q GHCR_USERNAME=%q IMAGE_TAG=%q' \
+            "$app_port" "$container_name" "$CONTAINER_PORT" "$DEPLOY_PATH" "$GHCR_TOKEN" "$GHCR_USERNAME" "$IMAGE_TAG"
+
+          ssh -i ~/.ssh/deploy_key -p "$deploy_port" "$DEPLOY_USER@$DEPLOY_HOST" "$remote_env bash -s" <<'SCRIPT'
+          set -euo pipefail
+
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+          docker pull "$IMAGE_TAG"
+
+          if docker compose version >/dev/null 2>&1; then
+            compose_cmd=(docker compose)
+          elif command -v docker-compose >/dev/null 2>&1; then
+            compose_cmd=(docker-compose)
+          else
+            echo "Docker Compose is not installed"
+            exit 1
+          fi
+
+          cat > "$DEPLOY_PATH/.env" <<EOF
+          APP_PORT=$APP_PORT
+          CONTAINER_NAME=$CONTAINER_NAME
+          CONTAINER_PORT=$CONTAINER_PORT
+          IMAGE_TAG=$IMAGE_TAG
+          EOF
+
+          compose_project="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$CONTAINER_NAME" 2>/dev/null || true)"
+          if [ "$compose_project" = "<no value>" ] || [ -z "$compose_project" ]; then
+            docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+          fi
+
+          cd "$DEPLOY_PATH"
+          "${compose_cmd[@]}" -f docker-compose.yml up -d
+          "${compose_cmd[@]}" -f docker-compose.yml ps
+
+          docker image prune -f
+          SCRIPT
