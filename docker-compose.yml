@@ -5,3 +5,9 @@ services:
     restart: unless-stopped
     ports:
       - "${APP_PORT:-3000}:${CONTAINER_PORT:-3000}"
+    networks:
+      - apps-proxy
+
+networks:
+  apps-proxy:
+    external: true
