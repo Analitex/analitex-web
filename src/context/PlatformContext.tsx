@@ -152,6 +152,7 @@ interface PlatformContextValue {
     initialSyncDays: number;
     initialSyncKinds: string[];
   }) => MarketplaceConnection;
+  updateConnection: (input: { connectionId: string; displayName?: string; credentials?: Record<string, string> }) => Promise<MarketplaceConnection>;
   validateConnection: (connectionId: string) => Promise<MarketplaceConnection>;
   enqueueSync: (input: { connectionId: string; dateFrom: string; dateTo: string; syncKinds: string[] }) => SyncRun | null;
   retrySync: (syncRunId: string) => SyncRun | null;
@@ -287,6 +288,11 @@ type ApiConnectionValidationResult = {
   externalAccountName?: string | null;
   error?: string | null;
 };
+
+type ApiConnectionUpdateResponse =
+  | ApiConnection
+  | { connection?: ApiConnection | null }
+  | { data?: ApiConnection | { connection?: ApiConnection | null } | null };
 
 type ApiSyncRun = {
   id: string;
@@ -468,6 +474,16 @@ function mapConnection(connection: ApiConnection): MarketplaceConnection {
     validationState: mapConnectionStatus(connection.status),
     latestSyncRunId: connection.latestSyncRun?.id ? String(connection.latestSyncRun.id) : undefined,
   };
+}
+
+function resolveConnectionUpdateResponse(response: ApiConnectionUpdateResponse | void) {
+  if (!response) return null;
+  if ('data' in response) {
+    const data = response.data;
+    if (!data) return null;
+    return 'connection' in data ? data.connection ?? null : data;
+  }
+  return 'connection' in response ? response.connection ?? null : response;
 }
 
 function mapSyncRun(syncRun: ApiSyncRun): SyncRun {
@@ -1075,6 +1091,33 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     return optimisticConnection;
   };
 
+  const updateConnection: PlatformContextValue['updateConnection'] = async input => {
+    const response = await apiRequest<ApiConnectionUpdateResponse | void>(`/marketplace-connections/${input.connectionId}`, {
+      method: 'PATCH',
+      token: session?.accessToken,
+      body: JSON.stringify({
+        ...(input.displayName ? { displayName: input.displayName } : {}),
+        ...(input.credentials ? { credentials: input.credentials } : {}),
+      }),
+    });
+    const responseConnection = resolveConnectionUpdateResponse(response);
+    const refreshedConnection = responseConnection
+      ? mapConnection(responseConnection)
+      : (await refreshOrganizationConnections(selectedOrganizationId)).find(connection => connection.id === input.connectionId);
+
+    if (!refreshedConnection) {
+      throw new ApiError('Updated connection was not returned by the backend.', 500);
+    }
+
+    setConnections(current => current.map(connection => (connection.id === refreshedConnection.id ? refreshedConnection : connection)));
+    recordAction({
+      kind: 'connection',
+      title: 'Updated marketplace shop',
+      description: `${refreshedConnection.displayName} settings were updated through the backend API.`,
+    });
+    return refreshedConnection;
+  };
+
   const validateConnection = async (connectionId: string) => {
     await apiRequest<void>(`/marketplace-connections/${connectionId}/validate`, {
       method: 'POST',
@@ -1337,6 +1380,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     transferOrganizationOwnership,
     revokeInvitation,
     connectShop,
+    updateConnection,
     validateConnection,
     enqueueSync,
     retrySync,

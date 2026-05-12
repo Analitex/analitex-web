@@ -835,12 +835,13 @@ function ProfileTab({
 }
 
 function ShopsTab({ isLoading }: { isLoading: boolean }) {
-  const { session, connections, connectors, syncRuns, selectedOrganizationId, validateConnection, enqueueSync, connectShop } = usePlatform();
+  const { session, connections, connectors, syncRuns, selectedOrganizationId, validateConnection, enqueueSync, connectShop, updateConnection } = usePlatform();
   const shops = connections.filter(connection => connection.organizationId === selectedOrganizationId);
   const defaultDateTo = new Date().toISOString().slice(0, 10);
   const defaultDateFrom = new Date(Date.now() - 13 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const [isConnectFormOpen, setIsConnectFormOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -862,6 +863,99 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
   const [connectNotice, setConnectNotice] = useState<string | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [isMarketplaceMenuOpen, setIsMarketplaceMenuOpen] = useState(false);
+  const [setupShop, setSetupShop] = useState<MarketplaceConnection | null>(null);
+  const [setupDisplayName, setSetupDisplayName] = useState('');
+  const [setupApiToken, setSetupApiToken] = useState('');
+  const [setupClientId, setSetupClientId] = useState('');
+  const [setupApiKey, setSetupApiKey] = useState('');
+  const [setupPerformanceClientId, setSetupPerformanceClientId] = useState('');
+  const [setupPerformanceClientSecret, setSetupPerformanceClientSecret] = useState('');
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [setupLoading, setSetupLoading] = useState(false);
+
+  const openSetupModal = (shop: MarketplaceConnection) => {
+    setSetupShop(shop);
+    setSetupDisplayName(shop.displayName);
+    setSetupApiToken('');
+    setSetupClientId('');
+    setSetupApiKey('');
+    setSetupPerformanceClientId('');
+    setSetupPerformanceClientSecret('');
+    setSetupError(null);
+    setIsSetupModalOpen(true);
+  };
+
+  const closeSetupModal = () => {
+    setIsSetupModalOpen(false);
+    setSetupShop(null);
+    setSetupError(null);
+    setSetupLoading(false);
+  };
+
+  const submitSetup = async () => {
+    if (!setupShop) return;
+
+    const nextDisplayName = setupDisplayName.trim();
+    const displayNamePatch = nextDisplayName && nextDisplayName !== setupShop.displayName ? nextDisplayName : undefined;
+    let credentials: Record<string, string> | undefined;
+
+    if (setupShop.marketplace === 'Wildberries') {
+      const trimmedApiToken = setupApiToken.trim();
+      if (trimmedApiToken) {
+        credentials = { apiToken: trimmedApiToken };
+      }
+    } else {
+      const trimmedClientId = setupClientId.trim();
+      const trimmedApiKey = setupApiKey.trim();
+      const trimmedPerformanceClientId = setupPerformanceClientId.trim();
+      const trimmedPerformanceClientSecret = setupPerformanceClientSecret.trim();
+      const hasCredentialInput = Boolean(trimmedClientId || trimmedApiKey || trimmedPerformanceClientId || trimmedPerformanceClientSecret);
+
+      if ((trimmedPerformanceClientId && !trimmedPerformanceClientSecret) || (!trimmedPerformanceClientId && trimmedPerformanceClientSecret)) {
+        setSetupError('Для Ozon performance credentials нужно заполнить оба поля: Client ID и Client Secret.');
+        return;
+      }
+
+      if (hasCredentialInput) {
+        if (!trimmedClientId || !trimmedApiKey) {
+          setSetupError('Для обновления credentials Ozon укажите Client ID и API Key.');
+          return;
+        }
+
+        credentials = {
+          clientId: trimmedClientId,
+          apiKey: trimmedApiKey,
+          ...(trimmedPerformanceClientId && trimmedPerformanceClientSecret
+            ? {
+                performanceClientId: trimmedPerformanceClientId,
+                performanceClientSecret: trimmedPerformanceClientSecret,
+              }
+            : {}),
+        };
+      }
+    }
+
+    if (!displayNamePatch && !credentials) {
+      setSetupError('Измените название магазина или заполните credentials для обновления.');
+      return;
+    }
+
+    setSetupLoading(true);
+    setSetupError(null);
+    try {
+      const updatedConnection = await updateConnection({
+        connectionId: setupShop.id,
+        displayName: displayNamePatch,
+        credentials,
+      });
+      setConnectNotice(`Настройки ${updatedConnection.displayName} обновлены.`);
+      closeSetupModal();
+    } catch (error) {
+      setSetupError(error instanceof Error ? error.message : 'Не удалось обновить настройки магазина.');
+    } finally {
+      setSetupLoading(false);
+    }
+  };
 
   const openSyncModal = (shopId: string, shopName: string) => {
     setSyncShopId(shopId);
@@ -1239,6 +1333,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
               <div className="mt-6 flex gap-3">
                 <button
                   type="button"
+                  onClick={() => openSetupModal(shop)}
                   className="flex-1 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
                 >
                   Настроить
@@ -1281,6 +1376,141 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
           </div>
         )}
       </div>
+
+      {isSetupModalOpen && setupShop && (
+        <div
+          className="fixed inset-0 z-[145] flex items-center justify-center bg-slate-950/45 p-4"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget && !setupLoading) {
+              closeSetupModal();
+            }
+          }}
+        >
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-[2rem] bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+              <div>
+                <div className="text-sm font-medium text-blue-600">Настройка магазина</div>
+                <h3 className="text-2xl font-semibold text-slate-900">{setupShop.displayName}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={closeSetupModal}
+                disabled={setupLoading}
+                className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Закрыть
+              </button>
+            </div>
+
+            <div className="max-h-[calc(90vh-88px)] space-y-5 overflow-y-auto px-6 py-5">
+              <div className="flex flex-wrap items-center gap-3">
+                <MarketplaceBadge marketplace={setupShop.marketplace} className="bg-slate-50" />
+                <span className="text-sm text-slate-500">PATCH /api/v1/marketplace-connections/{`{connectionId}`}</span>
+              </div>
+
+              <label className="block">
+                <div className="mb-2 text-sm font-medium text-slate-600">Название магазина</div>
+                <input
+                  value={setupDisplayName}
+                  onChange={event => {
+                    setSetupDisplayName(event.target.value);
+                    setSetupError(null);
+                  }}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                />
+              </label>
+
+              {setupShop.marketplace === 'Ozon' ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <div className="mb-2 text-sm font-medium text-slate-600">Client ID</div>
+                    <input
+                      value={setupClientId}
+                      onChange={event => {
+                        setSetupClientId(event.target.value);
+                        setSetupError(null);
+                      }}
+                      placeholder="Заполните для обновления credentials"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    />
+                  </label>
+                  <label className="block">
+                    <div className="mb-2 text-sm font-medium text-slate-600">API Key</div>
+                    <input
+                      value={setupApiKey}
+                      onChange={event => {
+                        setSetupApiKey(event.target.value);
+                        setSetupError(null);
+                      }}
+                      placeholder="Заполните для обновления credentials"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    />
+                  </label>
+                  <label className="block">
+                    <div className="mb-2 text-sm font-medium text-slate-600">Performance Client ID</div>
+                    <input
+                      value={setupPerformanceClientId}
+                      onChange={event => {
+                        setSetupPerformanceClientId(event.target.value);
+                        setSetupError(null);
+                      }}
+                      placeholder="Необязательно"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    />
+                  </label>
+                  <label className="block">
+                    <div className="mb-2 text-sm font-medium text-slate-600">Performance Client Secret</div>
+                    <input
+                      value={setupPerformanceClientSecret}
+                      onChange={event => {
+                        setSetupPerformanceClientSecret(event.target.value);
+                        setSetupError(null);
+                      }}
+                      placeholder="Необязательно"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    />
+                  </label>
+                </div>
+              ) : (
+                <label className="block">
+                  <div className="mb-2 text-sm font-medium text-slate-600">API Token</div>
+                  <input
+                    value={setupApiToken}
+                    onChange={event => {
+                      setSetupApiToken(event.target.value);
+                      setSetupError(null);
+                    }}
+                    placeholder="Заполните для обновления credentials"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  />
+                </label>
+              )}
+
+              {setupError && <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{setupError}</div>}
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => void submitSetup()}
+                  disabled={setupLoading}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {setupLoading && <Loader2 size={16} className="animate-spin" />}
+                  Сохранить
+                </button>
+                <button
+                  type="button"
+                  onClick={closeSetupModal}
+                  disabled={setupLoading}
+                  className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isHistoryOpen && (
         <div
