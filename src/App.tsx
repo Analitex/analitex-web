@@ -29,6 +29,7 @@ import {
   PlatformHomePage,
 } from './pages/PlatformPages';
 import { SettingsPage } from './pages/SettingsPage';
+import { PREVIEW_ROUTE_PREFIX } from './lib/previewMode';
 import { CheckCircle2, AlertTriangle, Info, Loader2, X } from 'lucide-react';
 import type { Page } from './types';
 import type { SettingsTabId } from './pages/settingsConfig';
@@ -50,10 +51,12 @@ type MainPage =
   | 'reset-password'
   | 'setup';
 type DevPage = 'home' | 'auth' | 'organizations' | 'connections' | 'analytics' | 'docs' | 'history';
+type PreviewPage = Exclude<MainPage, 'login' | 'register' | 'verify-email' | 'reset-password' | 'accept-invite' | 'setup'>;
 
 type RouteState =
   | { mode: 'main'; page: MainPage; settingsTab: SettingsTabId }
-  | { mode: 'dev'; page: DevPage; settingsTab: SettingsTabId };
+  | { mode: 'dev'; page: DevPage; settingsTab: SettingsTabId }
+  | { mode: 'preview'; page: PreviewPage; settingsTab: SettingsTabId };
 
 const DEFAULT_SETTINGS_TAB: SettingsTabId = 'profile';
 const SETTINGS_TAB_PATTERN = /^\/settings(?:\/([^/?#]+))?\/?$/;
@@ -62,9 +65,11 @@ const PUBLIC_FLOW_ROUTE_PATTERN = /^\/(reset-password|accept-invite|verify-email
 const RESET_PASSWORD_TOKEN_ROUTE_PATTERN = /^\/reset-password\/([^/?#]+)\/?$/;
 const ACCEPT_INVITE_TOKEN_ROUTE_PATTERN = /^\/accept-invite\/([^/?#]+)\/?$/;
 const DEV_ROUTE_PATTERN = /^\/dev(?:\/platform)?(?:\/([^/?#]+))?\/?$/;
+const PREVIEW_ROUTE_PATTERN = /^\/preview(?:\/([^/?#]+))?\/?$/;
 const PENDING_INVITE_TOKEN_KEY = 'aistats-pending-invite-token';
 const PENDING_INVITE_EMAIL_KEY = 'aistats-pending-invite-email';
 const DEV_PAGES = new Set<DevPage>(['home', 'auth', 'organizations', 'connections', 'analytics', 'docs', 'history']);
+const PREVIEW_PAGES = new Set<PreviewPage>(['dashboard', 'summary', 'finance', 'inventory', 'external-traffic', 'search-phrases', 'planfact', 'ai', 'settings']);
 
 function normalizeSettingsTab(value: string | undefined): SettingsTabId {
   if (value === 'shops' || value === 'users' || value === 'taxes' || value === 'metrics') {
@@ -112,6 +117,12 @@ function normalizeMainPage(pathname: string): MainPage {
 }
 
 function parseRoute(pathname: string): RouteState {
+  const previewMatch = pathname.match(PREVIEW_ROUTE_PATTERN);
+  if (previewMatch) {
+    const page = PREVIEW_PAGES.has(previewMatch[1] as PreviewPage) ? (previewMatch[1] as PreviewPage) : 'dashboard';
+    return { mode: 'preview', page, settingsTab: DEFAULT_SETTINGS_TAB };
+  }
+
   const devMatch = pathname.match(DEV_ROUTE_PATTERN);
   if (devMatch) {
     const page = DEV_PAGES.has(devMatch[1] as DevPage) ? (devMatch[1] as DevPage) : 'home';
@@ -149,6 +160,10 @@ function parseRoute(pathname: string): RouteState {
 }
 
 function pathForRoute(route: RouteState) {
+  if (route.mode === 'preview') {
+    return route.page === 'dashboard' ? PREVIEW_ROUTE_PREFIX : `${PREVIEW_ROUTE_PREFIX}/${route.page}`;
+  }
+
   if (route.mode === 'dev') {
     return route.page === 'home' ? '/dev' : `/dev/${route.page}`;
   }
@@ -348,7 +363,7 @@ function AppRouter() {
     return parseRoute(window.location.pathname);
   });
   const shouldLoadAnalyticsShell =
-    route.mode === 'main' &&
+    (route.mode === 'main' || route.mode === 'preview') &&
     (route.page === 'dashboard' ||
       route.page === 'summary' ||
       route.page === 'finance' ||
@@ -419,7 +434,9 @@ function AppRouter() {
   }, []);
 
   const navigate = (page: Page, settingsTab: SettingsTabId = DEFAULT_SETTINGS_TAB) => {
-    const nextRoute: RouteState = page === 'settings'
+    const nextRoute: RouteState = route.mode === 'preview' && PREVIEW_PAGES.has(page as PreviewPage)
+      ? { mode: 'preview', page: page as PreviewPage, settingsTab: page === 'settings' ? settingsTab : DEFAULT_SETTINGS_TAB }
+      : page === 'settings'
       ? { mode: 'main', page, settingsTab }
       : isDevPage(page)
         ? { mode: 'dev', page, settingsTab: DEFAULT_SETTINGS_TAB }

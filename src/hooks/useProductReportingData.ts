@@ -4,6 +4,8 @@ import { useReportMode } from '../context/ReportModeContext';
 import { usePlatform } from '../context/PlatformContext';
 import { apiRequest } from '../lib/api';
 import { PRODUCT_REPORT_METRICS_CATALOG } from '../lib/platformCatalog';
+import { previewProductReportingData } from '../lib/previewData';
+import { isPreviewMode } from '../lib/previewMode';
 
 const SUMMARY_PRIORITY_METRICS = [
   'realisation',
@@ -314,6 +316,7 @@ export function useProductReportingData(options?: {
   marginProductLimit?: number;
   marginCategoryLimit?: number;
 }) {
+  const previewMode = isPreviewMode();
   const enabled = options?.enabled ?? true;
   const limit = options?.limit ?? 50;
   const marginProductLimit = options?.marginProductLimit ?? 10;
@@ -349,6 +352,25 @@ export function useProductReportingData(options?: {
   );
 
   useEffect(() => {
+    if (previewMode) {
+      setState(enabled ? previewProductReportingData : {
+        summary: null,
+        overview: null,
+        tableSummary: null,
+        revenueStructure: null,
+        marginTop: null,
+        marginCategories: null,
+        rows: [],
+        metricsCatalog: [],
+        metricCards: [],
+        metricDefinitions: [],
+        loading: false,
+        marginLoading: false,
+        error: null,
+      });
+      return;
+    }
+
     if (!enabled || !session?.accessToken) {
       setState({
         summary: null,
@@ -486,12 +508,23 @@ export function useProductReportingData(options?: {
     filters.dateStart,
     filters.marketplace,
     limit,
+    previewMode,
     reportMode,
     requestFilters,
     session?.accessToken,
   ]);
 
   useEffect(() => {
+    if (previewMode) {
+      setState(current => ({
+        ...current,
+        marginTop: enabled ? previewProductReportingData.marginTop : null,
+        marginCategories: enabled ? previewProductReportingData.marginCategories : null,
+        marginLoading: false,
+      }));
+      return;
+    }
+
     if (!enabled || !session?.accessToken) {
       setState(current => ({
         ...current,
@@ -575,6 +608,7 @@ export function useProductReportingData(options?: {
     filters.marketplace,
     marginCategoryLimit,
     marginProductLimit,
+    previewMode,
     reportMode,
     requestFilters,
     session?.accessToken,

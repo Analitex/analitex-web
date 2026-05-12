@@ -3,6 +3,8 @@ import { useFilters } from '../context/FilterContext';
 import { useReportMode } from '../context/ReportModeContext';
 import { usePlatform } from '../context/PlatformContext';
 import { apiRequest } from '../lib/api';
+import { previewAnalyticsData } from '../lib/previewData';
+import { isPreviewMode } from '../lib/previewMode';
 
 type AnalyticsMetricKey = string;
 
@@ -160,6 +162,7 @@ export function useAnalyticsWorkspaceData(options?: {
   includeExplanation?: boolean;
   includeMetricsCatalog?: boolean;
 }) {
+  const previewMode = isPreviewMode();
   const enabled = options?.enabled ?? true;
   const includeWorkspaceMetrics = options?.includeWorkspaceMetrics ?? true;
   const breakdownGroupBy = options?.breakdownGroupBy ?? 'Product';
@@ -231,6 +234,11 @@ export function useAnalyticsWorkspaceData(options?: {
   );
 
   useEffect(() => {
+    if (previewMode) {
+      setState(enabled ? previewAnalyticsData : buildEmptyAnalyticsState());
+      return;
+    }
+
     if (!enabled || !session?.accessToken || !selectedOrganizationId) {
       setState(buildEmptyAnalyticsState());
       return;
@@ -419,6 +427,7 @@ export function useAnalyticsWorkspaceData(options?: {
   }, [
     breakdownGroupBy,
     enabled,
+    previewMode,
     includeBreakdown,
     includeExplanation,
     includeMetricsCatalog,

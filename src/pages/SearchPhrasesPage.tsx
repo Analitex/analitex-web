@@ -5,6 +5,8 @@ import { usePlatform } from '../context/PlatformContext';
 import { useAnalyticsWorkspaceData } from '../hooks/useAnalyticsWorkspaceData';
 import { apiRequest } from '../lib/api';
 import { formatCurrency, formatNumber } from '../lib/calculations';
+import { buildPreviewDailySeries, previewSearchPhraseRows } from '../lib/previewData';
+import { isPreviewMode } from '../lib/previewMode';
 import { MousePointer2, Search, Target } from 'lucide-react';
 
 type SearchPhraseRow = {
@@ -58,6 +60,7 @@ function getMetricNumber(value: number | null | undefined) {
 }
 
 export function SearchPhrasesPage() {
+  const previewMode = isPreviewMode();
   const { session } = usePlatform();
   const { filters } = useFilters();
   const { reportMode } = useReportMode();
@@ -94,6 +97,12 @@ export function SearchPhrasesPage() {
   );
 
   useEffect(() => {
+    if (previewMode) {
+      setRows(previewSearchPhraseRows);
+      setError(null);
+      return;
+    }
+
     if (!session?.accessToken) {
       setRows([]);
       return;
@@ -140,9 +149,22 @@ export function SearchPhrasesPage() {
     return () => {
       cancelled = true;
     };
-  }, [filters.dateEnd, filters.dateStart, reportMode, requestAccountIds, requestFilters, requestMarketplaces, session?.accessToken]);
+  }, [filters.dateEnd, filters.dateStart, previewMode, reportMode, requestAccountIds, requestFilters, requestMarketplaces, session?.accessToken]);
 
   useEffect(() => {
+    if (previewMode) {
+      setHistory(
+        selectedPhrase
+          ? {
+              dimension: { label: selectedPhrase.label, campaignId: selectedPhrase.campaignId, phrase: selectedPhrase.phrase },
+              series: buildPreviewDailySeries(),
+            }
+          : null
+      );
+      setHistoryLoading(false);
+      return;
+    }
+
     if (!session?.accessToken || !selectedPhrase) {
       setHistory(null);
       return;
@@ -186,7 +208,7 @@ export function SearchPhrasesPage() {
     return () => {
       cancelled = true;
     };
-  }, [filters.dateEnd, filters.dateStart, reportMode, requestAccountIds, requestFilters, requestMarketplaces, selectedPhrase, session?.accessToken]);
+  }, [filters.dateEnd, filters.dateStart, previewMode, reportMode, requestAccountIds, requestFilters, requestMarketplaces, selectedPhrase, session?.accessToken]);
 
   const totals = useMemo(() => {
     return rows.reduce(

@@ -5,6 +5,8 @@ import { usePlatform } from '../context/PlatformContext';
 import { useAnalyticsWorkspaceData } from '../hooks/useAnalyticsWorkspaceData';
 import { apiRequest } from '../lib/api';
 import { formatCurrency, formatNumber } from '../lib/calculations';
+import { buildPreviewDailySeries, previewExternalTrafficRows } from '../lib/previewData';
+import { isPreviewMode } from '../lib/previewMode';
 import { MousePointer2, Radio, ReceiptText } from 'lucide-react';
 
 type ExternalTrafficRow = {
@@ -56,6 +58,7 @@ function getMetricNumber(value: number | null | undefined) {
 }
 
 export function ExternalTrafficPage() {
+  const previewMode = isPreviewMode();
   const { session } = usePlatform();
   const { filters } = useFilters();
   const { reportMode } = useReportMode();
@@ -92,6 +95,12 @@ export function ExternalTrafficPage() {
   );
 
   useEffect(() => {
+    if (previewMode) {
+      setRows(previewExternalTrafficRows);
+      setError(null);
+      return;
+    }
+
     if (!session?.accessToken) {
       setRows([]);
       return;
@@ -138,9 +147,22 @@ export function ExternalTrafficPage() {
     return () => {
       cancelled = true;
     };
-  }, [filters.dateEnd, filters.dateStart, reportMode, requestAccountIds, requestFilters, requestMarketplaces, session?.accessToken]);
+  }, [filters.dateEnd, filters.dateStart, previewMode, reportMode, requestAccountIds, requestFilters, requestMarketplaces, session?.accessToken]);
 
   useEffect(() => {
+    if (previewMode) {
+      setHistory(
+        selectedSource
+          ? {
+              dimension: { label: selectedSource.label, sourceKey: selectedSource.sourceKey, vendorTag: selectedSource.vendorTag },
+              series: buildPreviewDailySeries(),
+            }
+          : null
+      );
+      setHistoryLoading(false);
+      return;
+    }
+
     if (!session?.accessToken || !selectedSource) {
       setHistory(null);
       return;
@@ -184,7 +206,7 @@ export function ExternalTrafficPage() {
     return () => {
       cancelled = true;
     };
-  }, [filters.dateEnd, filters.dateStart, reportMode, requestAccountIds, requestFilters, requestMarketplaces, selectedSource, session?.accessToken]);
+  }, [filters.dateEnd, filters.dateStart, previewMode, reportMode, requestAccountIds, requestFilters, requestMarketplaces, selectedSource, session?.accessToken]);
 
   const totals = useMemo(() => {
     return rows.reduce(
