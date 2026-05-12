@@ -208,7 +208,7 @@ export function FinancePage() {
     <div className="space-y-6 p-6">
       <div>
         <h1 className="text-xl font-bold text-slate-900">Финансы</h1>
-        <p className="mt-0.5 text-sm text-slate-500">Структура доходов и расходов на основе live API</p>
+        <p className="mt-0.5 text-sm text-slate-500">Структура доходов и расходов по выбранным данным</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
             summaryMeta?.taxConfigured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
@@ -263,8 +263,8 @@ export function FinancePage() {
 
       {!hasData && (
         <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center">
-          <div className="text-sm font-semibold text-slate-700">Live финансовые данные пока недоступны</div>
-          <div className="mt-1 text-sm text-slate-500">Страница уже переведена на новый API и заполнится, когда backend вернёт данные по выбранным фильтрам.</div>
+          <div className="text-sm font-semibold text-slate-700">Финансовые данные пока недоступны</div>
+          <div className="mt-1 text-sm text-slate-500">Страница заполнится, когда появятся данные по выбранным фильтрам.</div>
         </div>
       )}
 

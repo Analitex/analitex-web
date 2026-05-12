@@ -26,7 +26,6 @@ import {
   RECOMMENDED_LOAD_SEQUENCE,
   RECOMMENDED_PRODUCT_LOAD_SEQUENCE,
   PRODUCT_REPORT_METRICS_CATALOG,
-  WEB_API_ROUTES,
 } from '../lib/platformCatalog';
 import { apiRequest } from '../lib/api';
 
@@ -138,14 +137,13 @@ export function PlatformHomePage({ onNavigate }: { onNavigate: (page: Page) => v
     <div className="space-y-6 p-4 sm:p-6">
       <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-6 text-white shadow-xl sm:p-8">
         <div className="max-w-3xl">
-          <Pill tone="blue">Поддержка API-first</Pill>
+          <Pill tone="blue">Рабочие сценарии</Pill>
           <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-5xl">
-            Веб-приложение теперь соответствует документированному AiStats API.
+            Веб-приложение соответствует рабочим сценариям AiStats.
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
             Используйте экраны ниже, чтобы пройти сценарии онбординга, маркетплейсов, синхронизации и аналитики,
-            описанные в папке `docs/`. Каждая страница построена вокруг реальных групп endpoint-ов, а не старого
-            прототипного кабинета.
+            описанные в документации продукта. Каждая страница построена вокруг рабочих сценариев кабинета.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <button
@@ -161,7 +159,7 @@ export function PlatformHomePage({ onNavigate }: { onNavigate: (page: Page) => v
               onClick={() => onNavigate('connections')}
               className="inline-flex items-center gap-2 rounded-2xl border border-white/15 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/10"
             >
-              Посмотреть connect-shop
+              Посмотреть подключения
             </button>
           </div>
         </div>
@@ -192,7 +190,7 @@ export function PlatformHomePage({ onNavigate }: { onNavigate: (page: Page) => v
           <SectionTitle
             eyebrow="Рекомендуемый сценарий"
             title="Что приложение должно делать первым"
-            description="Это последовательности загрузки, описанные в API-заметках. Теперь они видны в интерфейсе, чтобы онбординг и работа со state оставались согласованными."
+            description="Это последовательности загрузки, которые помогают держать онбординг и состояние кабинета согласованными."
           />
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <FlowList title="Загрузка кабинета" items={RECOMMENDED_LOAD_SEQUENCE} />
@@ -206,8 +204,8 @@ export function PlatformHomePage({ onNavigate }: { onNavigate: (page: Page) => v
         <Surface>
           <SectionTitle
             eyebrow="Операционная справка"
-            title="Обзор API-части"
-            description="Приложение показывает точные семейства маршрутов, описанные в backend-документации."
+            title="Обзор рабочих областей"
+            description="Приложение показывает ключевые сценарии, которые нужны для полноценной работы кабинета."
           />
           <div className="mt-5 flex flex-wrap gap-2">
             <Pill tone="blue">Авторизация</Pill>
@@ -217,13 +215,6 @@ export function PlatformHomePage({ onNavigate }: { onNavigate: (page: Page) => v
             <Pill tone="slate">Метаданные</Pill>
             <Pill tone="slate">Пользовательские метрики</Pill>
             <Pill tone="slate">Состояние</Pill>
-          </div>
-          <div className="mt-5 space-y-2">
-            {WEB_API_ROUTES.slice(0, 12).map(route => (
-              <div key={route} className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                {route}
-              </div>
-            ))}
           </div>
         </Surface>
       </div>
@@ -300,7 +291,7 @@ export function AuthPage() {
             </div>
             <div>
               <h3 className="text-lg font-semibold text-slate-900">Регистрация</h3>
-              <p className="text-sm text-slate-500">POST /api/v1/auth/register</p>
+              <p className="text-sm text-slate-500">Создание учетной записи владельца</p>
             </div>
           </div>
 
@@ -349,7 +340,7 @@ export function AuthPage() {
             </div>
             <div>
               <h3 className="text-lg font-semibold text-slate-900">Вход</h3>
-              <p className="text-sm text-slate-500">POST /api/v1/auth/login</p>
+              <p className="text-sm text-slate-500">Авторизация в кабинете</p>
             </div>
           </div>
 
@@ -397,7 +388,7 @@ export function AuthPage() {
         <SectionTitle
           eyebrow="Подтверждение почты"
           title="Email verification"
-          description="Эти действия вызывают POST /api/v1/auth/request-email-verification и POST /api/v1/auth/verify-email."
+          description="Запросите код подтверждения и проверьте его для выбранного email."
         />
         <div className="mt-5 grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px]">
           <label>
@@ -452,29 +443,29 @@ export function AuthPage() {
             <Row label="Тип токена" value={session?.tokenType ?? 'Bearer'} />
           </div>
           <div className="mt-5">
-            <JsonPanel label="POST /api/v1/auth/login response" value={session ?? { accessToken: 'jwt', tokenType: 'Bearer', expiresAt: '—', user: null }} />
+            <JsonPanel label="Сессия" value={session ?? { accessToken: 'jwt', tokenType: 'Bearer', expiresAt: '—', user: null }} />
           </div>
         </Surface>
 
         <Surface>
           <SectionTitle
-            eyebrow="Эндпоинты профиля"
-            title="Операции users/me"
-            description="В документации есть сценарии профиля и пароля для вошедшего пользователя."
+            eyebrow="Профиль"
+            title="Операции с пользователем"
+            description="В кабинете есть сценарии профиля, подтверждения почты и смены пароля."
           />
           <div className="mt-5 grid gap-3">
             {[
-              'GET /api/v1/users/me',
-              'PUT /api/v1/users/me',
-              'POST /api/v1/users/me/change-password',
-              'DELETE /api/v1/users/me',
-              'POST /api/v1/auth/request-email-verification',
-              'POST /api/v1/auth/verify-email',
-              'POST /api/v1/users/request-password-reset',
-              'POST /api/v1/users/reset-password',
-            ].map(route => (
-              <div key={route} className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                {route}
+              'Просмотр текущего пользователя',
+              'Обновление профиля',
+              'Смена пароля',
+              'Удаление аккаунта',
+              'Запрос подтверждения почты',
+              'Подтверждение почты',
+              'Запрос сброса пароля',
+              'Сброс пароля',
+            ].map(action => (
+              <div key={action} className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                {action}
               </div>
             ))}
           </div>
@@ -499,14 +490,13 @@ export function OrganizationsPage() {
         <SectionTitle
           eyebrow="Организации"
           title="Команды, участники, приглашения и владение"
-          description="Эти страницы поддерживают organization-endpoints из документации: создать организацию, список, участники и приглашения."
+          description="Эти страницы поддерживают рабочие сценарии организации: создание, список, участники и приглашения."
         />
       </Surface>
 
       <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
         <Surface>
           <h3 className="text-lg font-semibold text-slate-900">Создать организацию</h3>
-          <p className="mt-1 text-sm text-slate-500">POST /api/v1/organizations</p>
           <div className="mt-4">
             <label>
               <div className="mb-2 text-sm font-medium text-slate-600">Название организации</div>
@@ -538,7 +528,7 @@ export function OrganizationsPage() {
               >
                 <div>
                   <div className="font-semibold text-slate-900">{org.name}</div>
-                  <div className="text-sm text-slate-500">{org.id}</div>
+                  <div className="text-sm text-slate-500">{selectedOrganizationId === org.id ? 'Выбрана' : 'Доступна'}</div>
                 </div>
                 <Pill tone={selectedOrganizationId === org.id ? 'blue' : 'slate'}>{selectedOrganizationId === org.id ? 'Выбрано' : 'Переключить'}</Pill>
               </button>
@@ -549,7 +539,6 @@ export function OrganizationsPage() {
         <div className="space-y-6">
           <Surface>
             <h3 className="text-lg font-semibold text-slate-900">Участники</h3>
-            <p className="mt-1 text-sm text-slate-500">GET /api/v1/organizations/{`{organizationId}`}/members</p>
             <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
               <div className="grid grid-cols-[1.1fr_0.8fr_1.1fr_0.7fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
                 <div>Пользователь</div>
@@ -560,9 +549,9 @@ export function OrganizationsPage() {
               {members.map(member => (
                 <div key={member.id} className="grid grid-cols-[1.1fr_0.8fr_1.1fr_0.7fr] gap-3 border-b border-slate-100 px-4 py-4 last:border-b-0">
                   <div className="font-medium text-slate-900">{member.firstName} {member.lastName}</div>
-                  <div className="text-sm text-slate-600">{member.role}</div>
+                  <div className="text-sm text-slate-600">{member.role === 'Owner' ? 'Владелец' : member.role === 'Admin' ? 'Администратор' : 'Менеджер'}</div>
                   <div className="text-sm text-slate-600">{member.email}</div>
-                  <div className="text-sm text-slate-600">{member.status}</div>
+                  <div className="text-sm text-slate-600">{member.status === 'Active' ? 'Активен' : member.status === 'Invited' ? 'Приглашен' : 'Неактивен'}</div>
                 </div>
               ))}
             </div>
@@ -570,7 +559,6 @@ export function OrganizationsPage() {
 
           <Surface>
             <h3 className="text-lg font-semibold text-slate-900">Приглашения</h3>
-            <p className="mt-1 text-sm text-slate-500">POST /api/v1/organizations/{`{organizationId}`}/invitations</p>
             <div className="mt-4 grid gap-4 sm:grid-cols-[1.2fr_0.7fr_auto]">
               <input
                 value={inviteEmail}
@@ -582,9 +570,9 @@ export function OrganizationsPage() {
                 onChange={event => setInviteRole(event.target.value as typeof inviteRole)}
                 className="rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition-colors focus:border-blue-500"
               >
-                <option value="Manager">Manager</option>
-                <option value="Admin">Admin</option>
-                <option value="Owner">Owner</option>
+                <option value="Manager">Менеджер</option>
+                <option value="Admin">Администратор</option>
+                <option value="Owner">Владелец</option>
               </select>
               <button
                 type="button"
@@ -600,10 +588,10 @@ export function OrganizationsPage() {
                 <div key={invitation.id} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
                   <div>
                     <div className="font-medium text-slate-900">{invitation.email}</div>
-                    <div className="text-sm text-slate-500">{invitation.role}</div>
+                    <div className="text-sm text-slate-500">{invitation.role === 'Owner' ? 'Владелец' : invitation.role === 'Admin' ? 'Администратор' : 'Менеджер'}</div>
                   </div>
                   <Pill tone={invitation.status === 'Pending' ? 'amber' : invitation.status === 'Accepted' ? 'emerald' : 'slate'}>
-                    {invitation.status}
+                    {invitation.status === 'Pending' ? 'Ожидает' : invitation.status === 'Accepted' ? 'Принято' : 'Отозвано'}
                   </Pill>
                 </div>
               ))}
@@ -645,15 +633,14 @@ export function ConnectionsPage() {
       <Surface>
         <SectionTitle
           eyebrow="Подключения"
-          title="Каталог коннекторов, connect-shop и мониторинг синхронизации"
-          description="Эта страница покрывает метаданные коннекторов маркетплейсов, рекомендуемый connect-shop endpoint, ручную историческую синхронизацию и действия над sync-run."
+          title="Каталог коннекторов, магазины и мониторинг синхронизации"
+          description="Эта страница покрывает подключение маркетплейсов, ручную историческую синхронизацию и действия над запусками."
         />
       </Surface>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_1.1fr]">
         <Surface>
           <h3 className="text-lg font-semibold text-slate-900">Подключить магазин</h3>
-          <p className="mt-1 text-sm text-slate-500">POST /api/v1/marketplace-connections/connect-shop</p>
           <div className="mt-4 grid gap-4">
             <label>
               <div className="mb-2 text-sm font-medium text-slate-600">Маркетплейс</div>
@@ -767,7 +754,6 @@ export function ConnectionsPage() {
 
           <Surface>
             <h3 className="text-lg font-semibold text-slate-900">Список подключений</h3>
-            <p className="mt-1 text-sm text-slate-500">GET /api/v1/organizations/{`{organizationId}`}/marketplace-connections</p>
             <div className="mt-4 space-y-3">
               {connectionOptions.map(connection => (
                 <button
@@ -800,7 +786,6 @@ export function ConnectionsPage() {
           <div className="flex items-center justify-between gap-3">
             <div>
             <h3 className="text-lg font-semibold text-slate-900">Монитор синхронизации</h3>
-              <p className="text-sm text-slate-500">GET /api/v1/marketplace-sync-runs/{`{syncRunId}`}</p>
             </div>
             <Pill tone={selectedConnection?.displayName ? 'slate' : 'amber'}>
               {selectedConnection?.displayName ?? 'Подключение не выбрано'}
@@ -850,7 +835,6 @@ export function ConnectionsPage() {
 
         <Surface>
               <h3 className="text-lg font-semibold text-slate-900">Ручная историческая синхронизация</h3>
-          <p className="mt-1 text-sm text-slate-500">POST /api/v1/marketplace-connections/{`{connectionId}`}/sync</p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label>
                 <div className="mb-2 text-sm font-medium text-slate-600">Дата начала</div>
@@ -894,22 +878,6 @@ export function ConnectionsPage() {
             <TimerReset size={16} />
             Запустить синхронизацию
           </button>
-
-          <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-950 p-4 text-slate-50">
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Пример запроса</div>
-            <pre className="mt-3 overflow-auto whitespace-pre-wrap break-words text-xs leading-6 text-slate-200">
-{JSON.stringify(
-  {
-    connectionId: selectedConnection?.id ?? connections[0].id,
-    dateFrom,
-    dateTo,
-    syncKinds: syncKinds.split(',').map(item => item.trim()).filter(Boolean),
-  },
-  null,
-  2
-)}
-            </pre>
-          </div>
         </Surface>
       </div>
     </div>
@@ -1157,7 +1125,6 @@ export function AnalyticsWorkbenchPage() {
       <div className="grid gap-6 xl:grid-cols-2">
         <Surface>
           <h3 className="text-lg font-semibold text-slate-900">Сводка</h3>
-          <p className="mt-1 text-sm text-slate-500">POST /api/v1/overview/summary</p>
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <JsonPanel label="Запрос" value={summaryRequest} />
             <JsonPanel label="Ответ" value={summaryResponse} />
@@ -1166,7 +1133,6 @@ export function AnalyticsWorkbenchPage() {
 
         <Surface>
           <h3 className="text-lg font-semibold text-slate-900">Тренды</h3>
-          <p className="mt-1 text-sm text-slate-500">POST /api/v1/analytics/trends</p>
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <JsonPanel label="Запрос" value={trendsRequest} />
             <JsonPanel label="Ответ" value={trendsResponse} />
@@ -1177,7 +1143,6 @@ export function AnalyticsWorkbenchPage() {
       <div className="grid gap-6 xl:grid-cols-2">
         <Surface>
           <h3 className="text-lg font-semibold text-slate-900">Детализация</h3>
-          <p className="mt-1 text-sm text-slate-500">POST /api/v1/analytics/breakdown</p>
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <JsonPanel label="Запрос" value={breakdownRequest} />
             <JsonPanel label="Ответ" value={breakdownResponse} />
@@ -1186,7 +1151,6 @@ export function AnalyticsWorkbenchPage() {
 
         <Surface>
           <h3 className="text-lg font-semibold text-slate-900">Объяснения</h3>
-          <p className="mt-1 text-sm text-slate-500">POST /api/v1/analytics/explanations</p>
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <JsonPanel label="Запрос" value={explanationRequest} />
             <JsonPanel label="Ответ" value={explanationsResponse} />
@@ -1230,7 +1194,6 @@ export function AnalyticsWorkbenchPage() {
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <Surface>
           <h3 className="text-lg font-semibold text-slate-900">Товарный экран</h3>
-          <p className="mt-1 text-sm text-slate-500">GET /api/v1/reporting/product-metrics и POST /api/v1/reporting/products*</p>
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <JsonPanel label="Метрики товара" value={productMetricsResponse.length > 0 ? productMetricsResponse : [...PRODUCT_REPORT_METRICS_CATALOG]} />
             <JsonPanel label="Запрос overview" value={productOverviewRequest} />
@@ -1297,7 +1260,7 @@ export function AnalyticsWorkbenchPage() {
               />
             </label>
             <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-600 sm:col-span-2">
-              Этот экран использует отдельный product-reporting контракт и не зависит от старого breakdown API.
+              Этот экран использует отдельный товарный отчет и не зависит от общей детализации.
             </div>
           </div>
         </Surface>
@@ -1393,11 +1356,11 @@ export function ActionHistoryPage() {
 
 export function DocsPage() {
   const docsLinks = [
-    { label: 'docs/web-api.md', text: 'Рабочая API-справка для фронтенда.' },
+    { label: 'docs/web-api.md', text: 'Рабочая справка для фронтенда.' },
     { label: 'docs/user-platform-flow.md', text: 'Текущий путь клиента и оператора.' },
     { label: 'docs/mvp-checklist.md', text: 'Чек-лист реализации и заметки по готовности.' },
-    { label: 'docs/backend-operations.md', text: 'Операционные рекомендации по бэкенду.' },
-    { label: 'docs/aistats-swagger.json', text: 'Swagger/OpenAPI payload in the repo.' },
+    { label: 'docs/backend-operations.md', text: 'Операционные рекомендации по сервису.' },
+    { label: 'docs/aistats-swagger.json', text: 'Техническая схема сервиса в репозитории.' },
   ];
 
   return (
@@ -1405,8 +1368,8 @@ export function DocsPage() {
       <Surface>
         <SectionTitle
           eyebrow="Документация"
-          title="API-документация и точки входа поддержки"
-          description="Эта страница собирает новые источники документации и рабочие маршруты, которые нужно знать пользователям фронтенда."
+          title="Документация и точки входа поддержки"
+          description="Эта страница собирает источники документации и рабочие сценарии, которые нужно знать пользователям фронтенда."
         />
       </Surface>
 
@@ -1424,22 +1387,10 @@ export function DocsPage() {
         </Surface>
 
         <Surface>
-          <h3 className="text-lg font-semibold text-slate-900">Рабочие endpoints</h3>
-          <div className="mt-4 grid gap-2">
-            {[
-              'GET /health/live',
-              'GET /health/ready',
-              'GET /openapi/v1.json',
-              'GET /swagger',
-            ].map(route => (
-              <div key={route} className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                {route}
-              </div>
-            ))}
-          </div>
+          <h3 className="text-lg font-semibold text-slate-900">Рабочие правила</h3>
           <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
-            В документации указано, что фронтенд должен использовать `errors.GeneralErrors` как основную область
-            вывода ошибок валидации. Эта страница держит это правило на виду, пока вы проходите сценарии.
+            Фронтенд должен показывать понятные ошибки валидации и не раскрывать технические маршруты пользователям.
+            Эта страница держит правило на виду, пока вы проходите сценарии.
           </div>
         </Surface>
       </div>

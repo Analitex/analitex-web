@@ -80,7 +80,7 @@ export function SummaryPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold text-slate-900">Сводный отчет</h1>
-            <p className="mt-1 text-sm text-slate-500">Агрегированные данные за выбранный период и live API snapshot</p>
+            <p className="mt-1 text-sm text-slate-500">Агрегированные данные за выбранный период</p>
           </div>
           <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
             {analytics.accountIds.length > 0 ? `${analytics.accountIds.length} кабинетов` : analytics.loading ? 'Загрузка кабинетов' : 'Кабинеты не найдены'}
@@ -117,7 +117,7 @@ export function SummaryPage() {
 
         <div className="mt-5 grid gap-4 xl:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="text-sm font-semibold text-slate-900">API breakdown preview</div>
+            <div className="text-sm font-semibold text-slate-900">Предпросмотр детализации</div>
             <div className="mt-3 space-y-2">
               {apiRows.slice(0, 5).map((row, index) => {
                 const dimension = typeof row.dimension === 'string' ? row.dimension : row.dimension?.label ?? row.dimension?.id ?? `Row ${index + 1}`;
@@ -148,7 +148,7 @@ export function SummaryPage() {
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="text-sm font-semibold text-slate-900">API state</div>
+            <div className="text-sm font-semibold text-slate-900">Состояние данных</div>
             <dl className="mt-3 space-y-3 text-sm">
               <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3">
                 <dt className="text-slate-500">Summary updated</dt>
@@ -161,7 +161,7 @@ export function SummaryPage() {
               <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3">
                 <dt className="text-slate-500">Partial data</dt>
                 <dd className="font-medium text-slate-900">
-                  {analytics.summary?.meta?.isPartial || analytics.trends?.dataState?.isPartial || analytics.breakdown?.meta?.isPartial ? 'Yes' : 'No'}
+                  {analytics.summary?.meta?.isPartial || analytics.trends?.dataState?.isPartial || analytics.breakdown?.meta?.isPartial ? 'Да' : 'Нет'}
                 </dd>
               </div>
             </dl>
@@ -171,8 +171,8 @@ export function SummaryPage() {
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">API report table</h2>
-          <p className="mt-0.5 text-sm text-slate-500">Таблица теперь использует backend breakdown по выбранной группировке</p>
+          <h2 className="text-lg font-semibold text-slate-900">Таблица отчета</h2>
+          <p className="mt-0.5 text-sm text-slate-500">Таблица использует детализацию по выбранной группировке</p>
         </div>
         <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1">
           {GROUP_OPTIONS.map(opt => (

@@ -695,13 +695,6 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       setSession(null);
       setIsWorkspaceHydrated(true);
       setApiError(null);
-      enqueueNotification({
-        tone: 'success',
-        title: 'Регистрация создана',
-        message: result.requiresEmailVerification
-          ? `Мы отправили код подтверждения на ${nextUser.email}.`
-          : `${nextUser.email} успешно зарегистрирован.`,
-      });
       recordAction({
         kind: 'auth',
         title: 'Registered account',
@@ -743,11 +736,6 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       setSession(nextSession);
       setIsWorkspaceHydrated(false);
       setApiError(null);
-      enqueueNotification({
-        tone: 'success',
-        title: 'Вход выполнен',
-        message: `${nextSession.user.email} успешно вошел в систему.`,
-      });
       recordAction({
         kind: 'auth',
         title: 'Logged in',
@@ -772,11 +760,6 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     setSyncRuns([]);
     setCustomMetrics([]);
     setConnectors(CONNECTOR_CATALOG as MarketplaceConnectorDefinition[]);
-    enqueueNotification({
-      tone: 'info',
-      title: 'Сессия завершена',
-      message: 'Вы вышли из аккаунта.',
-    });
     recordAction({
       kind: 'auth',
       title: 'Logged out',
@@ -790,11 +773,6 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email }),
     });
     setApiError(null);
-    enqueueNotification({
-      tone: 'info',
-      title: 'Код отправлен',
-      message: `Проверьте почту ${email}.`,
-    });
     recordAction({
       kind: 'auth',
       title: 'Requested email verification',
@@ -815,11 +793,6 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       )
     );
     setApiError(null);
-    enqueueNotification({
-      tone: 'success',
-      title: 'Почта подтверждена',
-      message: 'Теперь можно войти в аккаунт.',
-    });
     recordAction({
       kind: 'auth',
       title: 'Verified email',
@@ -845,11 +818,6 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
         const next = mapOrganization(response);
         setOrganizations(current => [next, ...current.filter(item => item.id !== optimistic.id)]);
         setSelectedOrganizationId(next.id);
-        enqueueNotification({
-          tone: 'success',
-          title: 'Организация создана',
-          message: `${next.name} добавлена в рабочее пространство.`,
-        });
         recordAction({
           kind: 'organization',
           title: 'Created organization',
@@ -872,11 +840,6 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     });
     const next = mapOrganization(response);
     setOrganizations(current => current.map(org => (org.id === organizationId ? next : org)));
-    enqueueNotification({
-      tone: 'success',
-      title: 'Организация сохранена',
-      message: `${next.name} переименована.`,
-    });
     recordAction({
       kind: 'organization',
       title: 'Renamed organization',
@@ -911,11 +874,6 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       .then(response => {
         const next = mapInvitation(response);
         setInvitations(current => [next, ...current.filter(item => item.id !== optimistic.id)]);
-        enqueueNotification({
-          tone: 'success',
-          title: 'Приглашение отправлено',
-          message: `${next.email} приглашен(а) с ролью ${next.role}.`,
-        });
         recordAction({
           kind: 'invitation',
           title: 'Invited member',
@@ -942,11 +900,6 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       setOrganizations(nextOrganizations);
       setSelectedOrganizationId(nextOrganizations[0]?.id ?? '');
     }
-    enqueueNotification({
-      tone: 'success',
-      title: 'Приглашение принято',
-      message: 'Вы вошли в организацию по токену приглашения.',
-    });
     recordAction({
       kind: 'invitation',
       title: 'Accepted invitation',
@@ -971,11 +924,6 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     setMembers(current =>
       current.map(member => (member.id === input.memberId ? { ...member, role: input.role } : member))
     );
-    enqueueNotification({
-      tone: 'success',
-      title: 'Роль обновлена',
-      message: `Участнику ${input.memberId} назначена роль ${input.role}.`,
-    });
     recordAction({
       kind: 'organization',
       title: 'Updated member role',
@@ -989,11 +937,6 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       token: session?.accessToken,
     });
     setMembers(current => current.filter(member => member.id !== memberId));
-    enqueueNotification({
-      tone: 'success',
-      title: 'Участник удален',
-      message: `Участник ${memberId} удален из организации.`,
-    });
     recordAction({
       kind: 'organization',
       title: 'Removed member',
@@ -1021,11 +964,6 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
             : member
       )
     );
-    enqueueNotification({
-      tone: 'success',
-      title: 'Владение передано',
-      message: `Новый владелец: ${newOwnerUserId}.`,
-    });
     recordAction({
       kind: 'organization',
       title: 'Transferred ownership',
@@ -1039,11 +977,6 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       token: session?.accessToken,
     });
     setInvitations(current => current.filter(invitation => invitation.id !== invitationId));
-    enqueueNotification({
-      tone: 'info',
-      title: 'Приглашение отозвано',
-      message: `Приглашение ${invitationId} отозвано.`,
-    });
     recordAction({
       kind: 'invitation',
       title: 'Revoked invitation',

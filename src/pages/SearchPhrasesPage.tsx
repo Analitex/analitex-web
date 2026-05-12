@@ -232,7 +232,7 @@ export function SearchPhrasesPage() {
     <div className="space-y-6 p-6">
       <div>
         <h1 className="text-xl font-bold text-slate-900">Поисковые фразы</h1>
-        <p className="mt-0.5 text-sm text-slate-500">Кампании, фразы и эффективность performance API</p>
+        <p className="mt-0.5 text-sm text-slate-500">Кампании, фразы и эффективность рекламы</p>
       </div>
 
       {(analytics.error || error) && (

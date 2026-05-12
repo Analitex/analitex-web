@@ -12,9 +12,10 @@ const PENDING_INVITE_TOKEN_KEY = 'aistats-pending-invite-token';
 const PENDING_INVITE_EMAIL_KEY = 'aistats-pending-invite-email';
 
 export function PublicInviteAcceptPage({ onSuccess, onGoToLogin, onGoToRegister }: PublicInviteAcceptPageProps) {
-  const { acceptInvitation, previewInvitation, session, apiError } = usePlatform();
+  const { acceptInvitation, previewInvitation, session, enqueueNotification } = usePlatform();
   const acceptInvitationRef = useRef(acceptInvitation);
   const previewInvitationRef = useRef(previewInvitation);
+  const enqueueNotificationRef = useRef(enqueueNotification);
   const onSuccessRef = useRef(onSuccess);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -34,8 +35,9 @@ export function PublicInviteAcceptPage({ onSuccess, onGoToLogin, onGoToRegister 
   useEffect(() => {
     acceptInvitationRef.current = acceptInvitation;
     previewInvitationRef.current = previewInvitation;
+    enqueueNotificationRef.current = enqueueNotification;
     onSuccessRef.current = onSuccess;
-  }, [acceptInvitation, onSuccess, previewInvitation]);
+  }, [acceptInvitation, enqueueNotification, onSuccess, previewInvitation]);
 
   useEffect(() => {
     if (!inviteToken) {
@@ -75,11 +77,16 @@ export function PublicInviteAcceptPage({ onSuccess, onGoToLogin, onGoToRegister 
         if (cancelled) return;
         window.sessionStorage.setItem(PENDING_INVITE_TOKEN_KEY, inviteToken);
         setNeedsAuth(true);
-        setNotice(
-          session
-            ? error instanceof Error ? error.message : 'Не удалось принять приглашение.'
-            : 'Войдите или создайте аккаунт, чтобы присоединиться к команде.'
-        );
+        if (session) {
+          enqueueNotificationRef.current({
+            tone: 'error',
+            title: 'Не удалось принять приглашение',
+            message: getErrorMessage(error, 'Не удалось принять приглашение.'),
+          });
+          setNotice('Попробуйте снова или запросите новое приглашение.');
+        } else {
+          setNotice('Войдите или создайте аккаунт, чтобы присоединиться к команде.');
+        }
       } finally {
         if (!cancelled) {
           setIsSubmitting(false);
@@ -116,11 +123,6 @@ export function PublicInviteAcceptPage({ onSuccess, onGoToLogin, onGoToRegister 
               </h2>
             </div>
 
-            {apiError && (
-              <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {apiError}
-              </div>
-            )}
             {notice && (
               <div className="mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
                 {notice}
@@ -176,4 +178,8 @@ export function PublicInviteAcceptPage({ onSuccess, onGoToLogin, onGoToRegister 
       </div>
     </div>
   );
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
 }

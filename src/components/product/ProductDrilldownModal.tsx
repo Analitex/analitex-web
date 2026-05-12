@@ -92,7 +92,7 @@ export function ProductDrilldownModal({ open, fallbackName, fallbackProductId, d
                     <div className="text-sm font-semibold text-slate-900">Структура по метрике {drilldown.details?.metric ?? 'profit'}</div>
                     <div className="mt-3 space-y-3">
                       {(drilldown.details?.breakdown ?? []).length === 0 ? (
-                        <div className="rounded-xl bg-slate-50 px-4 py-6 text-sm text-slate-500">API не вернул breakdown для выбранного товара.</div>
+                        <div className="rounded-xl bg-slate-50 px-4 py-6 text-sm text-slate-500">Нет детализации для выбранного товара.</div>
                       ) : (
                         (drilldown.details?.breakdown ?? []).map((item, index) => (
                           <div key={`${item.key ?? item.label ?? 'item'}-${index}`} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-4 py-3">
@@ -157,10 +157,10 @@ export function ProductDrilldownModal({ open, fallbackName, fallbackProductId, d
 
                 <div className="space-y-6">
                   <section className="rounded-2xl border border-slate-200 bg-white p-5">
-                    <div className="text-sm font-semibold text-slate-900">Групповые breakdowns</div>
+                    <div className="text-sm font-semibold text-slate-900">Групповая детализация</div>
                     <div className="mt-3 space-y-4">
                       {groupedBreakdowns.length === 0 ? (
-                        <div className="rounded-xl bg-slate-50 px-4 py-6 text-sm text-slate-500">Групповые breakdowns не вернулись из API.</div>
+                        <div className="rounded-xl bg-slate-50 px-4 py-6 text-sm text-slate-500">Групповая детализация пока недоступна.</div>
                       ) : (
                         groupedBreakdowns.slice(0, 4).map(([metric, items]) => (
                           <div key={metric} className="rounded-xl bg-slate-50 px-4 py-4">

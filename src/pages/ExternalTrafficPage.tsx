@@ -229,7 +229,7 @@ export function ExternalTrafficPage() {
     <div className="space-y-6 p-6">
       <div>
         <h1 className="text-xl font-bold text-slate-900">Внешний трафик</h1>
-        <p className="mt-0.5 text-sm text-slate-500">Источник трафика, расходы и заказы из live performance API</p>
+        <p className="mt-0.5 text-sm text-slate-500">Источник трафика, расходы и заказы по рекламным данным</p>
       </div>
 
       {(analytics.error || error) && (

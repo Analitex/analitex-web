@@ -4,6 +4,7 @@ import {
   ChevronRight,
   LogOut,
   Loader2,
+  MoreVertical,
   PencilLine,
   Plus,
   ShieldAlert,
@@ -13,7 +14,7 @@ import {
 import { MarketplaceBadge } from '../components/common/MarketplaceIcon';
 import { usePlatform, type MarketplaceConnection, type OrganizationMember, type SyncRun } from '../context/PlatformContext';
 import { apiRequest } from '../lib/api';
-import { SETTINGS_TABS, type SettingsTabId } from './settingsConfig';
+import type { SettingsTabId } from './settingsConfig';
 
 type TaxModeId = 'usn-income' | 'usn-income-expense-fixed-vat' | 'usn-income-expense-vat-22' | 'ip-osno' | 'ooo-osno';
 
@@ -208,12 +209,45 @@ function getSyncProgressColor(status: SyncRun['status']) {
   }
 }
 
-interface SettingsPageProps {
-  activeTab: SettingsTabId;
-  onTabChange: (tab: SettingsTabId) => void;
+function formatRole(role: OrganizationMember['role']) {
+  if (role === 'Owner') return 'Владелец';
+  if (role === 'Admin') return 'Администратор';
+  return 'Менеджер';
 }
 
-export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
+function formatUserStatus(status: OrganizationMember['status']) {
+  if (status === 'Active') return 'Активен';
+  if (status === 'Invited') return 'Приглашен';
+  return 'Неактивен';
+}
+
+function formatInvitationStatus(status: 'Pending' | 'Accepted' | 'Revoked') {
+  if (status === 'Pending') return 'Ожидает';
+  if (status === 'Accepted') return 'Принято';
+  return 'Отозвано';
+}
+
+function formatSyncStatus(status: SyncRun['status']) {
+  switch (status) {
+    case 'Queued':
+      return 'В очереди';
+    case 'Running':
+      return 'Выполняется';
+    case 'Cancelled':
+      return 'Отменено';
+    case 'Succeeded':
+      return 'Завершено';
+    case 'Failed':
+    default:
+      return 'Ошибка';
+  }
+}
+
+interface SettingsPageProps {
+  activeTab: SettingsTabId;
+}
+
+export function SettingsPage({ activeTab }: SettingsPageProps) {
   const {
     session,
     customMetrics,
@@ -249,7 +283,6 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
   const [settingsTabLoading, setSettingsTabLoading] = useState<SettingsTabId | null>(null);
   const [taxSettingsLoading, setTaxSettingsLoading] = useState(false);
   const [taxSettingsSaving, setTaxSettingsSaving] = useState(false);
-  const [taxSettingsNotice, setTaxSettingsNotice] = useState<string | null>(null);
   const [taxSettingsError, setTaxSettingsError] = useState<string | null>(null);
   const [loadedFinanceSettingsKeys, setLoadedFinanceSettingsKeys] = useState<Record<string, boolean>>({});
   const [taxConfigs, setTaxConfigs] = useState<Record<string, Record<number, TaxConfig>>>(() => {
@@ -382,7 +415,7 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
         phone: profile.phone.trim(),
       });
       setIsEditingProfile(false);
-      setProfileNotice('Профиль сохранен через API.');
+      setProfileNotice(null);
     } catch (error) {
       setProfileNotice(error instanceof Error ? error.message : 'Не удалось сохранить профиль.');
     } finally {
@@ -404,7 +437,7 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
         newPassword: passwordForm.newPassword,
       });
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      setPasswordNotice('Пароль изменен через API.');
+      setPasswordNotice(null);
     } catch (error) {
       setPasswordNotice(error instanceof Error ? error.message : 'Не удалось сменить пароль.');
     } finally {
@@ -418,7 +451,7 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
     setPasswordNotice(null);
     try {
       await requestPasswordReset(email);
-      setPasswordNotice(`Ссылка для сброса пароля отправлена на ${email}.`);
+      setPasswordNotice(null);
     } catch (error) {
       setPasswordNotice(error instanceof Error ? error.message : 'Не удалось запросить сброс пароля.');
     } finally {
@@ -441,7 +474,6 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
     if (!session?.accessToken || !selectedShop) return;
 
     setTaxSettingsSaving(true);
-    setTaxSettingsNotice(null);
     setTaxSettingsError(null);
 
     try {
@@ -455,7 +487,6 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
           taxSystem: mapTaxModeToFinanceTaxSystem(currentTaxConfig.taxMode),
         }),
       });
-      setTaxSettingsNotice('Налоговые настройки сохранены. Текущий API пока хранит ставку и режим на уровне кабинета.');
     } catch (error) {
       setTaxSettingsError(error instanceof Error ? error.message : 'Не удалось сохранить налоговые настройки.');
     } finally {
@@ -499,116 +530,69 @@ export function SettingsPage({ activeTab, onTabChange }: SettingsPageProps) {
 
   return (
     <div className="min-h-full bg-slate-50">
-      <div className="mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:items-start">
-        <aside className="hidden lg:sticky lg:top-6 lg:block lg:w-[320px] lg:flex-shrink-0 xl:w-[340px]">
-          <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="rounded-2xl bg-slate-900 p-5 text-white">
-              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Settings</div>
-              <h1 className="mt-3 text-2xl font-semibold">Настройки кабинета</h1>
-              <p className="mt-2 text-sm leading-6 text-slate-300">
-                Управляйте профилем, подключенными магазинами, доступами команды и налоговыми правилами.
-              </p>
-            </div>
+      <div className="min-h-full">
+        <div className="min-h-full overflow-hidden border border-slate-200 bg-white shadow-sm">
+          <div className="min-w-0 bg-slate-50 p-4 sm:p-6">
+            {activeTab === 'profile' && (
+              <ProfileTab
+                profile={profile}
+                isEditing={isEditingProfile}
+                saving={profileSaving}
+                notice={profileNotice}
+                apiError={apiError}
+                onEditToggle={() => setIsEditingProfile(current => !current)}
+                onCancelEdit={cancelProfileEdit}
+                onFieldChange={updateProfileField}
+                onSave={saveProfile}
+                onLogout={logout}
+                passwordForm={passwordForm}
+                passwordSaving={passwordSaving}
+                passwordNotice={passwordNotice}
+                onPasswordChange={setPasswordForm}
+                onPasswordSubmit={submitPasswordChange}
+                onPasswordReset={sendPasswordReset}
+                onDeleteCurrentUser={deleteCurrentUser}
+              />
+            )}
 
-            <nav className="mt-4 hidden space-y-2 lg:block">
-              {SETTINGS_TABS.map(tab => {
-                const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
+            {activeTab === 'shops' && <ShopsTab isLoading={settingsTabLoading === 'shops'} />}
 
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => onTabChange(tab.id)}
-                    className={`group flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-all ${
-                      isActive
-                        ? 'border-blue-200 bg-blue-50 text-blue-900'
-                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${
-                      isActive ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'
-                    }`}>
-                      <Icon size={18} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="font-semibold">{tab.label}</div>
-                      <div className={`text-xs ${isActive ? 'text-blue-700' : 'text-slate-400'}`}>
-                        {tab.description}
-                      </div>
-                    </div>
-                    <ChevronRight
-                      size={16}
-                      className={isActive ? 'text-blue-500' : 'text-slate-300 group-hover:text-slate-400'}
-                    />
-                  </button>
-                );
-              })}
-            </nav>
+            {activeTab === 'users' && <UsersTab isLoading={settingsTabLoading === 'users'} />}
+
+            {activeTab === 'taxes' && (
+              <TaxesTab
+                shops={taxShops}
+                selectedYear={selectedYear}
+                onYearChange={setSelectedYear}
+                selectedShopId={selectedShopId}
+                onShopChange={setSelectedShopId}
+                currentTaxConfig={currentTaxConfig}
+                currentTaxMode={currentTaxMode}
+                isLoading={taxSettingsLoading}
+                isSaving={taxSettingsSaving}
+                error={taxSettingsError}
+                onTaxModeChange={value =>
+                  updateTaxConfig(config => ({
+                    ...config,
+                    taxMode: value,
+                    includeCostAsExpense:
+                      TAX_MODES.find(mode => mode.id === value)?.supportsCostExpense ? config.includeCostAsExpense : false,
+                  }))
+                }
+                onCostExpenseToggle={() =>
+                  updateTaxConfig(config => ({
+                    ...config,
+                    includeCostAsExpense: !config.includeCostAsExpense,
+                  }))
+                }
+                onQuarterChange={applyQuarterValues}
+                onMonthChange={updateMonthValue}
+                onSave={saveTaxSettings}
+              />
+            )}
+
+            {activeTab === 'metrics' && <MetricsTab customMetrics={customMetrics} isLoading={settingsTabLoading === 'metrics'} />}
           </div>
-        </aside>
-
-        <div className="min-w-0 flex-1 lg:max-w-[calc(100%-320px-24px)] xl:max-w-[calc(100%-340px-24px)]">
-          {activeTab === 'profile' && (
-            <ProfileTab
-              profile={profile}
-              isEditing={isEditingProfile}
-              saving={profileSaving}
-              notice={profileNotice}
-              apiError={apiError}
-              onEditToggle={() => setIsEditingProfile(current => !current)}
-              onCancelEdit={cancelProfileEdit}
-              onFieldChange={updateProfileField}
-              onSave={saveProfile}
-              onLogout={logout}
-              passwordForm={passwordForm}
-              passwordSaving={passwordSaving}
-              passwordNotice={passwordNotice}
-              onPasswordChange={setPasswordForm}
-              onPasswordSubmit={submitPasswordChange}
-              onPasswordReset={sendPasswordReset}
-              onDeleteCurrentUser={deleteCurrentUser}
-            />
-          )}
-
-          {activeTab === 'shops' && <ShopsTab isLoading={settingsTabLoading === 'shops'} />}
-
-          {activeTab === 'users' && <UsersTab isLoading={settingsTabLoading === 'users'} />}
-
-          {activeTab === 'taxes' && (
-            <TaxesTab
-              shops={taxShops}
-              selectedYear={selectedYear}
-              onYearChange={setSelectedYear}
-              selectedShopId={selectedShopId}
-              onShopChange={setSelectedShopId}
-              currentTaxConfig={currentTaxConfig}
-              currentTaxMode={currentTaxMode}
-              isLoading={taxSettingsLoading}
-              isSaving={taxSettingsSaving}
-              notice={taxSettingsNotice}
-              error={taxSettingsError}
-              onTaxModeChange={value =>
-                updateTaxConfig(config => ({
-                  ...config,
-                  taxMode: value,
-                  includeCostAsExpense:
-                    TAX_MODES.find(mode => mode.id === value)?.supportsCostExpense ? config.includeCostAsExpense : false,
-                }))
-              }
-              onCostExpenseToggle={() =>
-                updateTaxConfig(config => ({
-                  ...config,
-                  includeCostAsExpense: !config.includeCostAsExpense,
-                }))
-              }
-              onQuarterChange={applyQuarterValues}
-              onMonthChange={updateMonthValue}
-              onSave={saveTaxSettings}
-            />
-          )}
-
-          {activeTab === 'metrics' && <MetricsTab customMetrics={customMetrics} isLoading={settingsTabLoading === 'metrics'} />}
         </div>
       </div>
     </div>
@@ -652,6 +636,9 @@ function ProfileTab({
   onPasswordReset: () => void;
   onDeleteCurrentUser: () => Promise<void>;
 }) {
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const fields: { key: keyof ProfileState; label: string }[] = [
     { key: 'name', label: 'Имя' },
     { key: 'surname', label: 'Фамилия' },
@@ -667,169 +654,234 @@ function ProfileTab({
             <div className="text-sm font-medium text-blue-600">Профиль</div>
             <h2 className="mt-1 text-2xl font-semibold text-slate-900">Личные данные</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              Редактируйте имя, роль и контактные данные аккаунта. Критичные действия вынесены в отдельный блок.
+              Контактные данные аккаунта и доступы пользователя.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={isEditing ? onCancelEdit : onEditToggle}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
-          >
-            <PencilLine size={16} />
-            {isEditing ? 'Отменить' : 'Редактировать'}
-          </button>
+          <div className="relative self-start">
+            <button
+              type="button"
+              onClick={() => setIsActionMenuOpen(current => !current)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50"
+              aria-label="Действия профиля"
+            >
+              <MoreVertical size={18} />
+            </button>
+
+            {isActionMenuOpen && (
+              <div className="absolute right-0 top-full z-20 mt-2 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsActionMenuOpen(false);
+                    onEditToggle();
+                  }}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  <PencilLine size={16} />
+                  Редактировать профиль
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsActionMenuOpen(false);
+                    setIsPasswordModalOpen(true);
+                  }}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  <ShieldCheck size={16} />
+                  Сменить пароль
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsActionMenuOpen(false);
+                    onPasswordReset();
+                  }}
+                  disabled={passwordSaving}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ShieldAlert size={16} />
+                  Сбросить пароль
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsActionMenuOpen(false);
+                    onLogout();
+                  }}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  <LogOut size={16} />
+                  Выйти из аккаунта
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsActionMenuOpen(false);
+                    setIsDeleteModalOpen(true);
+                  }}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-50"
+                >
+                  <Trash2 size={16} />
+                  Удалить профиль
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <div className="mt-6 grid gap-3 md:grid-cols-2">
           {fields.map(field => (
-            <label key={field.key} className="block">
-              <div className="mb-2 text-sm font-medium text-slate-600">{field.label}</div>
-              <input
-                type={field.key === 'email' ? 'email' : 'text'}
-                value={profile[field.key]}
-                onChange={event => onFieldChange(field.key, event.target.value)}
-                disabled={!isEditing}
-                className={`w-full rounded-2xl border px-4 py-3 text-sm outline-none transition-colors ${
-                  isEditing
-                    ? 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
-                    : 'border-slate-200 bg-slate-50 text-slate-600'
-                }`}
-              />
-              </label>
+            <div key={field.key} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{field.label}</div>
+              <div className="mt-1 text-sm font-medium text-slate-900">{profile[field.key] || '—'}</div>
+            </div>
           ))}
         </div>
 
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          {isEditing && (
-            <button
-              type="button"
-              onClick={onSave}
-              disabled={saving}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-            >
-              {saving ? 'Сохранение...' : 'Сохранить профиль'}
-            </button>
-          )}
-          {!isEditing && (
-            <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">
-              Роль и доступы по-прежнему управляются на уровне организации.
-            </div>
-          )}
-        </div>
-
         {(notice || apiError) && (
-          <div
-            className={`mt-4 rounded-2xl px-4 py-3 text-sm ${
-              notice ? 'bg-blue-50 text-blue-800' : 'bg-rose-50 text-rose-700'
-            }`}
-          >
+          <div className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {notice || apiError}
           </div>
         )}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
-              <ShieldCheck size={20} />
+      {isEditing && (
+        <div className="fixed inset-0 z-[145] flex items-center justify-center bg-slate-950/45 p-4">
+          <div className="w-full max-w-2xl overflow-hidden rounded-[2rem] bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+              <div>
+                <div className="text-sm font-medium text-blue-600">Профиль</div>
+                <h3 className="text-2xl font-semibold text-slate-900">Редактировать данные</h3>
+              </div>
+              <button type="button" onClick={onCancelEdit} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                Закрыть
+              </button>
             </div>
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">Безопасность</h3>
-              <p className="text-sm text-slate-500">Управление паролем и сессиями</p>
+
+            <div className="space-y-5 px-6 py-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                {fields.map(field => (
+                  <label key={field.key} className="block">
+                    <div className="mb-2 text-sm font-medium text-slate-600">{field.label}</div>
+                    <input
+                      type={field.key === 'email' ? 'email' : 'text'}
+                      value={profile[field.key]}
+                      onChange={event => onFieldChange(field.key, event.target.value)}
+                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500"
+                    />
+                  </label>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={onSave}
+                  disabled={saving}
+                  className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {saving ? 'Сохраняем...' : 'Сохранить'}
+                </button>
+                <button type="button" onClick={onCancelEdit} className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                  Отмена
+                </button>
+              </div>
             </div>
           </div>
-
-          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-            <button
-              type="button"
-              onClick={onPasswordReset}
-              disabled={passwordSaving}
-              className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-            >
-              Запросить сброс пароля
-            </button>
-            <button
-              type="button"
-              onClick={onPasswordSubmit}
-              disabled={passwordSaving}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
-            >
-              {passwordSaving ? 'Сохранение...' : 'Сменить пароль'}
-            </button>
-            <button
-              type="button"
-              onClick={onLogout}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
-            >
-              <LogOut size={16} />
-              Выйти из аккаунта
-            </button>
-          </div>
-
-          <div className="mt-5 grid gap-3">
-            <label className="block">
-              <div className="mb-2 text-sm font-medium text-slate-600">Текущий пароль</div>
-              <input
-                type="password"
-                value={passwordForm.currentPassword}
-                onChange={event => onPasswordChange({ ...passwordForm, currentPassword: event.target.value })}
-                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500"
-              />
-            </label>
-            <label className="block">
-              <div className="mb-2 text-sm font-medium text-slate-600">Новый пароль</div>
-              <input
-                type="password"
-                value={passwordForm.newPassword}
-                onChange={event => onPasswordChange({ ...passwordForm, newPassword: event.target.value })}
-                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500"
-              />
-            </label>
-            <label className="block">
-              <div className="mb-2 text-sm font-medium text-slate-600">Подтвердите новый пароль</div>
-              <input
-                type="password"
-                value={passwordForm.confirmPassword}
-                onChange={event => onPasswordChange({ ...passwordForm, confirmPassword: event.target.value })}
-                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500"
-              />
-            </label>
-          </div>
-
-          {passwordNotice && (
-            <div className="mt-4 rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-800">{passwordNotice}</div>
-          )}
         </div>
+      )}
 
-        <div className="rounded-3xl border border-rose-200 bg-rose-50 p-6 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-100 text-rose-700">
-              <ShieldAlert size={20} />
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 z-[145] flex items-center justify-center bg-slate-950/45 p-4">
+          <div className="w-full max-w-xl overflow-hidden rounded-[2rem] bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+              <div>
+                <div className="text-sm font-medium text-blue-600">Безопасность</div>
+                <h3 className="text-2xl font-semibold text-slate-900">Сменить пароль</h3>
+              </div>
+              <button type="button" onClick={() => setIsPasswordModalOpen(false)} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                Закрыть
+              </button>
             </div>
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">Опасная зона</h3>
-              <p className="text-sm text-slate-500">Действия с необратимыми последствиями</p>
+
+            <div className="space-y-4 px-6 py-5">
+              <label className="block">
+                <div className="mb-2 text-sm font-medium text-slate-600">Текущий пароль</div>
+                <input
+                  type="password"
+                  value={passwordForm.currentPassword}
+                  onChange={event => onPasswordChange({ ...passwordForm, currentPassword: event.target.value })}
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500"
+                />
+              </label>
+              <label className="block">
+                <div className="mb-2 text-sm font-medium text-slate-600">Новый пароль</div>
+                <input
+                  type="password"
+                  value={passwordForm.newPassword}
+                  onChange={event => onPasswordChange({ ...passwordForm, newPassword: event.target.value })}
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500"
+                />
+              </label>
+              <label className="block">
+                <div className="mb-2 text-sm font-medium text-slate-600">Подтвердите новый пароль</div>
+                <input
+                  type="password"
+                  value={passwordForm.confirmPassword}
+                  onChange={event => onPasswordChange({ ...passwordForm, confirmPassword: event.target.value })}
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500"
+                />
+              </label>
+
+              {passwordNotice && <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{passwordNotice}</div>}
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={onPasswordSubmit}
+                  disabled={passwordSaving}
+                  className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {passwordSaving ? 'Сохраняем...' : 'Сохранить'}
+                </button>
+                <button type="button" onClick={() => setIsPasswordModalOpen(false)} className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                  Отмена
+                </button>
+              </div>
             </div>
           </div>
-
-          <p className="mt-4 text-sm leading-6 text-slate-600">
-            Удаление профиля приведет к отзыву доступа ко всем кабинетам и настройкам организации.
-          </p>
-
-          <button
-            type="button"
-            onClick={async () => {
-              if (!window.confirm('Delete your profile permanently? This action cannot be undone.')) return;
-              await onDeleteCurrentUser();
-            }}
-            className="mt-5 inline-flex items-center justify-center gap-2 rounded-2xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-rose-700"
-          >
-            <Trash2 size={16} />
-            Удалить профиль
-          </button>
         </div>
-      </div>
+      )}
+
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-[145] flex items-center justify-center bg-slate-950/45 p-4">
+          <div className="w-full max-w-lg overflow-hidden rounded-[2rem] bg-white shadow-2xl">
+            <div className="border-b border-slate-200 px-6 py-5">
+              <div className="text-sm font-medium text-rose-600">Удаление профиля</div>
+              <h3 className="text-2xl font-semibold text-slate-900">Подтвердите действие</h3>
+            </div>
+            <div className="space-y-5 px-6 py-5">
+              <p className="text-sm leading-6 text-slate-600">
+                Удаление профиля приведет к отзыву доступа ко всем кабинетам и настройкам организации.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => void onDeleteCurrentUser()}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-rose-700"
+                >
+                  <Trash2 size={16} />
+                  Удалить
+                </button>
+                <button type="button" onClick={() => setIsDeleteModalOpen(false)} className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -860,7 +912,6 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
   const [performanceClientId, setPerformanceClientId] = useState('');
   const [performanceClientSecret, setPerformanceClientSecret] = useState('');
   const [startInitialSync, setStartInitialSync] = useState(true);
-  const [connectNotice, setConnectNotice] = useState<string | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [isMarketplaceMenuOpen, setIsMarketplaceMenuOpen] = useState(false);
   const [setupShop, setSetupShop] = useState<MarketplaceConnection | null>(null);
@@ -918,7 +969,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
 
       if (hasCredentialInput) {
         if (!trimmedClientId || !trimmedApiKey) {
-          setSetupError('Для обновления credentials Ozon укажите Client ID и API Key.');
+          setSetupError('Для обновления доступа Ozon укажите Client ID и ключ.');
           return;
         }
 
@@ -943,12 +994,11 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
     setSetupLoading(true);
     setSetupError(null);
     try {
-      const updatedConnection = await updateConnection({
+      await updateConnection({
         connectionId: setupShop.id,
         displayName: displayNamePatch,
         credentials,
       });
-      setConnectNotice(`Настройки ${updatedConnection.displayName} обновлены.`);
       closeSetupModal();
     } catch (error) {
       setSetupError(error instanceof Error ? error.message : 'Не удалось обновить настройки магазина.');
@@ -1089,7 +1139,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
           <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
             <div>
               <div className="text-sm font-medium text-blue-600">Новый магазин</div>
-              <h3 className="mt-1 text-xl font-semibold text-slate-900">Подключение через API</h3>
+              <h3 className="mt-1 text-xl font-semibold text-slate-900">Подключение магазина</h3>
               <p className="mt-2 text-sm leading-6 text-slate-500">
                 Заполните минимальные данные, чтобы создать подключение и, при желании, сразу поставить начальную синхронизацию в очередь.
               </p>
@@ -1161,7 +1211,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                     />
                   </label>
                   <label className="block">
-                    <div className="mb-2 text-sm font-medium text-slate-600">API Key</div>
+                    <div className="mb-2 text-sm font-medium text-slate-600">Ключ доступа</div>
                     <input
                       value={apiKey}
                       onChange={event => {
@@ -1196,7 +1246,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                 </>
               ) : (
                 <label className="block md:col-span-2">
-                  <div className="mb-2 text-sm font-medium text-slate-600">API Token</div>
+                  <div className="mb-2 text-sm font-medium text-slate-600">Токен доступа</div>
                   <input
                     value={apiToken}
                     onChange={event => setApiToken(event.target.value)}
@@ -1245,7 +1295,6 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                       initialSyncDays: 14,
                       initialSyncKinds: getSupportedSyncKinds(marketplace),
                     });
-                    setConnectNotice(`Подключение ${displayName.trim() || marketplace} отправлено в API.`);
                     setIsConnectFormOpen(false);
                     setDisplayName('');
                     setApiToken('');
@@ -1256,61 +1305,51 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                   }}
                   className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
                 >
-                  Connect shop
+                  Подключить магазин
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsConnectFormOpen(false)}
                   className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
                 >
-                  Cancel
+                  Отмена
                 </button>
               </div>
             </div>
           </div>
           {connectError && <div className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{connectError}</div>}
-          {connectNotice && <div className="mt-4 rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-800">{connectNotice}</div>}
         </div>
       )}
 
       {isLoading && (
         <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
           <Loader2 size={16} className="animate-spin text-blue-600" />
-          Loading shop data...
+          Загружаем магазины...
         </div>
       )}
 
       <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-2">
         {shops.map(shop => {
           const latestSync = syncRuns.find(run => run.id === shop.latestSyncRunId);
-          const isHealthy = shop.validationState === 'Validated';
 
           return (
             <article key={shop.id} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
                 <div>
                   <MarketplaceBadge marketplace={shop.marketplace} className="bg-slate-50" />
                   <h3 className="mt-2 text-xl font-semibold text-slate-900">{shop.displayName}</h3>
                 </div>
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    isHealthy ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                  }`}
-                >
-                  {shop.validationState}
-                </span>
               </div>
 
               <dl className="mt-6 space-y-4">
-                <MetaRow label="Креды" value={shop.credentialSummary} />
-                <MetaRow label="Организация" value={shop.organizationId} />
+                <MetaRow label="Доступы" value={shop.credentialSummary} />
                 <MetaRow
                   label="Последняя синхронизация"
                   value={
                     latestSync ? (
                       <div className="space-y-2">
                         <div className="flex items-center justify-between gap-3 text-sm text-slate-700">
-                          <span>{latestSync.status}</span>
+                          <span>{formatSyncStatus(latestSync.status)}</span>
                           <span className="font-semibold text-slate-900">{latestSync.progressPercent}%</span>
                         </div>
                         <div className="h-2 overflow-hidden rounded-full bg-slate-200">
@@ -1330,40 +1369,34 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                 />
               </dl>
 
-              <div className="mt-6 flex gap-3">
+              <div className="mt-5 flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => openSetupModal(shop)}
-                  className="flex-1 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                  className="inline-flex min-h-9 flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 sm:flex-none"
                 >
                   Настроить
                 </button>
                 <button
                   type="button"
                   onClick={() => void validateConnection(shop.id)}
-                  className="flex-1 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+                  className="inline-flex min-h-9 flex-1 items-center justify-center rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-slate-800 sm:flex-none"
                 >
                   Проверить
                 </button>
-              </div>
-
-              <div className="mt-3">
                 <button
                   type="button"
                   onClick={() => openSyncModal(shop.id, shop.displayName)}
-                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                  className="inline-flex min-h-9 flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 sm:flex-none"
                 >
-                  Запустить синхронизацию
+                  Синхронизация
                 </button>
-              </div>
-
-              <div className="mt-3">
                 <button
                   type="button"
                   onClick={() => void openHistory(shop.id, shop.displayName)}
-                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                  className="inline-flex min-h-9 flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 sm:flex-none"
                 >
-                  История синхронизаций
+                  История
                 </button>
               </div>
             </article>
@@ -1405,7 +1438,6 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
             <div className="max-h-[calc(90vh-88px)] space-y-5 overflow-y-auto px-6 py-5">
               <div className="flex flex-wrap items-center gap-3">
                 <MarketplaceBadge marketplace={setupShop.marketplace} className="bg-slate-50" />
-                <span className="text-sm text-slate-500">PATCH /api/v1/marketplace-connections/{`{connectionId}`}</span>
               </div>
 
               <label className="block">
@@ -1435,7 +1467,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                     />
                   </label>
                   <label className="block">
-                    <div className="mb-2 text-sm font-medium text-slate-600">API Key</div>
+                    <div className="mb-2 text-sm font-medium text-slate-600">Ключ доступа</div>
                     <input
                       value={setupApiKey}
                       onChange={event => {
@@ -1473,7 +1505,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                 </div>
               ) : (
                 <label className="block">
-                  <div className="mb-2 text-sm font-medium text-slate-600">API Token</div>
+                  <div className="mb-2 text-sm font-medium text-slate-600">Токен доступа</div>
                   <input
                     value={setupApiToken}
                     onChange={event => {
@@ -1561,13 +1593,13 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                       <article key={run.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
-                            <div className="text-sm font-semibold text-slate-900">{run.id}</div>
+                            <div className="text-sm font-semibold text-slate-900">Синхронизация</div>
                             <div className="mt-1 text-sm text-slate-500">
                               {run.dateFrom} → {run.dateTo} · {run.syncKinds.join(', ')}
                             </div>
                           </div>
                           <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
-                            {run.status}
+                            {formatSyncStatus(run.status)}
                           </span>
                         </div>
 
@@ -1630,10 +1662,6 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
             </div>
 
             <div className="space-y-5 px-6 py-5">
-              <p className="text-sm leading-6 text-slate-500">
-                Укажите период для запуска синхронизации. В API будет отправлен payload с полями <code>dateFrom</code> и <code>dateTo</code> в camelCase.
-              </p>
-
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block">
                   <div className="mb-2 text-sm font-medium text-slate-600">Дата начала</div>
@@ -1712,8 +1740,6 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
   } = usePlatform();
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<OrganizationMember['role']>('Manager');
-  const [inviteNotice, setInviteNotice] = useState<string | null>(null);
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
   const [organizationName, setOrganizationName] = useState('');
   const [busyInvitationId, setBusyInvitationId] = useState<string | null>(null);
@@ -1740,23 +1766,18 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
     if (!email) return;
 
     inviteMember({ email, role: inviteRole });
-    setInviteNotice(`Invite queued for ${email} in organization ${selectedOrganizationId}.`);
     setInviteEmail('');
   };
 
   const handleRenameOrganization = async () => {
     if (!activeOrganization || !organizationName.trim()) return;
-    setActionNotice(null);
     await renameOrganization(activeOrganization.id, organizationName.trim());
-    setActionNotice('Organization name updated.');
   };
 
   const handleRoleChange = async (memberId: string, role: OrganizationMember['role']) => {
     setBusyMemberId(memberId);
-    setActionNotice(null);
     try {
       await updateMemberRole({ memberId, role });
-      setActionNotice(`Member role updated to ${role}.`);
     } finally {
       setBusyMemberId(null);
     }
@@ -1764,10 +1785,8 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
 
   const handleRemove = async (memberId: string) => {
     setBusyMemberId(memberId);
-    setActionNotice(null);
     try {
       await removeMember(memberId);
-      setActionNotice('Member removed from the organization.');
     } finally {
       setBusyMemberId(null);
     }
@@ -1775,10 +1794,8 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
 
   const handleTransfer = async (memberId: string) => {
     setBusyMemberId(memberId);
-    setActionNotice(null);
     try {
       await transferOrganizationOwnership(memberId);
-      setActionNotice('Organization ownership transferred.');
     } finally {
       setBusyMemberId(null);
     }
@@ -1786,10 +1803,8 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
 
   const handleRevoke = async (invitationId: string) => {
     setBusyInvitationId(invitationId);
-    setActionNotice(null);
     try {
       await revokeInvitation(invitationId);
-      setActionNotice('Invitation revoked.');
     } finally {
       setBusyInvitationId(null);
     }
@@ -1800,14 +1815,14 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="text-sm font-medium text-blue-600">Organization</div>
-            <h2 className="mt-1 text-2xl font-semibold text-slate-900">Current organization settings</h2>
+            <div className="text-sm font-medium text-blue-600">Организация</div>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-900">Настройки организации</h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              Rename the active workspace and manage members, invitations, and ownership from one place.
+              Переименуйте рабочее пространство и управляйте участниками, приглашениями и правами владельца.
             </p>
           </div>
           <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            {activeOrganization?.id ?? 'No organization selected'}
+            {activeOrganization?.name ?? 'Организация не выбрана'}
           </div>
         </div>
 
@@ -1815,7 +1830,7 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
           <input
             value={organizationName}
             onChange={event => setOrganizationName(event.target.value)}
-            placeholder="Organization name"
+            placeholder="Название организации"
             className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
           />
           <button
@@ -1824,7 +1839,7 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
             disabled={!activeOrganization || !organizationName.trim()}
             className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Rename
+            Переименовать
           </button>
         </div>
 
@@ -1858,9 +1873,9 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
             onChange={event => setInviteRole(event.target.value as OrganizationMember['role'])}
             className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
           >
-            <option value="Owner">Owner</option>
-            <option value="Admin">Admin</option>
-            <option value="Manager">Manager</option>
+            <option value="Owner">Владелец</option>
+            <option value="Admin">Администратор</option>
+            <option value="Manager">Менеджер</option>
           </select>
           <button
             type="button"
@@ -1874,12 +1889,10 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
         {isLoading && (
           <div className="mt-4 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
             <Loader2 size={16} className="animate-spin text-blue-600" />
-            Loading team data...
+            Загружаем команду...
           </div>
         )}
 
-        {inviteNotice && <div className="mt-3 rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-800">{inviteNotice}</div>}
-        {actionNotice && <div className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{actionNotice}</div>}
         {apiError && <div className="mt-3 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{apiError}</div>}
       </div>
 
@@ -1910,9 +1923,9 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
                     disabled={member.role === 'Owner' || busyMemberId === member.id}
                     className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none disabled:bg-slate-50"
                   >
-                    <option value="Owner">Owner</option>
-                    <option value="Admin">Admin</option>
-                    <option value="Manager">Manager</option>
+                    <option value="Owner">Владелец</option>
+                    <option value="Admin">Администратор</option>
+                    <option value="Manager">Менеджер</option>
                   </select>
                 </div>
                 <MobileInfoRow label="Контакты" value={member.email} />
@@ -1925,7 +1938,7 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
                       disabled={member.id === activeOrganization?.ownerUserId || busyMemberId === member.id}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Transfer
+                      Передать права
                     </button>
                     <button
                       type="button"
@@ -1933,7 +1946,7 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
                       disabled={member.role === 'Owner' || busyMemberId === member.id}
                       className="rounded-xl border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Remove
+                      Удалить
                     </button>
                   </div>
                 </div>
@@ -1944,7 +1957,7 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
                       member.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
                     }`}
                   >
-                    {member.status}
+                    {formatUserStatus(member.status)}
                   </span>
                 </div>
               </div>
@@ -1956,14 +1969,14 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
               <div className="space-y-3 md:space-y-1">
                 <div className="font-semibold text-slate-900">{invitation.email}</div>
               </div>
-              <MobileInfoRow label="Роль" value={invitation.role} />
+              <MobileInfoRow label="Роль" value={formatRole(invitation.role)} />
               <MobileInfoRow label="Контакты" value="—" />
-              <MobileInfoRow label="Доступ" value="Pending invite" />
+              <MobileInfoRow label="Доступ" value="Приглашение отправлено" />
               <div className="flex items-center justify-between gap-3 md:block">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 md:hidden">Статус</div>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-                    {invitation.status}
+                    {formatInvitationStatus(invitation.status)}
                   </span>
                   <button
                     type="button"
@@ -1971,7 +1984,7 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
                     disabled={busyInvitationId === invitation.id}
                     className="rounded-xl border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Revoke
+                    Отозвать
                   </button>
                 </div>
               </div>
@@ -1993,7 +2006,6 @@ function TaxesTab({
   currentTaxMode,
   isLoading,
   isSaving,
-  notice,
   error,
   onTaxModeChange,
   onCostExpenseToggle,
@@ -2010,7 +2022,6 @@ function TaxesTab({
   currentTaxMode: (typeof TAX_MODES)[number];
   isLoading: boolean;
   isSaving: boolean;
-  notice: string | null;
   error: string | null;
   onTaxModeChange: (mode: TaxModeId) => void;
   onCostExpenseToggle: () => void;
@@ -2041,7 +2052,7 @@ function TaxesTab({
             <h2 className="mt-1 text-2xl font-semibold text-slate-900">Настройка налоговых режимов</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
               Режим налогообложения выбирается на кабинет на год. Налоговую ставку и НДС можно задавать по кварталу
-              и уточнять по месяцам внутри квартала. Текущий API пока сохраняет режим и ставку на уровне кабинета,
+              и уточнять по месяцам внутри квартала. Сейчас режим и ставка сохраняются на уровне кабинета,
               поэтому помесячная сетка здесь выступает как подготовленная форма для будущего расширения контракта.
             </p>
           </div>
@@ -2157,7 +2168,6 @@ function TaxesTab({
             </div>
           )}
 
-          {notice && <div className="mb-3 rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-800">{notice}</div>}
           {error && <div className="mb-3 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
 
           <div className="-mx-6 overflow-x-auto px-6 pb-2">
@@ -2249,7 +2259,7 @@ function MetricsTab({ customMetrics, isLoading }: { customMetrics: CustomMetric[
       {isLoading ? (
         <div className="flex items-center gap-3 rounded-3xl border border-slate-200 bg-white p-10 text-sm text-slate-600 shadow-sm">
           <Loader2 size={16} className="animate-spin text-blue-600" />
-          Loading custom metrics...
+          Загружаем метрики...
         </div>
       ) : customMetrics.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">

@@ -21,10 +21,9 @@ interface PublicAuthPageProps {
 }
 
 export function PublicAuthPage({ mode, onModeChange, onAcceptInvite, onVerifyEmail }: PublicAuthPageProps) {
-  const { register, login, requestPasswordReset, apiError } = usePlatform();
+  const { register, login, requestPasswordReset, enqueueNotification } = usePlatform();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRequestingReset, setIsRequestingReset] = useState(false);
-  const [resetNotice, setResetNotice] = useState<string | null>(null);
   const [privacyConsent, setPrivacyConsent] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [consentError, setConsentError] = useState<string | null>(null);
@@ -95,14 +94,20 @@ export function PublicAuthPage({ mode, onModeChange, onAcceptInvite, onVerifyEma
         try {
           await login(loginForm);
         } catch (error) {
-          const message = error instanceof Error ? error.message : '';
+          const message = getErrorMessage(error, 'Не удалось войти.');
           if (message.toLowerCase().includes('not verified') || message.toLowerCase().includes('не подтверж')) {
             onVerifyEmail(loginForm.email);
           } else {
-            setResetNotice(message || 'Не удалось войти.');
+            enqueueNotification({ tone: 'error', title: 'Не удалось войти', message });
           }
         }
       }
+    } catch (error) {
+      enqueueNotification({
+        tone: 'error',
+        title: mode === 'register' ? 'Не удалось создать аккаунт' : 'Не удалось войти',
+        message: getErrorMessage(error, mode === 'register' ? 'Не удалось создать аккаунт.' : 'Не удалось войти.'),
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -110,14 +115,17 @@ export function PublicAuthPage({ mode, onModeChange, onAcceptInvite, onVerifyEma
 
   const handlePasswordReset = async () => {
     setIsRequestingReset(true);
-    setResetNotice(null);
 
     try {
       const email = loginForm.email || registerForm.email;
       await requestPasswordReset(email);
-      setResetNotice(`Мы отправили ссылку на ${email}.`);
+      enqueueNotification({ tone: 'info', title: 'Письмо отправлено', message: `Мы отправили ссылку на ${email}.` });
     } catch (error) {
-      setResetNotice(error instanceof Error ? error.message : 'Не удалось отправить ссылку.');
+      enqueueNotification({
+        tone: 'error',
+        title: 'Не удалось отправить ссылку',
+        message: getErrorMessage(error, 'Не удалось отправить ссылку.'),
+      });
     } finally {
       setIsRequestingReset(false);
     }
@@ -217,18 +225,6 @@ export function PublicAuthPage({ mode, onModeChange, onAcceptInvite, onVerifyEma
                   : 'Уже есть аккаунт? Войти.'}
               </p>
             </div>
-
-            {apiError && (
-              <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {apiError}
-              </div>
-            )}
-
-            {resetNotice && (
-              <div className="mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-                {resetNotice}
-              </div>
-            )}
 
             {consentError && (
               <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -383,6 +379,10 @@ export function PublicAuthPage({ mode, onModeChange, onAcceptInvite, onVerifyEma
 
     </div>
   );
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 function BenefitCard({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {

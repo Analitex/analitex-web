@@ -669,7 +669,7 @@ function AppRouter() {
       case 'ai':
         return <AIInsightsPage />;
       case 'settings':
-        return <SettingsPage activeTab={route.settingsTab} onTabChange={tab => navigate('settings', tab)} />;
+        return <SettingsPage activeTab={route.settingsTab} />;
       case 'dashboard':
       default:
         return <DashboardPage />;
@@ -686,6 +686,8 @@ function AppRouter() {
         marketplaces={filterOptions.marketplaces}
         stores={filterOptions.stores}
         skus={filterOptions.skus}
+        activeSettingsTab={route.page === 'settings' ? route.settingsTab : undefined}
+        onSettingsTabChange={tab => navigate('settings', tab)}
       >
         {mainPage}
       </Layout>

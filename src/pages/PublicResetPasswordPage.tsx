@@ -7,7 +7,7 @@ interface PublicResetPasswordPageProps {
 }
 
 export function PublicResetPasswordPage({ onSuccess }: PublicResetPasswordPageProps) {
-  const { resetPassword, requestPasswordReset, apiError } = usePlatform();
+  const { resetPassword, requestPasswordReset, enqueueNotification } = usePlatform();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRequestingCode, setIsRequestingCode] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -46,7 +46,11 @@ export function PublicResetPasswordPage({ onSuccess }: PublicResetPasswordPagePr
       setNotice('Мы отправили письмо для восстановления. Проверьте почту и продолжите.');
       setStep(2);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Не удалось отправить письмо.');
+      enqueueNotification({
+        tone: 'error',
+        title: 'Не удалось отправить письмо',
+        message: getErrorMessage(error, 'Не удалось отправить письмо.'),
+      });
     } finally {
       setIsRequestingCode(false);
     }
@@ -68,10 +72,14 @@ export function PublicResetPasswordPage({ onSuccess }: PublicResetPasswordPagePr
         resetToken: form.code.trim() || tokenFromQuery,
         newPassword: form.newPassword,
       });
-      setNotice('Пароль успешно обновлен.');
+      enqueueNotification({ tone: 'info', title: 'Пароль обновлен', message: 'Теперь войдите с новым паролем.' });
       onSuccess();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Не удалось обновить пароль.');
+      enqueueNotification({
+        tone: 'error',
+        title: 'Не удалось обновить пароль',
+        message: getErrorMessage(error, 'Не удалось обновить пароль.'),
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -111,11 +119,6 @@ export function PublicResetPasswordPage({ onSuccess }: PublicResetPasswordPagePr
               </p>
             </div>
 
-            {apiError && (
-              <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {apiError}
-              </div>
-            )}
             {notice && (
               <div className="mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
                 {notice}
@@ -211,6 +214,10 @@ export function PublicResetPasswordPage({ onSuccess }: PublicResetPasswordPagePr
       </div>
     </div>
   );
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 function Field({

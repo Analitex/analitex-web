@@ -8,7 +8,7 @@ interface PublicVerifyEmailPageProps {
 }
 
 export function PublicVerifyEmailPage({ onSuccess, onGoToLogin }: PublicVerifyEmailPageProps) {
-  const { requestEmailVerification, verifyEmail, apiError } = usePlatform();
+  const { requestEmailVerification, verifyEmail, enqueueNotification } = usePlatform();
   const emailFromQuery = useMemo(() => {
     if (typeof window === 'undefined') return '';
     return new URLSearchParams(window.location.search).get('email') ?? '';
@@ -34,7 +34,11 @@ export function PublicVerifyEmailPage({ onSuccess, onGoToLogin }: PublicVerifyEm
       await requestEmailVerification(nextEmail);
       setNotice(`Код подтверждения отправлен на ${nextEmail}.`);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Не удалось отправить код подтверждения.');
+      enqueueNotification({
+        tone: 'error',
+        title: 'Не удалось отправить код',
+        message: getErrorMessage(error, 'Не удалось отправить код подтверждения.'),
+      });
     } finally {
       setIsRequesting(false);
     }
@@ -53,10 +57,14 @@ export function PublicVerifyEmailPage({ onSuccess, onGoToLogin }: PublicVerifyEm
     setNotice(null);
     try {
       await verifyEmail({ email: nextEmail, code: nextCode });
-      setNotice('Почта подтверждена. Теперь войдите в аккаунт.');
+      enqueueNotification({ tone: 'info', title: 'Почта подтверждена', message: 'Теперь войдите в аккаунт.' });
       onSuccess();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Не удалось подтвердить почту.');
+      enqueueNotification({
+        tone: 'error',
+        title: 'Не удалось подтвердить почту',
+        message: getErrorMessage(error, 'Не удалось подтвердить почту.'),
+      });
     } finally {
       setIsVerifying(false);
     }
@@ -85,11 +93,6 @@ export function PublicVerifyEmailPage({ onSuccess, onGoToLogin }: PublicVerifyEm
               </p>
             </div>
 
-            {apiError && (
-              <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {apiError}
-              </div>
-            )}
             {notice && (
               <div className="mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
                 {notice}
@@ -134,6 +137,10 @@ export function PublicVerifyEmailPage({ onSuccess, onGoToLogin }: PublicVerifyEm
       </div>
     </div>
   );
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 function Field({

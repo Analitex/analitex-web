@@ -252,7 +252,7 @@ export function AIInsightsPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold text-slate-900">AI Инсайты</h1>
-            <p className="mt-0.5 text-sm text-slate-500">Автоматический анализ reporting API и live explanations</p>
+            <p className="mt-0.5 text-sm text-slate-500">Автоматический анализ продаж и факторов изменений</p>
           </div>
           <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
             {analytics.accountIds.length > 0 ? `${analytics.accountIds.length} кабинетов` : 'Кабинеты не найдены'}
@@ -274,7 +274,7 @@ export function AIInsightsPage() {
         {analytics.explanation && (
           <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_0.9fr]">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-sm font-semibold text-slate-900">API explanation for sales</div>
+              <div className="text-sm font-semibold text-slate-900">Объяснение продаж</div>
               <div className="mt-3 space-y-2">
                 {(analytics.explanation.breakdown ?? []).slice(0, 5).map((item, index) => (
                   <div key={`${item.label ?? 'item'}-${index}`} className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3 text-sm">
@@ -286,7 +286,7 @@ export function AIInsightsPage() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-sm font-semibold text-slate-900">API state</div>
+              <div className="text-sm font-semibold text-slate-900">Состояние данных</div>
               <dl className="mt-3 space-y-3 text-sm">
                 <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3">
                   <dt className="text-slate-500">Products loaded</dt>
@@ -323,7 +323,7 @@ export function AIInsightsPage() {
         <div className="flex flex-col items-center justify-center py-24 text-slate-400">
           <Sparkles size={40} className="mb-3 opacity-30" />
           <div className="text-lg font-medium">Нет данных для анализа</div>
-          <div className="text-sm mt-1">Измените фильтры или дождитесь загрузки данных из reporting API</div>
+          <div className="text-sm mt-1">Измените фильтры или дождитесь загрузки данных</div>
         </div>
       ) : (
         <>

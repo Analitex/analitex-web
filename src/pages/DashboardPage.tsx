@@ -1183,7 +1183,7 @@ export function DashboardPage() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Оцифровка
-            <span className="text-sm font-medium text-slate-500"> Product reporting API</span>
+            <span className="text-sm font-medium text-slate-500"> Товарный отчет</span>
           </h1>
         </div>
       </div>
@@ -1206,7 +1206,7 @@ export function DashboardPage() {
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 text-xs text-slate-500 bg-white border border-slate-200 rounded-lg px-3 py-2">
             <Activity size={13} className="text-emerald-500" />
-            <span>Данные из API</span>
+            <span>Данные отчета</span>
           </div>
           <button
             type="button"
@@ -2613,7 +2613,7 @@ function AnalyticsDataSection({
               label=""
               value={sourceTable}
               onChange={setSourceTable}
-              options={[{ value: 'Product reporting API', label: 'Product reporting API' }]}
+              options={[{ value: 'product-reporting', label: 'Товарный отчет' }]}
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -2743,7 +2743,7 @@ function AnalyticsDataSection({
               ) : pageRows.length === 0 ? (
                 <tr>
                   <td colSpan={orderedColumns.length} className="px-4 py-10 text-center text-sm text-slate-400">
-                    Нет данных от product reporting API для выбранных фильтров.
+                    Нет данных товарного отчета для выбранных фильтров.
                   </td>
                 </tr>
               ) : (

@@ -110,8 +110,8 @@ export function PlanFactPage() {
 
       {!loading && !hasData && (
         <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center">
-          <div className="text-sm font-semibold text-slate-700">Live данные план/факт пока недоступны</div>
-          <div className="mt-1 text-sm text-slate-500">После подключения backend endpoint таблица заполнится автоматически.</div>
+          <div className="text-sm font-semibold text-slate-700">Данные план/факт пока недоступны</div>
+          <div className="mt-1 text-sm text-slate-500">После подключения источника данных таблица заполнится автоматически.</div>
         </div>
       )}
 

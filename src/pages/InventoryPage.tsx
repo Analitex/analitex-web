@@ -148,7 +148,7 @@ export function InventoryPage() {
     <div className="space-y-6 p-6">
       <div>
         <h1 className="text-xl font-bold text-slate-900">Склад</h1>
-        <p className="mt-0.5 text-sm text-slate-500">Остатки, оборачиваемость и стоимость запасов на основе live API</p>
+        <p className="mt-0.5 text-sm text-slate-500">Остатки, оборачиваемость и стоимость запасов по выбранным данным</p>
       </div>
 
       {analytics.error && (
@@ -187,8 +187,8 @@ export function InventoryPage() {
 
       {!hasData && (
         <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center">
-          <div className="text-sm font-semibold text-slate-700">Live данные по складу пока недоступны</div>
-          <div className="mt-1 text-sm text-slate-500">Страница уже переведена на `reporting/products` и заполнится, когда backend вернёт данные по остаткам.</div>
+          <div className="text-sm font-semibold text-slate-700">Данные по складу пока недоступны</div>
+          <div className="mt-1 text-sm text-slate-500">Страница заполнится, когда появятся данные по остаткам.</div>
         </div>
       )}
 

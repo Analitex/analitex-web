@@ -214,7 +214,7 @@ function SidebarInner({
       </div>
 
       <nav className={`flex-1 overflow-y-auto ${isCollapsed ? 'px-2 py-4' : 'px-3 py-4'}`}>
-        {!isCollapsed && <div className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Developer workspace</div>}
+        {!isCollapsed && <div className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Рабочая область</div>}
 
         <ul className="space-y-0.5">
           {navItems.map(item => {
@@ -253,12 +253,12 @@ function SidebarInner({
       <div className={`border-t border-slate-700/50 ${isCollapsed ? 'px-2 py-4' : 'px-4 py-4'}`}>
         {isCollapsed ? (
           <div className="flex justify-center rounded-lg bg-slate-800 p-3">
-            <div className="h-3 w-3 rounded-full bg-blue-500" aria-label="Developer workspace" title="Developer workspace" />
+            <div className="h-3 w-3 rounded-full bg-blue-500" aria-label="Рабочая область" title="Рабочая область" />
           </div>
         ) : (
           <div className="rounded-lg bg-slate-800 p-3">
-            <div className="mb-1 text-xs text-slate-400">Developer mode</div>
-            <div className="text-sm font-semibold text-white">Hidden UI pages</div>
+            <div className="mb-1 text-xs text-slate-400">Служебный режим</div>
+            <div className="text-sm font-semibold text-white">Служебные страницы</div>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-700">
               <div className="h-full w-4/5 rounded-full bg-blue-500" />
             </div>

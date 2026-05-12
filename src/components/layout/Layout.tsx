@@ -3,6 +3,7 @@ import type { MultiSelectOption } from '../filters/MultiSelect';
 import { FilterBar } from './FilterBar';
 import { Sidebar } from './Sidebar';
 import type { Page } from '../../types';
+import type { SettingsTabId } from '../../pages/settingsConfig';
 
 interface LayoutProps {
   children: ReactNode;
@@ -13,6 +14,8 @@ interface LayoutProps {
   marketplaces: string[];
   stores: MultiSelectOption[];
   skus: { id: string; sku: string; name: string }[];
+  activeSettingsTab?: SettingsTabId;
+  onSettingsTabChange?: (tab: SettingsTabId) => void;
 }
 
 export function Layout({
@@ -24,6 +27,8 @@ export function Layout({
   marketplaces,
   stores,
   skus,
+  activeSettingsTab,
+  onSettingsTabChange,
 }: LayoutProps) {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   useEffect(() => {
@@ -60,6 +65,8 @@ export function Layout({
           stores={stores}
           skus={skus}
           onOpenMobileNav={() => setIsMobileNavOpen(true)}
+          activeSettingsTab={activeSettingsTab}
+          onSettingsTabChange={onSettingsTabChange}
         />
         <main className="flex-1 overflow-x-hidden overflow-y-auto">
           {children}

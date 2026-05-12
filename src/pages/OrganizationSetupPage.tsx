@@ -14,7 +14,7 @@ export function OrganizationSetupPage({ onContinue }: OrganizationSetupPageProps
   const handleCreate = async () => {
     setIsSubmitting(true);
     try {
-      const nextOrganization = createOrganization(name.trim() || 'New organization');
+      const nextOrganization = createOrganization(name.trim() || 'Новая организация');
       selectOrganization(nextOrganization.id);
       onContinue();
     } finally {
@@ -51,7 +51,7 @@ export function OrganizationSetupPage({ onContinue }: OrganizationSetupPageProps
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="text-lg font-semibold text-slate-950">Создать организацию</div>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              Используйте backend endpoint `POST /organizations`, чтобы создать рабочее пространство компании.
+              Создайте рабочее пространство компании, чтобы перейти к подключению магазинов и аналитике.
             </p>
 
             <label className="mt-6 block">
@@ -75,7 +75,7 @@ export function OrganizationSetupPage({ onContinue }: OrganizationSetupPageProps
             </button>
 
             <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
-              После создания организации мы сразу перейдем в кабинет и синхронизируем выбранную организацию с backend.
+              После создания организации мы сразу перейдем в кабинет и выберем ее как активную.
             </div>
           </section>
 
@@ -88,7 +88,7 @@ export function OrganizationSetupPage({ onContinue }: OrganizationSetupPageProps
                 </p>
               </div>
               <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                {organizations.length} total
+                {organizations.length} всего
               </div>
             </div>
 
@@ -106,7 +106,7 @@ export function OrganizationSetupPage({ onContinue }: OrganizationSetupPageProps
                   >
                     <div>
                       <div className="font-semibold text-slate-950">{organization.name}</div>
-                      <div className="mt-1 text-xs text-slate-500">ID: {organization.id}</div>
+                      <div className="mt-1 text-xs text-slate-500">{active ? 'Выбрана' : 'Доступна'}</div>
                     </div>
                     {active ? <CheckCircle2 size={18} className="text-blue-600" /> : <ArrowRight size={18} className="text-slate-400" />}
                   </button>
