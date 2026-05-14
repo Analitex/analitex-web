@@ -39,16 +39,16 @@ export function PublicAuthPage({ mode, onModeChange, onAcceptInvite, onVerifyEma
   }, []);
 
   const [registerForm, setRegisterForm] = useState({
-    email: invitedEmailFromStorage || 'owner@company.com',
-    password: 'secret',
-    firstName: 'Anna',
-    lastName: 'Ivanova',
-    phone: '+79990000000',
+    email: invitedEmailFromStorage,
+    password: '',
+    firstName: '',
+    lastName: '',
+    phone: '',
   });
 
   const [loginForm, setLoginForm] = useState({
-    email: invitedEmailFromStorage || 'owner@company.com',
-    password: 'secret',
+    email: invitedEmailFromStorage,
+    password: '',
   });
 
   useEffect(() => {

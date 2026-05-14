@@ -245,18 +245,18 @@ function getConnectorFields(marketplace: 'Wildberries' | 'Ozon') {
 export function AuthPage() {
   const { session, register, login, logout, requestEmailVerification, verifyEmail } = usePlatform();
   const [registerForm, setRegisterForm] = useState({
-    firstName: 'Anna',
-    lastName: 'Ivanova',
-    email: 'owner@company.com',
-    phone: '+79990000000',
-    password: 'secret',
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    password: '',
   });
   const [loginForm, setLoginForm] = useState({
-    email: 'owner@company.com',
-    password: 'secret',
+    email: '',
+    password: '',
   });
   const [verificationForm, setVerificationForm] = useState({
-    email: 'owner@company.com',
+    email: '',
     code: '',
   });
 
