@@ -93,9 +93,15 @@ export const CONNECTOR_CATALOG = [
     marketplace: 'Ozon',
     label: 'Ozon',
     supportedSyncKinds: [
+      'ozon.catalog.products',
+      'ozon.stock.sources',
+      'ozon.orders.operations',
+      'ozon.finance.operations',
+      'ozon.finance.realization',
       'catalog',
       'postings',
       'finance',
+      'storage',
       'returns',
       'stocks',
       'analytics',
@@ -112,6 +118,31 @@ export const CONNECTOR_CATALOG = [
     ],
   },
 ] as const;
+
+export const OZON_PREFERRED_SYNC_KINDS = [
+  'ozon.catalog.products',
+  'ozon.stock.sources',
+  'ozon.orders.operations',
+  'ozon.finance.operations',
+  'ozon.finance.realization',
+] as const;
+
+export function getPreferredSyncKinds(
+  marketplace: 'Wildberries' | 'Ozon',
+  supportedSyncKinds: readonly string[] = []
+) {
+  const fallbackKinds = CONNECTOR_CATALOG.find(item => item.marketplace === marketplace)?.supportedSyncKinds ?? [];
+  const availableKinds = supportedSyncKinds.length > 0 ? supportedSyncKinds : fallbackKinds;
+
+  if (marketplace !== 'Ozon') {
+    return [...availableKinds];
+  }
+
+  const availableKindSet = new Set(availableKinds);
+  const preferredKinds = OZON_PREFERRED_SYNC_KINDS.filter(kind => availableKindSet.has(kind));
+
+  return preferredKinds.length > 0 ? preferredKinds : [...availableKinds];
+}
 
 export const METRICS_CATALOG = [
   'sales',

@@ -23,6 +23,7 @@ import {
   FIRST_OWNER_FLOW,
   HISTORICAL_SYNC_FLOW,
   METRICS_CATALOG,
+  getPreferredSyncKinds,
   RECOMMENDED_LOAD_SEQUENCE,
   RECOMMENDED_PRODUCT_LOAD_SEQUENCE,
   PRODUCT_REPORT_METRICS_CATALOG,
@@ -240,6 +241,10 @@ function FlowList({ title, items }: { title: string; items: readonly string[] })
 
 function getConnectorFields(marketplace: 'Wildberries' | 'Ozon') {
   return CONNECTOR_CATALOG.find(item => item.marketplace === marketplace)?.credentialFields ?? [];
+}
+
+function serializeSyncKinds(syncKinds: readonly string[]) {
+  return syncKinds.join(',');
 }
 
 export function AuthPage() {
@@ -612,10 +617,14 @@ export function ConnectionsPage() {
   const [selectedConnectionId, setSelectedConnectionId] = useState('conn-wb-main');
   const [dateFrom, setDateFrom] = useState('2026-04-01');
   const [dateTo, setDateTo] = useState('2026-04-18');
-  const [syncKinds, setSyncKinds] = useState('orders,sales,stocks,finance');
+  const [syncKinds, setSyncKinds] = useState(() => serializeSyncKinds(getPreferredSyncKinds('Wildberries')));
   const [credentials, setCredentials] = useState<Record<string, string>>({ apiToken: 'token' });
 
   const connector = useMemo(() => connectors.find(item => item.marketplace === marketplace) ?? connectors[0], [connectors, marketplace]);
+  const preferredSyncKinds = useMemo(
+    () => getPreferredSyncKinds(marketplace, connector?.supportedSyncKinds ?? []),
+    [connector?.supportedSyncKinds, marketplace]
+  );
   const connectionOptions = connections.filter(item => item.organizationId === selectedOrganizationId);
   const selectedConnection = connectionOptions.find(item => item.id === selectedConnectionId) ?? connectionOptions[0] ?? connections[0];
 
@@ -626,7 +635,8 @@ export function ConnectionsPage() {
     });
     setCredentials(next);
     setDisplayName(marketplace === 'Wildberries' ? 'WB Main Shop' : 'Ozon Main Shop');
-  }, [marketplace]);
+    setSyncKinds(serializeSyncKinds(preferredSyncKinds));
+  }, [marketplace, preferredSyncKinds]);
 
   return (
     <div className="space-y-6 p-4 sm:p-6">

@@ -14,6 +14,7 @@ import {
 import { MarketplaceBadge } from '../components/common/MarketplaceIcon';
 import { usePlatform, type MarketplaceConnection, type OrganizationMember, type SyncRun } from '../context/PlatformContext';
 import { apiRequest } from '../lib/api';
+import { getPreferredSyncKinds } from '../lib/platformCatalog';
 import type { SettingsTabId } from './settingsConfig';
 
 type TaxModeId = 'usn-income' | 'usn-income-expense-fixed-vat' | 'usn-income-expense-vat-22' | 'ip-osno' | 'ooo-osno';
@@ -1025,25 +1026,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
 
   const getSupportedSyncKinds = (marketplaceName: 'Wildberries' | 'Ozon') => {
     const connectorKinds = connectors.find(connector => connector.marketplace === marketplaceName)?.supportedSyncKinds ?? [];
-    if (connectorKinds.length > 0) {
-      return connectorKinds;
-    }
-
-    return marketplaceName === 'Ozon'
-      ? [
-          'catalog',
-          'postings',
-          'finance',
-          'storage',
-          'returns',
-          'stocks',
-          'analytics',
-          'performanceProducts',
-          'performanceOrders',
-          'performancePhrases',
-          'performanceExternalTraffic',
-        ]
-      : ['catalog', 'orders', 'sales', 'stocks', 'finance'];
+    return getPreferredSyncKinds(marketplaceName, connectorKinds);
   };
 
   const submitSync = (marketplaceName: 'Wildberries' | 'Ozon') => {
