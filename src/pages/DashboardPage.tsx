@@ -29,12 +29,13 @@ import {
   formatCustomMetricDelta,
   formatCustomMetricValue,
 } from '../lib/dashboardMetrics';
-import { Activity, ArrowDownWideNarrow, ArrowUpWideNarrow, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, GripVertical, Pin, Search, Settings2, X } from 'lucide-react';
+import { Activity, ArrowDownWideNarrow, ArrowUpWideNarrow, ChevronDown, ChevronLeft, ChevronRight, Columns3, Eye, EyeOff, GripVertical, LayoutGrid, Pin, Search, Settings2, TrendingDown, TrendingUp, X } from 'lucide-react';
 import type { MetricValue } from '../types';
 
 const WIDGET_PROFILES_STORAGE_KEY = 'dashboard-widget-profiles';
 const DEFAULT_WIDGET_PROFILE_ID = 'default-profile';
 const CUSTOM_METRICS_STORAGE_KEY = 'dashboard-custom-metrics';
+const METRIC_VIEW_MODE_STORAGE_KEY = 'dashboard-metric-view-mode';
 const DEFAULT_PRODUCT_METRIC_WIDGET_ORDER = [
   'metric-total-paid',
   'metric-profit',
@@ -142,6 +143,7 @@ interface WidgetDefinition {
   format?: (v: number) => string;
   formatPrevious?: (v: number) => string;
   formatDelta?: (v: number) => string;
+  hideDeltaPercent?: boolean;
   invertColors?: boolean;
   faq?: string;
   documents?: WidgetDocuments;
@@ -173,6 +175,8 @@ interface CustomMetric {
 const ANALYTICS_TABLE_SETTINGS_KEY = 'dashboard-analytics-table-settings';
 const FINANCIAL_TOTAL_PAID_WIDGET_ID = 'metric-total-paid';
 const EMPTY_METRIC_VALUE: MetricValue = { current: 0, previous: 0, delta: 0, deltaPercent: 0, trend: 'neutral', sparkline: [] };
+type MetricViewMode = 'cards' | 'columns';
+type MetricColumnGroupId = 'finance' | 'expenses' | 'indicators';
 type AnalyticsGroupBy = 'product';
 type AnalyticsSortDirection = 'asc' | 'desc';
 
@@ -270,6 +274,68 @@ const ANALYTICS_COLUMNS: AnalyticsColumnDefinition[] = [
   { id: 'salesCount', label: 'Продажи в штуках', align: 'right', unit: 'шт.' },
 ];
 
+const METRIC_COLUMN_GROUPS: Array<{ id: MetricColumnGroupId; title: string; widgetIds: string[] }> = [
+  {
+    id: 'finance',
+    title: 'Финансы',
+    widgetIds: [
+      'metric-total-paid',
+      'metric-profit',
+      'metric-profit-without-expense',
+      'metric-sales',
+      'metric-revenue',
+      'metric-orders',
+      'metric-compensation',
+      'metric-average-price',
+      'metric-profit-per-unit',
+    ],
+  },
+  {
+    id: 'expenses',
+    title: 'Расходы',
+    widgetIds: [
+      'metric-wb-final-reward',
+      'metric-logistics',
+      'metric-ads-drr',
+      'metric-storage',
+      'metric-acceptance',
+      'metric-other-deduction',
+      'metric-cogs',
+      'metric-operating-expense',
+      'metric-taxes',
+      'metric-tax-base',
+      'metric-commission',
+      'metric-fines',
+      'metric-returns',
+      'metric-average-logistics-cost',
+    ],
+  },
+  {
+    id: 'indicators',
+    title: 'Показатели',
+    widgetIds: [
+      'metric-buyout-rate',
+      'metric-roi',
+      'metric-average-price-before-spp',
+      'metric-capitalization-cost',
+      'metric-capitalization-price',
+      'metric-stock-balance',
+      'metric-user-warehouse-stock',
+      'metric-user-warehouse-capitalization',
+      'metric-gmroi',
+      'metric-gmroi-year',
+      'metric-ads-drr-orders',
+      'metric-sales-turnover',
+      'metric-orders-turnover',
+      'metric-sales-units',
+    ],
+  },
+];
+
+const METRIC_COLUMN_GROUP_BY_WIDGET_ID = new Map(
+  METRIC_COLUMN_GROUPS.flatMap(group => group.widgetIds.map(widgetId => [widgetId, group.id] as const))
+);
+
 const DEFAULT_PINNED_ANALYTICS_COLUMN_IDS = ['photo', 'article', 'toTransfer'];
 const ANALYTICS_TABLE_PINNING_VERSION = 1;
 const MAX_PINNED_ANALYTICS_COLUMNS = 4;
@@ -313,6 +379,10 @@ export function DashboardPage() {
   const [isWidgetModalOpen, setIsWidgetModalOpen] = useState(false);
   const [isCreateMetricModalOpen, setIsCreateMetricModalOpen] = useState(false);
   const [isWidgetEditMode, setIsWidgetEditMode] = useState(false);
+  const [metricViewMode, setMetricViewMode] = useState<MetricViewMode>(() => {
+    if (typeof window === 'undefined') return 'cards';
+    return window.localStorage.getItem(METRIC_VIEW_MODE_STORAGE_KEY) === 'columns' ? 'columns' : 'cards';
+  });
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [widgetSearch, setWidgetSearch] = useState('');
   const [profileName, setProfileName] = useState('');
@@ -382,16 +452,25 @@ export function DashboardPage() {
     const getFormulaMetric = (key: keyof typeof formulaMetricValues) =>
       formulaMetricValues[key] ?? { current: 0, previous: 0 };
     const metricValue = (key: keyof typeof formulaMetricValues) => formulaMetricValues[key] ?? EMPTY_METRIC_VALUE;
-    const moneyShare = (key: keyof typeof formulaMetricValues) => (value: number) => {
-      const revenue = Math.max(getFormulaMetric('realisation').current, 1);
-      return `${formatCurrency(value)} / ${((getFormulaMetric(key).current / revenue) * 100).toFixed(2)}%`;
+    const hasValue = (value: number | null | undefined) => Number.isFinite(value) && Math.abs(Number(value)) > 0;
+    const hasCurrentRevenue = hasValue(getFormulaMetric('realisation').current);
+    const hasCurrentSalesAmount = hasValue(getFormulaMetric('totalSalesAmount').current);
+    const hasCurrentOrdersAmount = hasValue(getFormulaMetric('orders').current);
+    const moneyShare = (key: keyof typeof formulaMetricValues, period: 'current' | 'previous' = 'current') => (value: number) => {
+      const revenue = Number(getFormulaMetric('realisation')[period] ?? 0);
+      if (!revenue) return formatCurrency(value);
+      return `${formatCurrency(value)} / ${((getFormulaMetric(key)[period] / revenue) * 100).toFixed(2)}%`;
     };
     const moneyUnit = (key: keyof typeof formulaMetricValues) => (value: number) =>
       `${formatCurrency(value)} / ${formatNumber(getFormulaMetric(key).current)} шт`;
-    const moneyRatio = (ratioKey: keyof typeof formulaMetricValues) => (value: number) =>
-      `${formatCurrency(value)} / ${getFormulaMetric(ratioKey).current.toFixed(2)}%`;
-    const previousMoneyRatio = (ratioKey: keyof typeof formulaMetricValues) => (value: number) =>
-      `${formatCurrency(value)} / ${getFormulaMetric(ratioKey).previous.toFixed(2)}%`;
+    const moneyRatio = (ratioKey: keyof typeof formulaMetricValues, denominatorKey?: keyof typeof formulaMetricValues) => (value: number) => {
+      if (denominatorKey && !getFormulaMetric(denominatorKey).current) return formatCurrency(value);
+      return `${formatCurrency(value)} / ${getFormulaMetric(ratioKey).current.toFixed(2)}%`;
+    };
+    const previousMoneyRatio = (ratioKey: keyof typeof formulaMetricValues, denominatorKey?: keyof typeof formulaMetricValues) => (value: number) => {
+      if (denominatorKey && !getFormulaMetric(denominatorKey).previous) return formatCurrency(value);
+      return `${formatCurrency(value)} / ${getFormulaMetric(ratioKey).previous.toFixed(2)}%`;
+    };
     const percent = (value: number) => `${value.toFixed(2)}%`;
     const deltaMoney = (value: number) => `${value >= 0 ? '+' : ''}${formatCurrency(value)}`;
     const deltaPercent = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(2)} п.п.`;
@@ -497,7 +576,9 @@ export function DashboardPage() {
       title: 'Логистика',
       metric: metricValue('logistics'),
       format: moneyShare('logistics'),
+      formatPrevious: moneyShare('logistics', 'previous'),
       formatDelta: deltaMoney,
+      hideDeltaPercent: !hasCurrentRevenue,
       invertColors: true,
       description: 'Логистика, ₽/%',
       faq: tooltip(['logistics'], 'Логистика, ₽/%'),
@@ -507,9 +588,10 @@ export function DashboardPage() {
       id: 'metric-ads-drr',
       title: 'Реклама / ДРР',
       metric: metricValue('advertisingExpense'),
-      format: moneyRatio('drr'),
-      formatPrevious: previousMoneyRatio('drr'),
+      format: moneyRatio('drr', 'totalSalesAmount'),
+      formatPrevious: previousMoneyRatio('drr', 'totalSalesAmount'),
       formatDelta: deltaMoney,
+      hideDeltaPercent: !hasCurrentSalesAmount,
       invertColors: true,
       description: 'Реклама / ДРР, ₽/%',
       faq: tooltip(['advertisingExpense', 'drr'], 'Реклама / ДРР, ₽/%', ['advertisingDrr']),
@@ -520,7 +602,9 @@ export function DashboardPage() {
       title: 'Хранение',
       metric: metricValue('storage'),
       format: moneyShare('storage'),
+      formatPrevious: moneyShare('storage', 'previous'),
       formatDelta: deltaMoney,
+      hideDeltaPercent: !hasCurrentRevenue,
       invertColors: true,
       description: 'Хранение, ₽/%',
       faq: tooltip(['storage'], 'Хранение, ₽/%'),
@@ -531,7 +615,9 @@ export function DashboardPage() {
       title: 'Плат. приемка',
       metric: metricValue('acceptanceSum'),
       format: moneyShare('acceptanceSum'),
+      formatPrevious: moneyShare('acceptanceSum', 'previous'),
       formatDelta: deltaMoney,
+      hideDeltaPercent: !hasCurrentRevenue,
       invertColors: true,
       description: 'Плат. приемка, ₽/%',
       faq: tooltip(['acceptanceSum'], 'Плат. приемка, ₽/%'),
@@ -542,7 +628,9 @@ export function DashboardPage() {
       title: 'Прочие удерж.',
       metric: metricValue('otherDeduction'),
       format: moneyShare('otherDeduction'),
+      formatPrevious: moneyShare('otherDeduction', 'previous'),
       formatDelta: deltaMoney,
+      hideDeltaPercent: !hasCurrentRevenue,
       invertColors: true,
       description: 'Прочие удержания, ₽/%',
       faq: tooltip(['otherDeduction'], 'Прочие удержания, ₽/%'),
@@ -563,7 +651,9 @@ export function DashboardPage() {
       title: 'Себестоимость продаж',
       metric: metricValue('costOfSales'),
       format: moneyShare('costOfSales'),
+      formatPrevious: moneyShare('costOfSales', 'previous'),
       formatDelta: deltaMoney,
+      hideDeltaPercent: !hasCurrentRevenue,
       invertColors: true,
       description: 'Себестоимость продаж, ₽/%',
       faq: tooltip(['costOfSales'], 'Себестоимость продаж, ₽/%'),
@@ -574,7 +664,9 @@ export function DashboardPage() {
       title: 'Операционные расходы',
       metric: metricValue('expense'),
       format: moneyShare('expense'),
+      formatPrevious: moneyShare('expense', 'previous'),
       formatDelta: deltaMoney,
+      hideDeltaPercent: !hasCurrentRevenue,
       invertColors: true,
       description: 'Операционные расходы, ₽/%',
       faq: tooltip(['expense'], 'Операционные расходы, ₽/%'),
@@ -585,7 +677,9 @@ export function DashboardPage() {
       title: 'Налоги',
       metric: metricValue('tax'),
       format: moneyShare('tax'),
+      formatPrevious: moneyShare('tax', 'previous'),
       formatDelta: deltaMoney,
+      hideDeltaPercent: !hasCurrentRevenue,
       invertColors: true,
       description: 'Налоги, ₽/%',
       faq: tooltip(['tax'], 'Налоги, ₽/%'),
@@ -607,7 +701,9 @@ export function DashboardPage() {
       title: 'Комиссия',
       metric: metricValue('commission'),
       format: moneyShare('commission'),
+      formatPrevious: moneyShare('commission', 'previous'),
       formatDelta: deltaMoney,
+      hideDeltaPercent: !hasCurrentRevenue,
       invertColors: true,
       description: 'Комиссия, ₽/%',
       faq: tooltip(['commission'], 'Комиссия, ₽/%'),
@@ -696,7 +792,9 @@ export function DashboardPage() {
       title: 'Штрафы',
       metric: metricValue('fines'),
       format: moneyShare('fines'),
+      formatPrevious: moneyShare('fines', 'previous'),
       formatDelta: deltaMoney,
+      hideDeltaPercent: !hasCurrentRevenue,
       invertColors: true,
       description: 'Штрафы, ₽/%',
       faq: tooltip(['fines'], 'Штрафы, ₽/%'),
@@ -707,7 +805,9 @@ export function DashboardPage() {
       title: 'Компенсации',
       metric: metricValue('compensation'),
       format: moneyShare('compensation'),
+      formatPrevious: moneyShare('compensation', 'previous'),
       formatDelta: deltaMoney,
+      hideDeltaPercent: !hasCurrentRevenue,
       description: 'Компенсации, ₽/%',
       faq: tooltip(['compensation'], 'Компенсации, ₽/%'),
       section: 'metrics',
@@ -747,9 +847,10 @@ export function DashboardPage() {
       id: 'metric-ads-drr-orders',
       title: 'Реклама / ДРРз',
       metric: metricValue('advertisingExpense'),
-      format: moneyRatio('drrByOrders'),
-      formatPrevious: previousMoneyRatio('drrByOrders'),
+      format: moneyRatio('drrByOrders', 'orders'),
+      formatPrevious: previousMoneyRatio('drrByOrders', 'orders'),
       formatDelta: deltaMoney,
+      hideDeltaPercent: !hasCurrentOrdersAmount,
       invertColors: true,
       description: 'Реклама/ДРРз, ₽/%',
       faq: tooltip(['advertisingExpense', 'drrByOrders'], 'Реклама/ДРРз, ₽/%', ['advertisingDrrByOrders']),
@@ -890,6 +991,11 @@ export function DashboardPage() {
   }, [customMetrics]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(METRIC_VIEW_MODE_STORAGE_KEY, metricViewMode);
+  }, [metricViewMode]);
+
+  useEffect(() => {
     if (!isProfileMenuOpen) return;
 
     const handlePointerDown = (event: MouseEvent) => {
@@ -919,6 +1025,10 @@ export function DashboardPage() {
   const visibleMetricDefs = orderedSelectedWidgetIds
     .map(id => availableWidgetDefs.find(widget => widget.id === id && widget.section === 'metrics'))
     .filter((widget): widget is WidgetDefinition => Boolean(widget));
+  const groupedMetricDefs = useMemo(
+    () => groupMetricDefinitions(visibleMetricDefs),
+    [visibleMetricDefs]
+  );
   const metricWidgetDefs = useMemo(
     () => availableWidgetDefs.filter(widget => widget.section === 'metrics'),
     [availableWidgetDefs]
@@ -1203,7 +1313,35 @@ export function DashboardPage() {
             Добавить метрику
           </button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+            <button
+              type="button"
+              onClick={() => setMetricViewMode('cards')}
+              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${
+                metricViewMode === 'cards'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}
+              aria-pressed={metricViewMode === 'cards'}
+            >
+              <LayoutGrid size={14} />
+              Карточки
+            </button>
+            <button
+              type="button"
+              onClick={() => setMetricViewMode('columns')}
+              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${
+                metricViewMode === 'columns'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}
+              aria-pressed={metricViewMode === 'columns'}
+            >
+              <Columns3 size={14} />
+              Колонки
+            </button>
+          </div>
           <div className="flex items-center gap-2 text-xs text-slate-500 bg-white border border-slate-200 rounded-lg px-3 py-2">
             <Activity size={13} className="text-emerald-500" />
             <span>Данные отчета</span>
@@ -1235,97 +1373,106 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-        {(isWidgetEditMode ? editableMetricDefs : visibleMetricDefs).map(def => {
-                const isOrdered = selectedWidgetIds.includes(def.id);
-                const isVisible = isOrdered && !hiddenMetricWidgetIds.includes(def.id);
-          return (
-            <div
-              key={def.id}
-              draggable={isWidgetEditMode && isOrdered}
-              onDragStart={event => {
-                if (!isWidgetEditMode || !isOrdered) return;
-                setDraggedWidgetId(def.id);
-                setDragOverWidgetId(def.id);
-                setDragInsertPosition('before');
-                event.dataTransfer.effectAllowed = 'move';
-                event.dataTransfer.setData('text/plain', def.id);
-              }}
-              onDragEnd={() => {
-                setDraggedWidgetId(null);
-                setDragOverWidgetId(null);
-              }}
-              onDragOver={event => {
-                if (!isWidgetEditMode || !isOrdered) return;
-                event.preventDefault();
-                const rect = event.currentTarget.getBoundingClientRect();
-                const nextPosition = event.clientY > rect.top + rect.height / 2 ? 'after' : 'before';
-                const draggedId = event.dataTransfer.getData('text/plain') || draggedWidgetId;
-                setDragOverWidgetId(def.id);
-                setDragInsertPosition(nextPosition);
-                if (draggedId) {
-                  moveSelectedWidget(draggedId, def.id, nextPosition);
-                }
-              }}
-              onDrop={event => {
-                if (!isWidgetEditMode || !isOrdered) return;
-                event.preventDefault();
-                setDraggedWidgetId(null);
-                setDragOverWidgetId(null);
-              }}
-              className={`relative transition ${isWidgetEditMode && !isVisible ? 'opacity-45 grayscale' : ''} ${
-                isWidgetEditMode && draggedWidgetId === def.id ? 'scale-[0.98] opacity-60' : ''
-              }`}
-            >
-              {isWidgetEditMode && (
-                <>
-                  {dragOverWidgetId === def.id && draggedWidgetId !== def.id && isVisible && (
-                    <div className={`absolute left-2 right-2 z-20 h-0.5 rounded-full bg-blue-500 ${
-                      dragInsertPosition === 'before' ? 'top-0 -translate-y-1/2' : 'bottom-0 translate-y-1/2'
-                    }`} />
-                  )}
-                  <div className="absolute left-2 top-2 z-30 flex items-center gap-1">
-                    <div
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border bg-white text-slate-500 shadow-sm ${
-                        isOrdered ? 'cursor-grab border-slate-200 active:cursor-grabbing' : 'cursor-not-allowed border-slate-100 opacity-60'
-                      }`}
-                      title={isOrdered ? 'Перетащить виджет' : 'Включите виджет перед перемещением'}
-                    >
-                      <GripVertical size={15} />
+      {!isWidgetEditMode && metricViewMode === 'columns' ? (
+        <MetricColumnsView
+          groups={groupedMetricDefs}
+          isLoading={isMetricsLoading}
+          isPlaceholder={showMetricPlaceholders}
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {(isWidgetEditMode ? editableMetricDefs : visibleMetricDefs).map(def => {
+            const isOrdered = selectedWidgetIds.includes(def.id);
+            const isVisible = isOrdered && !hiddenMetricWidgetIds.includes(def.id);
+            return (
+              <div
+                key={def.id}
+                draggable={isWidgetEditMode && isOrdered}
+                onDragStart={event => {
+                  if (!isWidgetEditMode || !isOrdered) return;
+                  setDraggedWidgetId(def.id);
+                  setDragOverWidgetId(def.id);
+                  setDragInsertPosition('before');
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('text/plain', def.id);
+                }}
+                onDragEnd={() => {
+                  setDraggedWidgetId(null);
+                  setDragOverWidgetId(null);
+                }}
+                onDragOver={event => {
+                  if (!isWidgetEditMode || !isOrdered) return;
+                  event.preventDefault();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const nextPosition = event.clientY > rect.top + rect.height / 2 ? 'after' : 'before';
+                  const draggedId = event.dataTransfer.getData('text/plain') || draggedWidgetId;
+                  setDragOverWidgetId(def.id);
+                  setDragInsertPosition(nextPosition);
+                  if (draggedId) {
+                    moveSelectedWidget(draggedId, def.id, nextPosition);
+                  }
+                }}
+                onDrop={event => {
+                  if (!isWidgetEditMode || !isOrdered) return;
+                  event.preventDefault();
+                  setDraggedWidgetId(null);
+                  setDragOverWidgetId(null);
+                }}
+                className={`relative transition ${isWidgetEditMode && !isVisible ? 'opacity-45 grayscale' : ''} ${
+                  isWidgetEditMode && draggedWidgetId === def.id ? 'scale-[0.98] opacity-60' : ''
+                }`}
+              >
+                {isWidgetEditMode && (
+                  <>
+                    {dragOverWidgetId === def.id && draggedWidgetId !== def.id && isVisible && (
+                      <div className={`absolute left-2 right-2 z-20 h-0.5 rounded-full bg-blue-500 ${
+                        dragInsertPosition === 'before' ? 'top-0 -translate-y-1/2' : 'bottom-0 translate-y-1/2'
+                      }`} />
+                    )}
+                    <div className="absolute left-2 top-2 z-30 flex items-center gap-1">
+                      <div
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border bg-white text-slate-500 shadow-sm ${
+                          isOrdered ? 'cursor-grab border-slate-200 active:cursor-grabbing' : 'cursor-not-allowed border-slate-100 opacity-60'
+                        }`}
+                        title={isOrdered ? 'Перетащить виджет' : 'Включите виджет перед перемещением'}
+                      >
+                        <GripVertical size={15} />
+                      </div>
                     </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => toggleSelectedWidget(def.id)}
-                    className={`absolute right-2 top-2 z-30 inline-flex h-7 items-center gap-1 rounded-lg border bg-white px-2 text-xs font-semibold shadow-sm transition-colors ${
-                      isVisible
-                        ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-                        : 'border-slate-200 text-slate-500 hover:bg-slate-50'
-                    }`}
-                  >
-                    {isVisible ? <Eye size={13} /> : <EyeOff size={13} />}
-                    {isVisible ? 'Вкл' : 'Скрыт'}
-                  </button>
-                </>
-              )}
-              <MetricCard
-                title={def.title}
-                metric={def.metric!}
-                format={def.format!}
+                    <button
+                      type="button"
+                      onClick={() => toggleSelectedWidget(def.id)}
+                      className={`absolute right-2 top-2 z-30 inline-flex h-7 items-center gap-1 rounded-lg border bg-white px-2 text-xs font-semibold shadow-sm transition-colors ${
+                        isVisible
+                          ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                          : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                      }`}
+                    >
+                      {isVisible ? <Eye size={13} /> : <EyeOff size={13} />}
+                      {isVisible ? 'Вкл' : 'Скрыт'}
+                    </button>
+                  </>
+                )}
+                <MetricCard
+                  title={def.title}
+                  metric={def.metric!}
+                  format={def.format!}
                 formatPrevious={def.formatPrevious}
                 formatDelta={def.formatDelta}
+                hideDeltaPercent={def.hideDeltaPercent}
                 invertColors={def.invertColors}
-                isLoading={isMetricsLoading && isVisible}
-                isPlaceholder={showMetricPlaceholders && isVisible}
-                isEditMode={isWidgetEditMode}
-                faq={def.faq}
-                documents={def.documents}
-                onEdit={def.customMetricId ? () => editCustomMetric(def.customMetricId!) : undefined}
-              />
-            </div>
-          );
-        })}
-      </div>
+                  isLoading={isMetricsLoading && isVisible}
+                  isPlaceholder={showMetricPlaceholders && isVisible}
+                  isEditMode={isWidgetEditMode}
+                  faq={def.faq}
+                  documents={def.documents}
+                  onEdit={def.customMetricId ? () => editCustomMetric(def.customMetricId!) : undefined}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {(productReportingData.loading || visibleTopMarginArticles.length > 0) && (
         <div className="mt-6 grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
@@ -3204,5 +3351,127 @@ function normalizeAnalyticsColumnOrder(orderedIds: string[], pinnedIds: string[]
 function orderAnalyticsColumns(columns: AnalyticsColumnDefinition[], orderedIds: string[]) {
   const rank = new Map(normalizeAnalyticsColumnOrder(orderedIds).map((id, index) => [id, index]));
   return [...columns].sort((left, right) => (rank.get(String(left.id)) ?? 999) - (rank.get(String(right.id)) ?? 999));
+}
+
+function groupMetricDefinitions(metricDefs: WidgetDefinition[]) {
+  const groups = METRIC_COLUMN_GROUPS.map(group => ({ ...group, metrics: [] as WidgetDefinition[] }));
+  const byGroupId = new Map(groups.map(group => [group.id, group.metrics]));
+
+  metricDefs.forEach(metric => {
+    const groupId = METRIC_COLUMN_GROUP_BY_WIDGET_ID.get(metric.id) ?? 'indicators';
+    byGroupId.get(groupId)?.push(metric);
+  });
+
+  return groups;
+}
+
+function MetricColumnsView({
+  groups,
+  isLoading,
+  isPlaceholder,
+}: {
+  groups: ReturnType<typeof groupMetricDefinitions>;
+  isLoading: boolean;
+  isPlaceholder: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+      {groups.map(group => (
+        <section key={group.id} className="min-w-0">
+          <div className="mb-2 flex h-9 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3">
+            <h2 className="text-sm font-semibold text-slate-900">{group.title}</h2>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
+              {group.metrics.length}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {group.metrics.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-200 bg-white px-4 py-6 text-sm text-slate-400">Нет выбранных метрик</div>
+            ) : (
+              group.metrics.map(metric => (
+                <MetricColumnRow
+                  key={metric.id}
+                  def={metric}
+                  isLoading={isLoading}
+                  isPlaceholder={isPlaceholder}
+                />
+              ))
+            )}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function MetricColumnRow({
+  def,
+  isLoading,
+  isPlaceholder,
+}: {
+  def: WidgetDefinition;
+  isLoading: boolean;
+  isPlaceholder: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <div className="animate-pulse rounded-lg border border-slate-200 bg-white px-4 py-3">
+        <div className="mb-2 h-3 w-2/5 rounded bg-slate-100" />
+        <div className="h-5 w-3/5 rounded bg-slate-100" />
+      </div>
+    );
+  }
+
+  if (isPlaceholder || !def.metric || !def.format) {
+    return (
+      <div className="rounded-lg border border-dashed border-slate-200 bg-white px-4 py-3">
+        <div className="truncate text-xs font-semibold uppercase tracking-[0.1em] text-slate-400">{def.title}</div>
+        <div className="mt-1 text-lg font-bold text-slate-300">--</div>
+      </div>
+    );
+  }
+
+  const isPositive = def.metric.trend === 'up';
+  const isNegative = def.metric.trend === 'down';
+  const isNeutral = def.metric.trend === 'neutral';
+  const goodTrend = def.invertColors ? isNegative : isPositive;
+  const badTrend = def.invertColors ? isPositive : isNegative;
+  const trendColor = goodTrend ? 'text-emerald-600' : badTrend ? 'text-red-500' : 'text-slate-400';
+  const rowTone = goodTrend
+    ? 'border-emerald-200 bg-emerald-50/80 shadow-emerald-100/70'
+    : badTrend
+    ? 'border-red-200 bg-red-50/80 shadow-red-100/70'
+    : 'border-slate-200 bg-slate-50/90 shadow-slate-100/70';
+  const deltaValue = def.metric.delta ?? 0;
+  const deltaPercentValue = def.metric.deltaPercent ?? 0;
+  const shouldHideDeltaPercent = def.hideDeltaPercent || !Number.isFinite(def.metric.previous) || def.metric.previous === 0;
+  const deltaStr = def.formatDelta
+    ? def.formatDelta(deltaValue)
+    : `${deltaValue >= 0 ? '+' : ''}${deltaValue.toFixed(1)}`;
+  const pctStr = shouldHideDeltaPercent ? '--' : `${deltaPercentValue >= 0 ? '+' : ''}${deltaPercentValue.toFixed(2)}%`;
+
+  return (
+    <div className={`rounded-lg border px-3 py-2.5 shadow-sm transition hover:shadow-md ${rowTone}`}>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-start gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-xs font-semibold text-slate-700">{def.title}</div>
+          <div className="mt-1 truncate text-[11px] font-medium text-slate-500">
+            {(def.formatPrevious ?? def.format)(def.metric.previous)}
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="whitespace-nowrap text-sm font-bold text-slate-950">{def.format(def.metric.current)}</div>
+          <div className={`mt-1 whitespace-nowrap text-[11px] font-semibold ${trendColor}`}>{deltaStr}</div>
+        </div>
+        <div className="w-16 text-right">
+          <div className="whitespace-nowrap text-sm font-bold text-slate-950">{pctStr}</div>
+          <div className={`mt-1 inline-flex items-center justify-end gap-1 text-[11px] font-semibold ${trendColor}`}>
+            {isNeutral ? null : isPositive ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
+            <span>{def.metric.trend === 'neutral' ? '--' : def.metric.trend === 'up' ? 'рост' : 'сниж.'}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 

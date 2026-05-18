@@ -12,7 +12,10 @@ export function buildApiMetricValue(current: number | null | undefined, comparis
   const currentValue = Number(current ?? 0);
   const previousValue = Number.isFinite(comparison?.previous ?? NaN) ? Number(comparison?.previous ?? 0) : 0;
   const deltaValue = Number.isFinite(comparison?.delta ?? NaN) ? Number(comparison?.delta ?? 0) : 0;
-  const deltaPercentValue = Number.isFinite(comparison?.deltaPercent ?? NaN) ? Number(comparison?.deltaPercent ?? 0) : 0;
+  const deltaPercentValue =
+    previousValue !== 0 && Number.isFinite(comparison?.deltaPercent ?? NaN)
+      ? Number(comparison?.deltaPercent ?? 0)
+      : 0;
 
   return {
     current: currentValue,

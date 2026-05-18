@@ -467,9 +467,9 @@ function MonthPanel({
           {weeks.map((week, weekIndex) => (
             <tr key={`${label}-${weekIndex}`} className="mt-2 flex w-full">
               {week.map(day => {
-                const isSelectedStart = day.iso === rangeStart;
-                const isSelectedEnd = day.iso === rangeEnd;
-                const isInRange = Boolean(rangeStart && rangeEnd && day.iso >= rangeStart && day.iso <= rangeEnd);
+                const isSelectedStart = day.isCurrentMonth && day.iso === rangeStart;
+                const isSelectedEnd = day.isCurrentMonth && day.iso === rangeEnd;
+                const isInRange = day.isCurrentMonth && Boolean(rangeStart && rangeEnd && day.iso >= rangeStart && day.iso <= rangeEnd);
                 const isSingleDay = isSelectedStart && isSelectedEnd;
                 const availabilityState = day.isCurrentMonth ? availabilityByDate.get(day.iso) : undefined;
 

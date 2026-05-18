@@ -23,6 +23,7 @@ interface MetricCardProps {
   format: (v: number) => string;
   formatPrevious?: (v: number) => string;
   formatDelta?: (v: number) => string;
+  hideDeltaPercent?: boolean;
   invertColors?: boolean;
   unit?: string;
   description?: string;
@@ -79,6 +80,7 @@ export function MetricCard({
   format,
   formatPrevious,
   formatDelta,
+  hideDeltaPercent = false,
   invertColors = false,
   unit,
   description,
@@ -148,6 +150,7 @@ export function MetricCard({
   const previousFormat = formatPrevious ?? format;
   const deltaValue = metric.delta ?? 0;
   const deltaPercentValue = metric.deltaPercent ?? 0;
+  const shouldHideDeltaPercent = hideDeltaPercent || !Number.isFinite(metric.previous) || metric.previous === 0;
   const deltaStr = formatDelta
     ? formatDelta(deltaValue)
     : `${deltaValue >= 0 ? '+' : ''}${deltaValue.toFixed(1)}`;
@@ -261,8 +264,12 @@ export function MetricCard({
           <div className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/80 bg-white px-2.5 py-1 text-[11px] font-bold shadow-sm ring-1 ring-slate-200/80 sm:text-xs ${trendColor}`}>
             {isNeutral ? <Minus size={12} /> : isPositive ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
             <span><FormattedValue value={deltaStr} /></span>
-            <span className="text-slate-300">/</span>
-            <span><FormattedValue value={pctStr} /></span>
+            {!shouldHideDeltaPercent && (
+              <>
+                <span className="text-slate-300">/</span>
+                <span><FormattedValue value={pctStr} /></span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -317,8 +324,12 @@ export function MetricCard({
               <div className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${bgColor} ${trendColor}`}>
                 {isNeutral ? <Minus size={12} /> : isPositive ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
                 <span><FormattedValue value={deltaStr} /></span>
-                <span className="text-slate-300">/</span>
-                <span><FormattedValue value={pctStr} /></span>
+                {!shouldHideDeltaPercent && (
+                  <>
+                    <span className="text-slate-300">/</span>
+                    <span><FormattedValue value={pctStr} /></span>
+                  </>
+                )}
               </div>
 
               {faq && (
