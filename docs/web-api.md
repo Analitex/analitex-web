@@ -1,6 +1,6 @@
 # AiStats Web API
 
-Updated on 2026-04-25.
+Updated on 2026-05-19.
 
 This document is the working API reference for the web frontend.
 
@@ -52,8 +52,13 @@ Current backend gap to be aware of:
 Operational endpoints:
 - `GET /health/live`
 - `GET /health/ready`
-- `GET /openapi/v1.json`
 - `GET /swagger`
+- `GET /swagger/v1/swagger.json`
+- `GET /swagger/app-v1/swagger.json`
+
+Swagger documents:
+- `v1` contains the full API surface
+- `app-v1` contains the application-facing API surface
 
 ## Auth
 
@@ -208,7 +213,7 @@ Request:
 ### `PATCH /api/v1/organizations/{organizationId}`
 ### `POST /api/v1/organizations/{organizationId}/transfer-ownership`
 
-Org membership and admin operations.
+Org membership and owner operations.
 
 ## Invitations
 
@@ -503,6 +508,16 @@ Behavior:
 
 Article-cost endpoints are the manual input surface for organization-defined article себестоимость. Marketplaces do not provide this value; the synced marketplace catalog only supplies article identity and metadata. These endpoints list catalog articles from the same filter universe as dashboard reporting, then overlay the organization's configured cost snapshots.
 
+Access:
+- these endpoints require an authenticated user with permission to manage the marketplace connection's organization
+
+Shared filter contract:
+- `accountId`: string array of numeric shop/account ids, for example `["1135326198"]`
+- `marketplaceId`: string array of numeric marketplace ids, currently `"1"` = Ozon and `"2"` = Wildberries
+- `brand` / `brandIds`: brand filters; both forms are accepted and merged
+- `category` / `categoryIds`: category filters; both forms are accepted and merged
+- `article` / `productIds`: marketplace article/product filters; both forms are accepted and merged
+
 Query request:
 
 ```json
@@ -519,10 +534,25 @@ Query request:
 }
 ```
 
+Query response shape:
+- `items[]`: paged article rows with current/default and dated cost values
+- `dates[]`: known cost snapshot dates; empty string means current/default value (`date: null`)
+- `byBarcodeMode`
+- `vatAvailableMode`
+- `pagination`
+- `filters`
+  - `accounts`
+  - `accountsWithMarketplace`
+  - `marketplaces`
+  - `articles`
+  - `groups`
+
 Query behavior:
 - returns catalog articles even when no cost is configured yet
 - excludes reporting-only residual rows such as `article = "0"` / `Неопознанный товар`
 - supports dashboard-style filters by account, marketplace, brand, category, and article/product id
+- returns marketplace/shop filter dictionaries from the current marketplace connection, with catalog row metadata used only as an additional source
+- shop filter labels fall back to the connection `displayName`, then `externalAccountId`, then `accountId`, so sparse catalog `accountName` values do not hide the shop selector
 - returns current/default organization cost as `date: null`
 - returns dated organization cost snapshots as additional `values`
 - editable values are `cost`, `fulfillment`, and `vat`
@@ -554,84 +584,7 @@ Upload behavior:
 - use `date: null` for the current/default value
 - use `date: "YYYY-MM-DD"` when importing a historical snapshot effective for that date
 
-Export request:
-
-```json
-{
-  "date": "2026-05-19",
-  "filters": {
-    "accountId": ["9273"],
-    "marketplaceId": ["1"],
-    "brand": ["Arhan"],
-    "category": [],
-    "article": []
-  }
-}
-```
-
-Export behavior:
-- returns an `.xlsx` attachment with all matching real catalog articles, not only one query page
-- writes the selected export date into the first row as `Дата`; when `date` is omitted, the date cell contains `-`
-- when `date` is provided, exports that dated organization cost value when present
-- otherwise uses the current/default organization cost value (`date: null`) when present
-- if only dated values exist for an article, exports the latest dated value
-- if no organization cost is configured yet, exports `0` for `Себестоимость`, `Фулфилмент`, and `НДС`
-- excludes reporting-only residual rows such as `article = "0"` / `Неопознанный товар`
-- the same XLSX shape can be edited by the user and sent to the import endpoint
-- row `1` date is optional:
-  - `A1 = Дата`
-  - `G1 = YYYY-MM-DD` imports rows as dated snapshots
-  - blank or `-` imports rows as current/default cost values (`date: null`)
-- column order:
-  - `Артикул продавца`
-  - `Артикул маркетплейса`
-  - `Размер`
-  - `Баркод`
-  - `Себестоимость`
-  - `Фулфилмент`
-  - `НДС`
-
-Import request:
-- `multipart/form-data`
-- file field: `file`
-- accepted format: `.xlsx` using the export column shape above
-
-Import behavior:
-- reads the date from the first row when present and applies it to all imported rows
-- imports `Себестоимость`, `Фулфилмент`, and `НДС` by `Артикул маркетплейса`
-- ignores seller article, size, and barcode for matching; those columns are present for manager review and TrueStats-style file compatibility
-- saves rows whose marketplace article exists in the synced product catalog
-- does not save rows whose marketplace article cannot be found; those rows are returned in `unknownArticles`
-- invalid rows are returned in `errors`
-- valid found rows can still be saved when the file also contains unknown or invalid rows
-- import does not update article metadata
-
-Import response shape:
-
-```json
-{
-  "date": "2026-05-19",
-  "parsedRows": 4,
-  "savedRows": 3,
-  "storedRows": 10,
-  "unknownArticles": [
-    {
-      "rowNumber": 5,
-      "sellerArticle": "Unknown product",
-      "marketplaceArticle": "999999999",
-      "size": "0",
-      "barcode": "2000000000000",
-      "message": "Marketplace article '999999999' was not found in the synced product catalog."
-    }
-  ],
-  "errors": [],
-  "costs": {
-    "...": "..."
-  }
-}
-```
-
-Response shape:
+Upload response shape:
 
 ```json
 {
@@ -680,6 +633,137 @@ Response shape:
     ],
     "byBarcodeMode": true,
     "vatAvailableMode": true
+  }
+}
+```
+
+### Article Costs XLSX Export
+
+Endpoint:
+- `POST /api/v1/config/marketplace-connections/{connectionId}/article-costs/export`
+
+Export request:
+
+```json
+{
+  "date": "2026-05-19",
+  "filters": {
+    "accountId": ["9273"],
+    "marketplaceId": ["1"],
+    "brand": ["Arhan"],
+    "category": [],
+    "article": []
+  }
+}
+```
+
+Export behavior:
+- returns a binary `.xlsx` attachment with all matching real catalog articles, not only one query page
+- response content type is `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+- response header includes `Content-Disposition: attachment; filename="article-costs-{timestamp}.xlsx"`
+- writes the selected export date into the first row as `Дата`; when `date` is omitted, the date cell contains `-`
+- when `date` is provided, exports that dated organization cost value when present
+- otherwise uses the current/default organization cost value (`date: null`) when present
+- if only dated values exist for an article, exports the latest dated value
+- if no organization cost is configured yet, exports `0` for `Себестоимость`, `Фулфилмент`, and `НДС`
+- excludes reporting-only residual rows such as `article = "0"` / `Неопознанный товар`
+- the same XLSX shape can be edited by the user and sent to the import endpoint
+- row `1` date is optional:
+  - `A1 = Дата`
+  - `G1 = YYYY-MM-DD` imports rows as dated snapshots
+  - blank or `-` imports rows as current/default cost values (`date: null`)
+- column order:
+  - `Артикул продавца`
+  - `Артикул маркетплейса`
+  - `Размер`
+  - `Баркод`
+  - `Себестоимость`
+  - `Фулфилмент`
+  - `НДС`
+
+Example frontend call shape:
+
+```ts
+const response = await fetch(`/api/v1/config/marketplace-connections/${connectionId}/article-costs/export`, {
+  method: "POST",
+  headers: {
+    "Authorization": `Bearer ${accessToken}`,
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    date: "2026-05-19",
+    filters: {
+      accountId: ["1135326198"],
+      marketplaceId: ["1"],
+      brand: [],
+      category: [],
+      article: []
+    }
+  })
+});
+
+const blob = await response.blob();
+```
+
+### Article Costs XLSX Import
+
+Endpoint:
+- `POST /api/v1/config/marketplace-connections/{connectionId}/article-costs/import`
+
+Import request:
+- `multipart/form-data`
+- preferred file field: `file`
+- if `file` is absent, the backend uses the first uploaded form file
+- accepted format: `.xlsx` using the export column shape above
+
+Import behavior:
+- reads the date from the first row when present and applies it to all imported rows
+- imports `Себестоимость`, `Фулфилмент`, and `НДС` by `Артикул маркетплейса`
+- ignores seller article, size, and barcode for matching; those columns are present for manager review and TrueStats-style file compatibility
+- saves rows whose marketplace article exists in the synced product catalog
+- does not save rows whose marketplace article cannot be found; those rows are returned in `unknownArticles`
+- invalid rows are returned in `errors`
+- valid found rows can still be saved when the file also contains unknown or invalid rows
+- import does not update article metadata
+
+Example frontend call shape:
+
+```ts
+const form = new FormData();
+form.append("file", file);
+
+const response = await fetch(`/api/v1/config/marketplace-connections/${connectionId}/article-costs/import`, {
+  method: "POST",
+  headers: {
+    "Authorization": `Bearer ${accessToken}`
+  },
+  body: form
+});
+
+const result = await response.json();
+```
+
+Import response shape:
+
+```json
+{
+  "date": "2026-05-19",
+  "parsedRows": 4,
+  "savedRows": 3,
+  "storedRows": 10,
+  "unknownArticles": [
+    {
+      "rowNumber": 5,
+      "sellerArticle": "Unknown product",
+      "marketplaceArticle": "999999999",
+      "size": "0",
+      "barcode": "2000000000000",
+      "message": "Marketplace article '999999999' was not found in the synced product catalog."
+    }
+  ],
+  "errors": [],
+  "costs": {
+    "...": "..."
   }
 }
 ```
@@ -894,7 +978,7 @@ Current retry behavior:
 
 ### `GET /api/v1/marketplace-sync-runs/{syncRunId}/artifacts`
 
-Debug/admin endpoint.
+Debug endpoint.
 
 Returns sync artifact metadata persisted from the sync pipeline.
 
@@ -996,187 +1080,6 @@ Current behavior:
   - `sentAt`
 - verification emails expose `metadata.kind = email_verification` and `metadata.code`
 - password reset emails expose `metadata.kind = password_reset`, `metadata.resetToken`, and `metadata.resetUrl`
-
-## Admin Marketplace Maintenance
-
-These endpoints are intended for the future web admin console. They are protected and require organization owner/admin access for the target connection.
-
-### `GET /api/v1/admin/marketplace-connections/{connectionId}/maintenance-plan`
-
-Returns backend-recommended sync presets for the connection:
-- `DailyIncremental` for fresh preliminary dashboard data
-- `WeeklyFinalization` for settled week refreshes
-- `HistoricalBackfill` for onboarding, formula changes, and source corrections
-
-Response shape:
-- `marketplaceConnectionId`
-- `marketplace`
-- `connectionName`
-- `plans[]`
-  - `operation`
-  - `label`
-  - `syncKinds`
-  - `cadence`
-  - `description`
-- `notes[]`
-
-### `POST /api/v1/admin/marketplace-connections/{connectionId}/sync`
-
-Enqueues an admin maintenance sync. If `syncKinds` is empty and `operation` is not `Custom`, backend uses the recommended marketplace preset.
-
-Request:
-
-```json
-{
-  "dateFrom": "2026-04-20",
-  "dateTo": "2026-04-26",
-  "operation": "WeeklyFinalization",
-  "syncKinds": []
-}
-```
-
-Response:
-
-```json
-{
-  "marketplaceConnectionId": "guid",
-  "marketplace": "Ozon",
-  "operation": "WeeklyFinalization",
-  "dateFrom": "2026-04-20",
-  "dateTo": "2026-04-26",
-  "syncKinds": ["catalog", "postings", "finance", "returns", "stocks", "analytics", "performanceProducts", "performanceOrders", "performancePhrases", "performanceExternalTraffic"],
-  "syncRunIds": ["guid"],
-  "enqueuedAt": "2026-05-04T10:00:00Z",
-  "nextStep": "Poll the returned sync runs. When they succeed, call POST /api/v1/admin/analytics/recalculate for the same connection/range/kinds."
-}
-```
-
-### `POST /api/v1/admin/marketplace-connections/{connectionId}/maintenance-schedule/preview`
-
-Returns the concrete date range and payloads the web admin console should use for a daily, weekly, historical, or custom maintenance run. This endpoint does not enqueue jobs.
-
-Request:
-
-```json
-{
-  "operation": "WeeklyFinalization",
-  "anchorDate": "2026-05-04",
-  "syncKinds": []
-}
-```
-
-For `WeeklyFinalization`, the default range is the previous full ISO week before `anchorDate`. For `DailyIncremental`, the default range is `anchorDate - 1 day`. For `HistoricalBackfill` and `Custom`, send explicit `dateFrom` and `dateTo`.
-
-Response shape:
-- `marketplaceConnectionId`
-- `marketplace`
-- `operation`
-- `anchorDate`
-- `dateFrom`
-- `dateTo`
-- `syncKinds`
-- `syncRequest`
-- `recalculateRequest`
-- `steps[]`
-- `notes[]`
-
-### `GET /api/v1/admin/marketplace-connections/{connectionId}/maintenance-schedules`
-### `POST /api/v1/admin/marketplace-connections/{connectionId}/maintenance-schedules`
-### `PUT /api/v1/admin/marketplace-maintenance-schedules/{scheduleId}`
-### `DELETE /api/v1/admin/marketplace-maintenance-schedules/{scheduleId}`
-
-Persists admin-console schedule configuration for future automatic marketplace maintenance. These endpoints do not execute schedules by themselves yet.
-
-Create/update request:
-
-```json
-{
-  "operation": "WeeklyFinalization",
-  "enabled": true,
-  "runAtUtc": "03:00",
-  "timeZoneId": "UTC",
-  "syncKinds": [],
-  "startDate": null,
-  "endDate": null
-}
-```
-
-Response item shape:
-- `id`
-- `marketplaceConnectionId`
-- `marketplace`
-- `operation`
-- `enabled`
-- `runAtUtc`
-- `timeZoneId`
-- `syncKinds`
-- `startDate`
-- `endDate`
-- `lastPlannedAt`
-- `lastEnqueuedAt`
-- `lastRecalculatedAt`
-- `createdAt`
-- `updatedAt`
-
-Current behavior:
-- empty `syncKinds` on non-`Custom` schedules are resolved to the backend marketplace preset before saving
-- `Custom` schedules require explicit `syncKinds`
-- `runAtUtc` is stored as a UTC wall-clock time, for example `03:00`
-- schedule responses expose:
-  - `lastPlannedAt` when the automatic scheduler resolves a due run
-  - `lastEnqueuedAt` when that due run is successfully enqueued
-  - `lastRecalculatedAt` when admin recalculation matches the schedule connection/range/sync-kind scope
-- PostgreSQL deployments require the matching `marketplace_maintenance_schedules` migration before these endpoints can be used
-- automatic execution is opt-in and disabled by default
-- to enable automatic execution, configure `MarketplaceMaintenanceScheduler:Enabled = true`
-- scheduler polling uses `MarketplaceMaintenanceScheduler:PollIntervalSeconds`, default `60`, minimum `15`
-- automatic execution enqueues sync runs only; existing sync finalization performs normalization as usual
-- `DailyIncremental` runs for yesterday, once per UTC day after `runAtUtc`
-- `WeeklyFinalization` runs for the previous full ISO week, once per UTC day after `runAtUtc`
-- `HistoricalBackfill` and `Custom` schedules require `startDate` and `endDate`
-- `HistoricalBackfill` and `Custom` are treated as one-shot automatic schedules: after one successful planning/enqueue pass, they will not run again unless the schedule is edited
-
-### `POST /api/v1/admin/analytics/recalculate`
-
-Rebuilds normalized read models from existing sync artifacts. Use this after completed admin syncs, formula changes, cost imports, or source corrections.
-
-Request by connection scope:
-
-```json
-{
-  "connectionId": "guid",
-  "dateFrom": "2026-04-20",
-  "dateTo": "2026-04-26",
-  "syncKinds": ["finance", "postings", "returns", "stocks"],
-  "dryRun": false
-}
-```
-
-Request by explicit sync runs:
-
-```json
-{
-  "syncRunIds": ["guid", "guid"],
-  "dryRun": true
-}
-```
-
-Response:
-
-```json
-{
-  "syncRunIds": ["guid"],
-  "artifactCount": 4,
-  "dryRun": false,
-  "recalculatedAt": "2026-05-04T10:05:00Z"
-}
-```
-
-Operational recommendation:
-- run daily incremental syncs for freshness
-- run weekly finalization syncs after marketplace week data settles
-- run recalculation after finalization syncs succeed
-- use `dryRun = true` to preview which artifacts would be recalculated
 
 ## Analytics Query Model
 

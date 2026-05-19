@@ -67,6 +67,33 @@ function resolveApiErrorMessage(details?: ApiErrorBody, fallback = 'Request fail
   return details?.detail || details?.message || details?.title || fallback;
 }
 
+function getAuthHeaders(options: RequestInit & { token?: string | null }, accept = 'application/json') {
+  const headers = new Headers(options.headers);
+  headers.set('Accept', accept);
+
+  if (typeof options.body === 'string' && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  if (options.token) {
+    headers.set('Authorization', `Bearer ${options.token}`);
+  }
+
+  return headers;
+}
+
+function getHeaderFilename(contentDisposition: string | null) {
+  if (!contentDisposition) return null;
+
+  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1].replace(/"/g, ''));
+  }
+
+  const match = contentDisposition.match(/filename="?([^";]+)"?/i);
+  return match?.[1] ?? null;
+}
+
 export async function apiPing() {
   const response = await fetch(buildUrl('/health/ready'));
   if (!response.ok) {
@@ -97,16 +124,7 @@ export async function apiRequest<T>(
     }
   }
 
-  const headers = new Headers(options.headers);
-  headers.set('Accept', 'application/json');
-
-  if (options.body && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
-  }
-
-  if (options.token) {
-    headers.set('Authorization', `Bearer ${options.token}`);
-  }
+  const headers = getAuthHeaders(options);
 
   const requestPromise = (async () => {
     const response = await fetch(buildUrl(path), {
@@ -150,4 +168,30 @@ export async function apiRequest<T>(
       IN_FLIGHT_REQUESTS.delete(requestKey);
     }
   }
+}
+
+export async function apiDownload(
+  path: string,
+  options: RequestInit & { token?: string | null } = {}
+): Promise<{ blob: Blob; filename: string | null }> {
+  const response = await fetch(buildUrl(path), {
+    ...options,
+    headers: getAuthHeaders(options, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+  });
+
+  if (!response.ok) {
+    let details: ApiErrorBody | undefined;
+    try {
+      details = (await response.json()) as ApiErrorBody;
+    } catch {
+      details = undefined;
+    }
+    const message = resolveApiErrorMessage(details, response.statusText || 'Request failed');
+    throw new ApiError(message, response.status, details);
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: getHeaderFilename(response.headers.get('Content-Disposition')),
+  };
 }

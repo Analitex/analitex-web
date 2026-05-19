@@ -63,7 +63,8 @@ export function FilterBar({
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
   const [isReportModeMenuOpen, setIsReportModeMenuOpen] = useState(false);
   const reportModeRef = useRef<HTMLDivElement | null>(null);
-  const showFilters = currentPage !== 'settings';
+  const isCostsPage = currentPage === 'costs';
+  const showFilters = currentPage !== 'settings' && !isCostsPage;
   const supportsReportMode =
     showFilters &&
     (currentPage === 'dashboard' ||
@@ -123,6 +124,21 @@ export function FilterBar({
     document.addEventListener('mousedown', handlePointerDown);
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [isReportModeMenuOpen]);
+
+  if (isCostsPage) {
+    return (
+      <div className="border-b border-slate-200 bg-white px-4 py-3 md:hidden">
+        <button
+          type="button"
+          onClick={onOpenMobileNav}
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-white"
+          aria-label="Открыть навигацию"
+        >
+          <Menu size={18} />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <>

@@ -2160,6 +2160,65 @@
         }
       }
     },
+    "/api/v1/config/marketplace-connections/{connectionId}/article-costs/export": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsConfigExportMarketplaceArticleCostsEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceArticleCostExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/config/marketplace-connections/{connectionId}/article-costs/import": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsConfigImportMarketplaceArticleCostsEndpoint",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceArticleCostsImportResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/v1/analytics/breakdown": {
       "post": {
         "tags": [
@@ -5013,6 +5072,10 @@
         },
         "additionalProperties": false
       },
+      "EmptyRequest": {
+        "type": "object",
+        "additionalProperties": false
+      },
       "ExplanationBreakdownItem": {
         "required": [
           "amount",
@@ -5719,6 +5782,20 @@
         },
         "additionalProperties": false
       },
+      "MarketplaceArticleCostExportRequest": {
+        "type": "object",
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/MarketplaceArticleCostListFilters"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "MarketplaceArticleCostFilterArticleResponse": {
         "required": [
           "accountId",
@@ -5799,6 +5876,58 @@
             "items": {
               "$ref": "#/components/schemas/MarketplaceArticleCostMarketplaceFilterResponse"
             },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostImportRowErrorResponse": {
+        "required": [
+          "message",
+          "rowNumber"
+        ],
+        "type": "object",
+        "properties": {
+          "rowNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostImportUnknownArticleResponse": {
+        "required": [
+          "message",
+          "rowNumber"
+        ],
+        "type": "object",
+        "properties": {
+          "rowNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sellerArticle": {
+            "type": "string",
+            "nullable": true
+          },
+          "marketplaceArticle": {
+            "type": "string",
+            "nullable": true
+          },
+          "size": {
+            "type": "string",
+            "nullable": true
+          },
+          "barcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "type": "string",
             "nullable": true
           }
         },
@@ -6291,6 +6420,54 @@
           "currencyCode": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostsImportResponse": {
+        "required": [
+          "costs",
+          "errors",
+          "parsedRows",
+          "savedRows",
+          "storedRows",
+          "unknownArticles"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "parsedRows": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "savedRows": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "storedRows": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unknownArticles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceArticleCostImportUnknownArticleResponse"
+            },
+            "nullable": true
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceArticleCostImportRowErrorResponse"
+            },
+            "nullable": true
+          },
+          "costs": {
+            "$ref": "#/components/schemas/MarketplaceArticleCostsResponse"
           }
         },
         "additionalProperties": false
