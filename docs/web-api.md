@@ -381,6 +381,47 @@ Current behavior:
 ### `POST /api/v1/marketplace-connections/{connectionId}/validate`
 ### `DELETE /api/v1/marketplace-connections/{connectionId}`
 
+`PATCH /api/v1/marketplace-connections/{connectionId}` updates an existing shop connection.
+
+At least one of `displayName` or `credentials` is required.
+
+Rename only:
+
+```json
+{
+  "displayName": "Main Wildberries shop"
+}
+```
+
+Rotate Wildberries API token:
+
+```json
+{
+  "credentials": {
+    "apiToken": "new-token"
+  }
+}
+```
+
+Rotate Ozon API keys:
+
+```json
+{
+  "credentials": {
+    "clientId": "12345",
+    "apiKey": "new-secret",
+    "performanceClientId": "seller.performance.12345",
+    "performanceClientSecret": "new-perf-secret"
+  }
+}
+```
+
+Current behavior:
+- credentials are saved protected at rest
+- replacing credentials resets credential validation state before validation
+- after saving new credentials, the backend runs marketplace validation and updates connection status to `Active` or `InvalidCredentials`
+- Ozon performance credentials remain optional, but if one performance field is sent, the other must also be sent
+
 ## Marketplace Accounting Config
 
 These endpoints provide explicit seller-side accounting inputs for parity metrics that marketplaces do not expose directly in product-level sync data.
@@ -454,6 +495,194 @@ Behavior:
   - `roi`
   - `gmroi`
   - `gmroiYear`
+
+### `POST /api/v1/config/marketplace-connections/{connectionId}/article-costs/query`
+### `POST /api/v1/config/marketplace-connections/{connectionId}/article-costs/upload`
+### `POST /api/v1/config/marketplace-connections/{connectionId}/article-costs/export`
+### `POST /api/v1/config/marketplace-connections/{connectionId}/article-costs/import`
+
+Article-cost endpoints are the manual input surface for organization-defined article себестоимость. Marketplaces do not provide this value; the synced marketplace catalog only supplies article identity and metadata. These endpoints list catalog articles from the same filter universe as dashboard reporting, then overlay the organization's configured cost snapshots.
+
+Query request:
+
+```json
+{
+  "filters": {
+    "accountId": ["9273"],
+    "marketplaceId": ["1"],
+    "brand": ["Arhan"],
+    "category": [],
+    "article": []
+  },
+  "page": 1,
+  "limit": 30
+}
+```
+
+Query behavior:
+- returns catalog articles even when no cost is configured yet
+- excludes reporting-only residual rows such as `article = "0"` / `Неопознанный товар`
+- supports dashboard-style filters by account, marketplace, brand, category, and article/product id
+- returns current/default organization cost as `date: null`
+- returns dated organization cost snapshots as additional `values`
+- editable values are `cost`, `fulfillment`, and `vat`
+- reporting unit cost remains `cost + fulfillment + vat`
+
+Upload request:
+
+```json
+{
+  "items": [
+    {
+      "article": "1583892593",
+      "cost": 450.0,
+      "fulfillment": 0.0,
+      "vat": 0.0,
+      "date": null
+    }
+  ]
+}
+```
+
+Upload behavior:
+- upload always saves organization-defined cost rows by `article + date` and keeps other rows
+- upload can only target articles already present in the synced product catalog for the marketplace connection
+- upload rejects reporting-only residual rows such as `article = "0"` / `Неопознанный товар`
+- upload does not update article metadata such as title, vendor code, brand, category, image, or marketplace product identity
+- `cost`, `fulfillment`, and `vat` must be non-negative
+- uploaded rows are normalized into reporting cost as `cost + fulfillment + vat`
+- use `date: null` for the current/default value
+- use `date: "YYYY-MM-DD"` when importing a historical snapshot effective for that date
+
+Export request:
+
+```json
+{
+  "date": "2026-05-19",
+  "filters": {
+    "accountId": ["9273"],
+    "marketplaceId": ["1"],
+    "brand": ["Arhan"],
+    "category": [],
+    "article": []
+  }
+}
+```
+
+Export behavior:
+- returns an `.xlsx` attachment with all matching real catalog articles, not only one query page
+- writes the selected export date into the first row as `Дата`; when `date` is omitted, the date cell contains `-`
+- when `date` is provided, exports that dated organization cost value when present
+- otherwise uses the current/default organization cost value (`date: null`) when present
+- if only dated values exist for an article, exports the latest dated value
+- if no organization cost is configured yet, exports `0` for `Себестоимость`, `Фулфилмент`, and `НДС`
+- excludes reporting-only residual rows such as `article = "0"` / `Неопознанный товар`
+- the same XLSX shape can be edited by the user and sent to the import endpoint
+- row `1` date is optional:
+  - `A1 = Дата`
+  - `G1 = YYYY-MM-DD` imports rows as dated snapshots
+  - blank or `-` imports rows as current/default cost values (`date: null`)
+- column order:
+  - `Артикул продавца`
+  - `Артикул маркетплейса`
+  - `Размер`
+  - `Баркод`
+  - `Себестоимость`
+  - `Фулфилмент`
+  - `НДС`
+
+Import request:
+- `multipart/form-data`
+- file field: `file`
+- accepted format: `.xlsx` using the export column shape above
+
+Import behavior:
+- reads the date from the first row when present and applies it to all imported rows
+- imports `Себестоимость`, `Фулфилмент`, and `НДС` by `Артикул маркетплейса`
+- ignores seller article, size, and barcode for matching; those columns are present for manager review and TrueStats-style file compatibility
+- saves rows whose marketplace article exists in the synced product catalog
+- does not save rows whose marketplace article cannot be found; those rows are returned in `unknownArticles`
+- invalid rows are returned in `errors`
+- valid found rows can still be saved when the file also contains unknown or invalid rows
+- import does not update article metadata
+
+Import response shape:
+
+```json
+{
+  "date": "2026-05-19",
+  "parsedRows": 4,
+  "savedRows": 3,
+  "storedRows": 10,
+  "unknownArticles": [
+    {
+      "rowNumber": 5,
+      "sellerArticle": "Unknown product",
+      "marketplaceArticle": "999999999",
+      "size": "0",
+      "barcode": "2000000000000",
+      "message": "Marketplace article '999999999' was not found in the synced product catalog."
+    }
+  ],
+  "errors": [],
+  "costs": {
+    "...": "..."
+  }
+}
+```
+
+Response shape:
+
+```json
+{
+  "marketplaceConnectionId": "guid",
+  "accountId": 123456789,
+  "savedRows": 1,
+  "storedRows": 1,
+  "costs": {
+    "marketplaceConnectionId": "guid",
+    "accountId": 123456789,
+    "items": [
+      {
+        "article": "1583892593",
+        "vendorCode": null,
+        "title": null,
+        "accountId": 123456789,
+        "marketplaceConnectionId": "guid",
+        "minCost": 450.0,
+        "maxCost": 450.0,
+        "minFulfillment": 0.0,
+        "maxFulfillment": 0.0,
+        "minVat": 0.0,
+        "maxVat": 0.0,
+        "costs": [
+          {
+            "sizeId": 767569159,
+            "size": "0",
+            "barcode": "2043277800551",
+            "values": [
+              {
+                "date": null,
+                "cost": 450.0,
+                "fulfillment": 0.0,
+                "vat": 0.0,
+                "isAvailableVat": true,
+                "currencyCode": "RUB"
+              }
+            ]
+          }
+        ],
+        "updatedAt": "2026-05-19T08:00:00Z"
+      }
+    ],
+    "dates": [
+      null
+    ],
+    "byBarcodeMode": true,
+    "vatAvailableMode": true
+  }
+}
+```
 
 Mode-specific reporting behavior:
 - `Management` mode keeps product-level management math from normalized product aggregates
@@ -544,6 +773,7 @@ Response:
 
 ```json
 {
+  "syncGroupId": "guid",
   "marketplaceConnectionId": "guid",
   "syncRunIds": ["guid", "guid"],
   "enqueuedAt": "2026-04-17T12:00:00Z"
@@ -551,7 +781,9 @@ Response:
 ```
 
 Current behavior:
-- if an identical sync kind for the same connection and date range is already `Queued` or `Running`, the backend reuses that active sync run id instead of creating a duplicate
+- each enqueue request creates one persisted `syncGroupId`
+- every sync run created by that request exposes the same `syncGroupId`
+- use the group endpoints below when the UI needs one overall progress card for a multi-kind sync request
 - `catalog` is a first-class sync kind for Wildberries and Ozon
 - `catalog` refresh persists canonical product identity and snapshot data without creating sales/finance/inventory facts
 - use `catalog` when the web app needs richer filters or refreshed product master data without waiting for commercial activity
@@ -559,6 +791,46 @@ Current behavior:
 ### `GET /api/v1/marketplace-connections/{connectionId}/sync-runs`
 
 Returns sync runs for one connected shop.
+
+### `GET /api/v1/marketplace-connections/{connectionId}/sync-groups`
+
+Returns grouped sync requests for one connected shop.
+
+### `GET /api/v1/marketplace-sync-groups/{syncGroupId}`
+
+Returns one grouped sync request with aggregate progress and the child runs.
+
+Response:
+
+```json
+{
+  "syncGroupId": "guid",
+  "marketplaceConnectionId": "guid",
+  "requestedByUserId": "guid",
+  "dateFrom": "2026-04-01",
+  "dateTo": "2026-04-17",
+  "requestedAt": "2026-04-17T12:00:00Z",
+  "status": "Running",
+  "progressPercent": 45,
+  "totalRuns": 3,
+  "queuedRuns": 1,
+  "runningRuns": 1,
+  "succeededRuns": 1,
+  "failedRuns": 0,
+  "cancelledRuns": 0,
+  "runs": []
+}
+```
+
+Group status values:
+- `Queued`
+- `Running`
+- `Succeeded`
+- `Failed`
+- `Cancelled`
+- `PartialFailed`
+- `PartialCancelled`
+- `Mixed`
 
 ### `GET /api/v1/marketplace-sync-runs/{syncRunId}`
 
@@ -570,6 +842,7 @@ Returns one sync run:
 - `Failed`
 
 Important response fields:
+- `syncGroupId`
 - `canRetry`
 - `canCancel`
 - `attemptCount`
@@ -592,7 +865,7 @@ Retries a previous sync run by reusing:
 
 Current behavior:
 - response shape is the same as the normal sync enqueue endpoint
-- duplicate suppression still applies, so retrying an already active identical run reuses the active run id
+- retrying a run creates a new one-run `syncGroupId`
 
 ### `POST /api/v1/marketplace-sync-runs/{syncRunId}/cancel`
 
@@ -2508,74 +2781,6 @@ Current behavior:
   - Ozon categories
 - when no synced data exists yet, the endpoint returns empty filter lists and echoes the requested date range instead of prototype placeholder data
 
-### `POST /api/v1/metadata/data-availability`
-
-Calendar-oriented day availability endpoint.
-
-Purpose:
-- let the web app mark which days have data
-- distinguish between any data and complete data
-- return compressed ranges for fast date-picker highlighting
-
-Request:
-
-```json
-{
-  "dateFrom": "2026-04-01",
-  "dateTo": "2026-04-30",
-  "accountIds": [123456],
-  "marketplaces": ["Wildberries"],
-  "mode": "Financial",
-  "surface": "ProductReporting"
-}
-```
-
-Response:
-
-```json
-{
-  "days": [
-    {
-      "date": "2026-04-01",
-      "hasAnyData": true,
-      "hasCompleteData": true,
-      "isPartial": false,
-      "sources": {
-        "core": true,
-        "finance": true,
-        "traffic": false,
-        "stocks": true
-      }
-    }
-  ],
-  "ranges": {
-    "anyData": [
-      { "dateFrom": "2026-04-01", "dateTo": "2026-04-20" }
-    ],
-    "completeData": [
-      { "dateFrom": "2026-04-01", "dateTo": "2026-04-14" }
-    ]
-  },
-  "meta": {
-    "updatedAt": "2026-05-05T12:00:00Z"
-  }
-}
-```
-
-Current completeness policy:
-- `surface = "Overview"` -> complete when core normalized daily facts exist
-- `surface = "Finance"` -> complete when account finance daily facts exist
-- `surface = "Traffic"` -> complete when product traffic daily facts exist
-- `surface = "Stocks"` -> complete when stock daily snapshots exist
-- `surface = "ProductReporting"`:
-  - `Management` mode -> complete when core normalized daily facts exist
-  - `Financial` mode -> complete when both core and finance daily facts exist
-
-Notes:
-- `hasAnyData` means at least one normalized source exists for that day in the selected scope
-- `isPartial` means some source data exists, but the selected surface is not complete yet
-- this endpoint is driven from normalized daily read models, not raw sync run metadata
-
 ## Custom Metrics
 
 ### `GET /api/v1/config/custom-metrics`
@@ -2934,7 +3139,7 @@ Recommended connect-shop flow:
 
 1. `GET /api/v1/marketplaces/connectors`
 2. `POST /api/v1/marketplace-connections/connect-shop`
-3. poll `GET /api/v1/marketplace-connections/{connectionId}/sync-runs`
+3. poll `GET /api/v1/marketplace-sync-groups/{syncGroupId}` when `initialSync` is returned
 4. once sync succeeds, load analytics endpoints
 
 Recommended product-master refresh flow:

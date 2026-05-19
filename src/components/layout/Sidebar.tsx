@@ -4,6 +4,7 @@ import {
   ChevronRight,
   LineChart,
   LayoutDashboard,
+  ReceiptText,
   Package,
   PanelLeftClose,
   PanelLeftOpen,
@@ -29,11 +30,20 @@ const navItems: NavItem[] = [
   { id: 'summary', label: 'Сводный отчет', icon: Table2 },
   { id: 'finance', label: 'Финансы', icon: LineChart },
   { id: 'inventory', label: 'Склад', icon: Package },
+  { id: 'costs', label: 'Себестоимость', icon: ReceiptText },
   { id: 'external-traffic', label: 'Внешний трафик', icon: Radio },
   { id: 'search-phrases', label: 'Поисковые фразы', icon: Search },
   { id: 'planfact', label: 'План / Факт', icon: BarChart3 },
   { id: 'ai', label: 'AI Инсайты', icon: Sparkles },
   { id: 'settings', label: 'Настройки', icon: Settings },
+];
+
+const navSections: { label: string; items: NavItem[] }[] = [
+  { label: 'Аналитика', items: navItems.slice(0, 4) },
+  { label: 'Товары', items: navItems.slice(4, 5) },
+  { label: 'Продвижение', items: navItems.slice(5, 7) },
+  { label: 'Планирование', items: navItems.slice(7, 8) },
+  { label: 'Рабочее', items: navItems.slice(8) },
 ];
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'aistats-sidebar-collapsed';
@@ -111,9 +121,11 @@ export function Sidebar({ currentPage, onNavigate, isMobileOpen = false, onMobil
           </div>
 
           <nav className="flex-1 overflow-y-auto px-4 py-5">
-            <div className="mb-3 px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Аналитика</div>
-            <ul className="space-y-1.5">
-              {navItems.map(item => {
+            {navSections.map(section => (
+              <div key={section.label} className="mb-5 last:mb-0">
+                <div className="mb-3 px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{section.label}</div>
+                <ul className="space-y-1.5">
+                  {section.items.map(item => {
                 const Icon = item.icon;
                 const active = currentPage === item.id;
 
@@ -134,8 +146,10 @@ export function Sidebar({ currentPage, onNavigate, isMobileOpen = false, onMobil
                     </button>
                   </li>
                 );
-              })}
-            </ul>
+                  })}
+                </ul>
+              </div>
+            ))}
           </nav>
 
           <div className="border-t border-slate-700/50 px-4 py-4">
@@ -208,10 +222,11 @@ function SidebarInner({
       </div>
 
       <nav className={`flex-1 overflow-y-auto ${isCollapsed ? 'px-2 py-4' : 'px-3 py-4'}`}>
-        {!isCollapsed && <div className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Аналитика</div>}
-
-        <ul className="space-y-0.5">
-          {navItems.map(item => {
+        {navSections.map(section => (
+          <div key={section.label} className={isCollapsed ? 'mb-3 last:mb-0' : 'mb-4 last:mb-0'}>
+            {!isCollapsed && <div className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{section.label}</div>}
+            <ul className="space-y-0.5">
+              {section.items.map(item => {
             const Icon = item.icon;
             const active = currentPage === item.id;
 
@@ -240,8 +255,10 @@ function SidebarInner({
                 </button>
               </li>
             );
-          })}
-        </ul>
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
 
       <div className={`border-t border-slate-700/50 ${isCollapsed ? 'px-2 py-4' : 'px-4 py-4'}`}>

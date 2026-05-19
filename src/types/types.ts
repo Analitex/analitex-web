@@ -105,6 +105,7 @@ export type Page =
   | 'summary'
   | 'finance'
   | 'inventory'
+  | 'costs'
   | 'external-traffic'
   | 'search-phrases'
   | 'planfact'

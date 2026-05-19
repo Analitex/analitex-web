@@ -787,6 +787,63 @@
         }
       }
     },
+    "/api/v1/marketplace-connections/{connectionId}/source-files": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsMarketplaceGetMarketplaceConnectionSourceFilesEndpoint",
+        "requestBody": {
+          "content": {
+            "*/*": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceSourceFilesRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceSourceFilesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MarketplaceSourceFileResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/marketplace-source-files/{fileId}/download": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsMarketplaceDownloadMarketplaceSourceFileEndpoint",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/v1/marketplace-connections/{connectionId}/sync": {
       "post": {
         "tags": [
@@ -836,6 +893,55 @@
                   "items": {
                     "$ref": "#/components/schemas/MarketplaceSyncRunResponse"
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/marketplace-connections/{connectionId}/sync-groups": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsMarketplaceGetMarketplaceConnectionSyncGroupsEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MarketplaceSyncGroupResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/marketplace-sync-groups/{syncGroupId}": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsMarketplaceGetMarketplaceSyncGroupEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceSyncGroupResponse"
                 }
               }
             }
@@ -1965,6 +2071,95 @@
         }
       }
     },
+    "/api/v1/config/marketplace-connections/{connectionId}/article-costs": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsConfigGetMarketplaceArticleCostsEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceArticleCostsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/config/marketplace-connections/{connectionId}/article-costs/query": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsConfigQueryMarketplaceArticleCostsEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceArticleCostListRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceArticleCostListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/config/marketplace-connections/{connectionId}/article-costs/upload": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsConfigUploadMarketplaceArticleCostsEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadMarketplaceArticleCostsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceArticleCostsUploadResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/v1/analytics/breakdown": {
       "post": {
         "tags": [
@@ -2051,6 +2246,335 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminListAdminUsersEndpoint",
+        "requestBody": {
+          "content": {
+            "*/*": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminIdentityListRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminIdentityListRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserSummaryResponsePageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/organizations": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminListAdminOrganizationsEndpoint",
+        "requestBody": {
+          "content": {
+            "*/*": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminIdentityListRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminIdentityListRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOrganizationSummaryResponsePageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{userId}/send-password-reset": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminSendAdminUserPasswordResetEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserActionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{userId}/send-email-verification": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminSendAdminUserEmailVerificationEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserActionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{userId}/mark-email-verified": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminMarkAdminUserEmailVerifiedEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserActionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{userId}/security-codes": {
+      "delete": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminRevokeAdminUserSecurityCodesEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserActionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminListAdminUserSecurityCodesEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminUserSecurityCodeResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{userId}/status": {
+      "put": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminUpdateAdminUserStatusEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminUpdateUserStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserActionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{userId}/email-delivery-events": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminListAdminUserEmailDeliveryEventsEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminUserEmailDeliveryEventResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/email-delivery-events": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminListAdminEmailDeliveryEventsEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminUserEmailDeliveryEventResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{userId}/audit-events": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminListAdminUserAuditEventsEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminUserAuditEventResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/audit-events": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminListAdminAuditEventsEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminUserAuditEventResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         }
       }
@@ -2280,6 +2804,272 @@
           }
         }
       }
+    },
+    "/api/v1/admin/marketplace-sync/settings": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminGetAdminMarketplaceSyncSettingsEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMarketplaceSyncSettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminUpdateAdminMarketplaceSyncSettingsEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertAdminMarketplaceSyncSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMarketplaceSyncSettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminResetAdminMarketplaceSyncSettingsEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMarketplaceSyncSettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/wildberries-delay-templates": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminListAdminWildberriesDelayTemplatesEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminWildberriesDelayTemplateResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminCreateAdminWildberriesDelayTemplateEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertAdminWildberriesDelayTemplateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminWildberriesDelayTemplateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/wildberries-delay-templates/{templateId}": {
+      "put": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminUpdateAdminWildberriesDelayTemplateEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertAdminWildberriesDelayTemplateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminWildberriesDelayTemplateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminDeleteAdminWildberriesDelayTemplateEndpoint",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/marketplace-connections/{connectionId}/wildberries-delay-settings": {
+      "get": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminGetAdminMarketplaceConnectionWildberriesDelaySettingsEndpoint",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMarketplaceConnectionWildberriesDelaySettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminUpdateAdminMarketplaceConnectionWildberriesDelaySettingsEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAdminMarketplaceConnectionWildberriesDelaySettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMarketplaceConnectionWildberriesDelaySettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/marketplace-connections/{connectionId}/wildberries-delay-settings/apply-template": {
+      "post": {
+        "tags": [
+          "AiStats.Api"
+        ],
+        "operationId": "AiStatsApiEndpointsAdminApplyAdminMarketplaceConnectionWildberriesDelayTemplateEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyAdminMarketplaceConnectionWildberriesDelayTemplateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMarketplaceConnectionWildberriesDelaySettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2291,6 +3081,32 @@
         "type": "object",
         "properties": {
           "token": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminIdentityListRequest": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sort": {
+            "type": "string",
+            "nullable": true
+          },
+          "filter": {
+            "type": "string",
+            "nullable": true
+          },
+          "rsql": {
             "type": "string",
             "nullable": true
           }
@@ -2542,6 +3358,47 @@
         },
         "additionalProperties": false
       },
+      "AdminMarketplaceConnectionWildberriesDelaySettingsResponse": {
+        "required": [
+          "marketplaceConnectionId",
+          "settings",
+          "source",
+          "tokenType",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "marketplaceConnectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "templateId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "templateName": {
+            "type": "string",
+            "nullable": true
+          },
+          "tokenType": {
+            "type": "string",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "nullable": true
+          },
+          "settings": {
+            "$ref": "#/components/schemas/AdminWildberriesDelaySettings"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
       "AdminMarketplaceMaintenancePlanResponse": {
         "required": [
           "connectionName",
@@ -2634,6 +3491,144 @@
           "nextStep": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminMarketplaceSyncSettingsResponse": {
+        "required": [
+          "notes",
+          "ozon",
+          "source",
+          "updatedAt",
+          "wildberries"
+        ],
+        "type": "object",
+        "properties": {
+          "wildberries": {
+            "$ref": "#/components/schemas/AdminWildberriesSyncSettings"
+          },
+          "ozon": {
+            "$ref": "#/components/schemas/AdminOzonSyncSettings"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminOrganizationSummaryResponse": {
+        "required": [
+          "createdAt",
+          "id",
+          "marketplaceConnectionCount",
+          "memberCount",
+          "name",
+          "ownerUserId",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "ownerUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ownerEmail": {
+            "type": "string",
+            "nullable": true
+          },
+          "ownerName": {
+            "type": "string",
+            "nullable": true
+          },
+          "memberCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "marketplaceConnectionCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminOrganizationSummaryResponsePageResponse": {
+        "required": [
+          "items",
+          "page"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminOrganizationSummaryResponse"
+            },
+            "nullable": true
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminOzonSyncSettings": {
+        "required": [
+          "rateLimitRetryDelaySeconds",
+          "reportCreateIntervalSeconds",
+          "reportDownloadIntervalSeconds",
+          "reportMaxPollAttempts",
+          "reportPollDelaySeconds"
+        ],
+        "type": "object",
+        "properties": {
+          "reportCreateIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reportPollDelaySeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reportDownloadIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "rateLimitRetryDelaySeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reportMaxPollAttempts": {
+            "type": "integer",
+            "format": "int32"
           }
         },
         "additionalProperties": false
@@ -2736,6 +3731,499 @@
         },
         "additionalProperties": false
       },
+      "AdminUpdateUserStatusRequest": {
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/UserStatus"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminUserActionResponse": {
+        "required": [
+          "action",
+          "email",
+          "processedAt",
+          "status",
+          "userId"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "action": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "processedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminUserAuditEventResponse": {
+        "required": [
+          "action",
+          "adminUserId",
+          "createdAt",
+          "entityType",
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "adminUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetUserId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "action": {
+            "type": "string",
+            "nullable": true
+          },
+          "entityType": {
+            "type": "string",
+            "nullable": true
+          },
+          "entityId": {
+            "type": "string",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "ipAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "userAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminUserEmailDeliveryEventResponse": {
+        "required": [
+          "createdAt",
+          "id",
+          "kind",
+          "provider",
+          "status",
+          "subject",
+          "toEmail"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "requestedByUserId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string",
+            "nullable": true
+          },
+          "toEmail": {
+            "type": "string",
+            "nullable": true
+          },
+          "toName": {
+            "type": "string",
+            "nullable": true
+          },
+          "subject": {
+            "type": "string",
+            "nullable": true
+          },
+          "provider": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "failureReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "sentAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminUserSecurityCodeResponse": {
+        "required": [
+          "expiresAt",
+          "isExpired",
+          "issuedAt",
+          "purpose",
+          "userId"
+        ],
+        "type": "object",
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "nullable": true
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "issuedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "isExpired": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminUserSummaryResponse": {
+        "required": [
+          "createdAt",
+          "email",
+          "firstName",
+          "id",
+          "isEmailVerified",
+          "lastName",
+          "organizationCount",
+          "platformRole",
+          "status",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "firstName": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastName": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "$ref": "#/components/schemas/UserStatus"
+          },
+          "platformRole": {
+            "$ref": "#/components/schemas/PlatformRole"
+          },
+          "emailVerifiedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "isEmailVerified": {
+            "type": "boolean"
+          },
+          "organizationCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminUserSummaryResponsePageResponse": {
+        "required": [
+          "items",
+          "page"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminUserSummaryResponse"
+            },
+            "nullable": true
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminWildberriesDelaySettings": {
+        "required": [
+          "advertRequestIntervalSeconds",
+          "analyticsRequestIntervalSeconds",
+          "financeRequestIntervalSeconds",
+          "financeRetryPaddingSeconds",
+          "financeTransientRetryDelaySeconds",
+          "rateLimitRetryDelaySeconds",
+          "reportCreateIntervalSeconds",
+          "reportDownloadIntervalSeconds",
+          "reportStatusIntervalSeconds",
+          "reportTaskPollIntervalSeconds",
+          "statisticsRequestIntervalSeconds"
+        ],
+        "type": "object",
+        "properties": {
+          "statisticsRequestIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "analyticsRequestIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "advertRequestIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "financeRequestIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reportCreateIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reportStatusIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reportDownloadIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "rateLimitRetryDelaySeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "financeRetryPaddingSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "financeTransientRetryDelaySeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reportTaskPollIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminWildberriesDelayTemplateResponse": {
+        "required": [
+          "createdAt",
+          "id",
+          "isDefault",
+          "name",
+          "settings",
+          "tokenType",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "tokenType": {
+            "type": "string",
+            "nullable": true
+          },
+          "settings": {
+            "$ref": "#/components/schemas/AdminWildberriesDelaySettings"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminWildberriesSyncSettings": {
+        "required": [
+          "advertRequestIntervalSeconds",
+          "analyticsRequestIntervalSeconds",
+          "financeRequestIntervalSeconds",
+          "financeRetryPaddingSeconds",
+          "financeTransientRetryDelaySeconds",
+          "rateLimitRetryDelaySeconds",
+          "reportCreateIntervalSeconds",
+          "reportDownloadIntervalSeconds",
+          "reportStatusIntervalSeconds",
+          "reportTaskPollIntervalSeconds",
+          "statisticsRequestIntervalSeconds",
+          "tokenTypeDelayMultipliers"
+        ],
+        "type": "object",
+        "properties": {
+          "statisticsRequestIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "analyticsRequestIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "advertRequestIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "financeRequestIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reportCreateIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reportStatusIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reportDownloadIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "rateLimitRetryDelaySeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "financeRetryPaddingSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "financeTransientRetryDelaySeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reportTaskPollIntervalSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "tokenTypeDelayMultipliers": {
+            "$ref": "#/components/schemas/AdminWildberriesTokenTypeDelayMultipliers"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminWildberriesTokenTypeDelayMultipliers": {
+        "required": [
+          "base",
+          "personal",
+          "service",
+          "test",
+          "unknown"
+        ],
+        "type": "object",
+        "properties": {
+          "base": {
+            "type": "number",
+            "format": "double"
+          },
+          "test": {
+            "type": "number",
+            "format": "double"
+          },
+          "personal": {
+            "type": "number",
+            "format": "double"
+          },
+          "service": {
+            "type": "number",
+            "format": "double"
+          },
+          "unknown": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
       "AnalyticsFilters": {
         "type": "object",
         "properties": {
@@ -2800,6 +4288,19 @@
         },
         "additionalProperties": false
       },
+      "ApplyAdminMarketplaceConnectionWildberriesDelayTemplateRequest": {
+        "required": [
+          "templateId"
+        ],
+        "type": "object",
+        "properties": {
+          "templateId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
       "AuthTokenResponse": {
         "required": [
           "accessToken",
@@ -2834,6 +4335,7 @@
           "id",
           "isEmailVerified",
           "lastName",
+          "platformRole",
           "status"
         ],
         "type": "object",
@@ -2860,6 +4362,9 @@
           },
           "status": {
             "$ref": "#/components/schemas/UserStatus"
+          },
+          "platformRole": {
+            "$ref": "#/components/schemas/PlatformRole"
           },
           "emailVerifiedAt": {
             "type": "string",
@@ -4196,6 +5701,676 @@
         },
         "additionalProperties": false
       },
+      "MarketplaceArticleCostAccountWithMarketplaceResponse": {
+        "required": [
+          "marketplaceId",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "marketplaceId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostFilterArticleResponse": {
+        "required": [
+          "accountId",
+          "id",
+          "marketplaceId"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "vendorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "accountId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "marketplaceId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "image": {
+            "type": "string",
+            "nullable": true
+          },
+          "brand": {
+            "type": "string",
+            "nullable": true
+          },
+          "category": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostFiltersResponse": {
+        "required": [
+          "accounts",
+          "accountsWithMarketplace",
+          "articles",
+          "groups",
+          "marketplaces"
+        ],
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "articles": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MarketplaceArticleCostFilterArticleResponse"
+            },
+            "nullable": true
+          },
+          "groups": {
+            "type": "array",
+            "items": { },
+            "nullable": true
+          },
+          "accountsWithMarketplace": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MarketplaceArticleCostAccountWithMarketplaceResponse"
+            },
+            "nullable": true
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceArticleCostMarketplaceFilterResponse"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostItemResponse": {
+        "required": [
+          "accountId",
+          "article",
+          "costs",
+          "marketplaceConnectionId",
+          "maxCost",
+          "maxFulfillment",
+          "maxVat",
+          "minCost",
+          "minFulfillment",
+          "minVat",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "article": {
+            "type": "string",
+            "nullable": true
+          },
+          "vendorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "accountId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "marketplaceConnectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "minCost": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxCost": {
+            "type": "number",
+            "format": "double"
+          },
+          "minFulfillment": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxFulfillment": {
+            "type": "number",
+            "format": "double"
+          },
+          "minVat": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxVat": {
+            "type": "number",
+            "format": "double"
+          },
+          "costs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceArticleCostSizeResponse"
+            },
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostListFilters": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "marketplaceId": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "brand": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "category": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "article": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "productIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "brandIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "categoryIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostListItemResponse": {
+        "required": [
+          "accountId",
+          "costs",
+          "id",
+          "marketplaceId",
+          "maxCost",
+          "maxFulfillment",
+          "maxVat",
+          "minCost",
+          "minFulfillment",
+          "minVat"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "nmId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "accountId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "brand": {
+            "type": "string",
+            "nullable": true
+          },
+          "nmUuid": {
+            "type": "string",
+            "nullable": true
+          },
+          "vendorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "category": {
+            "type": "string",
+            "nullable": true
+          },
+          "photos": {
+            "$ref": "#/components/schemas/MarketplaceArticleCostPhotoResponse"
+          },
+          "marketplaceId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "minCost": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxCost": {
+            "type": "number",
+            "format": "double"
+          },
+          "minFulfillment": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxFulfillment": {
+            "type": "number",
+            "format": "double"
+          },
+          "minVat": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxVat": {
+            "type": "number",
+            "format": "double"
+          },
+          "costs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceArticleCostListSizeResponse"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostListPaginationResponse": {
+        "required": [
+          "limit",
+          "page",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostListRequest": {
+        "type": "object",
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/MarketplaceArticleCostListFilters"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostListResponse": {
+        "required": [
+          "byBarcodeMode",
+          "dates",
+          "filters",
+          "items",
+          "pagination",
+          "vatAvailableMode"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceArticleCostListItemResponse"
+            },
+            "nullable": true
+          },
+          "dates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "byBarcodeMode": {
+            "type": "boolean"
+          },
+          "vatAvailableMode": {
+            "type": "boolean"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/MarketplaceArticleCostListPaginationResponse"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/MarketplaceArticleCostFiltersResponse"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostListSizeResponse": {
+        "required": [
+          "values"
+        ],
+        "type": "object",
+        "properties": {
+          "size_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "size": {
+            "type": "string",
+            "nullable": true
+          },
+          "barcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceArticleCostListValueResponse"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostListValueResponse": {
+        "required": [
+          "cost",
+          "fulfillment",
+          "isAvailableVat",
+          "vat"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "cost": {
+            "type": "number",
+            "format": "double"
+          },
+          "fulfillment": {
+            "type": "number",
+            "format": "double"
+          },
+          "vat": {
+            "type": "number",
+            "format": "double"
+          },
+          "isAvailableVat": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostMarketplaceFilterResponse": {
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostPhotoResponse": {
+        "type": "object",
+        "properties": {
+          "big": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostSizeResponse": {
+        "required": [
+          "values"
+        ],
+        "type": "object",
+        "properties": {
+          "sizeId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "size": {
+            "type": "string",
+            "nullable": true
+          },
+          "barcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceArticleCostValueResponse"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostUploadRow": {
+        "required": [
+          "article",
+          "cost"
+        ],
+        "type": "object",
+        "properties": {
+          "article": {
+            "type": "string",
+            "nullable": true
+          },
+          "cost": {
+            "type": "number",
+            "format": "double"
+          },
+          "fulfillment": {
+            "type": "number",
+            "format": "double"
+          },
+          "vat": {
+            "type": "number",
+            "format": "double"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostValueResponse": {
+        "required": [
+          "cost",
+          "currencyCode",
+          "fulfillment",
+          "isAvailableVat",
+          "vat"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "cost": {
+            "type": "number",
+            "format": "double"
+          },
+          "fulfillment": {
+            "type": "number",
+            "format": "double"
+          },
+          "vat": {
+            "type": "number",
+            "format": "double"
+          },
+          "isAvailableVat": {
+            "type": "boolean"
+          },
+          "currencyCode": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostsResponse": {
+        "required": [
+          "accountId",
+          "byBarcodeMode",
+          "dates",
+          "items",
+          "marketplaceConnectionId",
+          "vatAvailableMode"
+        ],
+        "type": "object",
+        "properties": {
+          "marketplaceConnectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "accountId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceArticleCostItemResponse"
+            },
+            "nullable": true
+          },
+          "dates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date",
+              "nullable": true
+            },
+            "nullable": true
+          },
+          "byBarcodeMode": {
+            "type": "boolean"
+          },
+          "vatAvailableMode": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceArticleCostsUploadResponse": {
+        "required": [
+          "accountId",
+          "costs",
+          "marketplaceConnectionId",
+          "savedRows",
+          "storedRows"
+        ],
+        "type": "object",
+        "properties": {
+          "marketplaceConnectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "accountId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "savedRows": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "storedRows": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "costs": {
+            "$ref": "#/components/schemas/MarketplaceArticleCostsResponse"
+          }
+        },
+        "additionalProperties": false
+      },
       "MarketplaceConnectionResponse": {
         "required": [
           "createdAt",
@@ -4281,6 +6456,12 @@
           },
           "marketplace": {
             "$ref": "#/components/schemas/MarketplaceKey"
+          },
+          "isCredentialFailure": {
+            "type": "boolean"
+          },
+          "isRetryable": {
+            "type": "boolean"
           },
           "externalAccountId": {
             "type": "string",
@@ -4396,7 +6577,8 @@
           "taxEnabled",
           "taxRatePercent",
           "taxSystem",
-          "updatedAt"
+          "updatedAt",
+          "vatRatePercent"
         ],
         "type": "object",
         "properties": {
@@ -4412,6 +6594,10 @@
             "type": "boolean"
           },
           "taxRatePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "vatRatePercent": {
             "type": "number",
             "format": "double"
           },
@@ -4609,6 +6795,103 @@
         },
         "additionalProperties": false
       },
+      "MarketplaceSourceFileResponse": {
+        "required": [
+          "createdAt",
+          "dateFrom",
+          "dateTo",
+          "fileName",
+          "id",
+          "marketplace",
+          "marketplaceConnectionId",
+          "sourceKind",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "marketplaceConnectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "marketplace": {
+            "$ref": "#/components/schemas/MarketplaceKey"
+          },
+          "sourceKind": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "fileName": {
+            "type": "string",
+            "nullable": true
+          },
+          "originalFileName": {
+            "type": "string",
+            "nullable": true
+          },
+          "contentType": {
+            "type": "string",
+            "nullable": true
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "savedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "downloadUrl": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketplaceSourceFilesRequest": {
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "nullable": true
+          },
+          "includeMissing": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "MarketplaceSyncArtifactResponse": {
         "required": [
           "createdAt",
@@ -4670,10 +6953,15 @@
         "required": [
           "enqueuedAt",
           "marketplaceConnectionId",
+          "syncGroupId",
           "syncRunIds"
         ],
         "type": "object",
         "properties": {
+          "syncGroupId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "marketplaceConnectionId": {
             "type": "string",
             "format": "uuid"
@@ -4693,6 +6981,92 @@
         },
         "additionalProperties": false
       },
+      "MarketplaceSyncGroupResponse": {
+        "required": [
+          "cancelledRuns",
+          "dateFrom",
+          "dateTo",
+          "failedRuns",
+          "marketplaceConnectionId",
+          "progressPercent",
+          "queuedRuns",
+          "requestedAt",
+          "requestedByUserId",
+          "runningRuns",
+          "runs",
+          "status",
+          "succeededRuns",
+          "syncGroupId",
+          "totalRuns"
+        ],
+        "type": "object",
+        "properties": {
+          "syncGroupId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "marketplaceConnectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requestedByUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "progressPercent": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalRuns": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "queuedRuns": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "runningRuns": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "succeededRuns": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "failedRuns": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "cancelledRuns": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceSyncRunResponse"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "MarketplaceSyncRunResponse": {
         "required": [
           "attemptCount",
@@ -4708,11 +7082,16 @@
           "requestedByUserId",
           "startedAt",
           "status",
+          "syncGroupId",
           "syncKind"
         ],
         "type": "object",
         "properties": {
           "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "syncGroupId": {
             "type": "string",
             "format": "uuid"
           },
@@ -4938,8 +7317,7 @@
         "enum": [
           0,
           1,
-          2,
-          3
+          2
         ],
         "type": "integer",
         "format": "int32"
@@ -4985,6 +7363,50 @@
           }
         },
         "additionalProperties": false
+      },
+      "PageMeta": {
+        "required": [
+          "hasNextPage",
+          "hasPreviousPage",
+          "pageNumber",
+          "pageSize",
+          "totalItems",
+          "totalPages"
+        ],
+        "type": "object",
+        "properties": {
+          "pageNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalItems": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hasPreviousPage": {
+            "type": "boolean"
+          },
+          "hasNextPage": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlatformRole": {
+        "enum": [
+          0,
+          1
+        ],
+        "type": "integer",
+        "format": "int32"
       },
       "PreviewCustomMetricRequest": {
         "required": [
@@ -7094,14 +9516,14 @@
         "additionalProperties": false
       },
       "RenameMarketplaceConnectionRequest": {
-        "required": [
-          "displayName"
-        ],
         "type": "object",
         "properties": {
           "displayName": {
             "type": "string",
             "nullable": true
+          },
+          "credentials": {
+            "$ref": "#/components/schemas/MarketplaceCredentialsRequest"
           }
         },
         "additionalProperties": false
@@ -7883,6 +10305,23 @@
         },
         "additionalProperties": false
       },
+      "UpdateAdminMarketplaceConnectionWildberriesDelaySettingsRequest": {
+        "required": [
+          "settings",
+          "tokenType"
+        ],
+        "type": "object",
+        "properties": {
+          "tokenType": {
+            "type": "string",
+            "nullable": true
+          },
+          "settings": {
+            "$ref": "#/components/schemas/AdminWildberriesDelaySettings"
+          }
+        },
+        "additionalProperties": false
+      },
       "UpdateCustomMetricRequest": {
         "type": "object",
         "properties": {
@@ -7946,6 +10385,19 @@
         },
         "additionalProperties": false
       },
+      "UploadMarketplaceArticleCostsRequest": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceArticleCostUploadRow"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "UpsertAdminMaintenanceScheduleRequest": {
         "type": "object",
         "properties": {
@@ -7983,6 +10435,47 @@
         },
         "additionalProperties": false
       },
+      "UpsertAdminMarketplaceSyncSettingsRequest": {
+        "required": [
+          "ozon",
+          "wildberries"
+        ],
+        "type": "object",
+        "properties": {
+          "wildberries": {
+            "$ref": "#/components/schemas/AdminWildberriesSyncSettings"
+          },
+          "ozon": {
+            "$ref": "#/components/schemas/AdminOzonSyncSettings"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpsertAdminWildberriesDelayTemplateRequest": {
+        "required": [
+          "name",
+          "settings",
+          "tokenType"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "tokenType": {
+            "type": "string",
+            "nullable": true
+          },
+          "settings": {
+            "$ref": "#/components/schemas/AdminWildberriesDelaySettings"
+          },
+          "isDefault": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "UpsertMarketplaceFinanceSettingsRequest": {
         "type": "object",
         "properties": {
@@ -7990,6 +10483,10 @@
             "type": "boolean"
           },
           "taxRatePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "vatRatePercent": {
             "type": "number",
             "format": "double"
           },
