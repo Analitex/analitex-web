@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
+  AlertTriangle,
   Check,
   ChevronRight,
   LogOut,
@@ -76,6 +77,23 @@ type SyncRunApiResponse = {
   finishedAt?: string | null;
   canRetry: boolean;
   canCancel: boolean;
+};
+
+type SyncGroupApiResponse = {
+  syncGroupId: string;
+  marketplaceConnectionId: string;
+  status: string | number;
+  progressPercent: number;
+  totalRuns: number;
+  queuedRuns: number;
+  runningRuns: number;
+  failedRuns: number;
+};
+
+type SyncActivitySummary = {
+  activeRuns: number;
+  failedRuns: number;
+  progressPercent: number;
 };
 
 const TAX_MODES = [
@@ -254,6 +272,35 @@ function formatSyncStatus(status: SyncRun['status']) {
     default:
       return 'Ошибка';
   }
+}
+
+function getActiveSyncSummary(groups: SyncGroupApiResponse[]): SyncActivitySummary | null {
+  const activeGroups = groups.filter(group => Number(group.queuedRuns ?? 0) + Number(group.runningRuns ?? 0) > 0);
+  if (activeGroups.length === 0) return null;
+
+  const totals = activeGroups.reduce(
+    (acc, group) => {
+      const totalRuns = Number(group.totalRuns ?? 0);
+      const activeRuns = Number(group.queuedRuns ?? 0) + Number(group.runningRuns ?? 0);
+      const failedRuns = Number(group.failedRuns ?? 0);
+      const progressPercent = Number(group.progressPercent ?? 0);
+
+      return {
+        activeRuns: acc.activeRuns + activeRuns,
+        failedRuns: acc.failedRuns + failedRuns,
+        totalRuns: acc.totalRuns + totalRuns,
+        progressWeight: acc.progressWeight + Math.max(totalRuns, 1),
+        progressSum: acc.progressSum + progressPercent * Math.max(totalRuns, 1),
+      };
+    },
+    { activeRuns: 0, failedRuns: 0, totalRuns: 0, progressWeight: 0, progressSum: 0 }
+  );
+
+  return {
+    activeRuns: totals.activeRuns,
+    failedRuns: totals.failedRuns,
+    progressPercent: Math.round(totals.progressSum / Math.max(totals.progressWeight, 1)),
+  };
 }
 
 interface SettingsPageProps {
@@ -902,8 +949,12 @@ function ProfileTab({
 }
 
 function ShopsTab({ isLoading }: { isLoading: boolean }) {
-  const { session, connections, connectors, syncRuns, selectedOrganizationId, validateConnection, enqueueSync, connectShop, updateConnection } = usePlatform();
-  const shops = connections.filter(connection => connection.organizationId === selectedOrganizationId);
+  const { session, connections, connectors, selectedOrganizationId, validateConnection, enqueueSync, connectShop, updateConnection } = usePlatform();
+  const shops = useMemo(
+    () => connections.filter(connection => connection.organizationId === selectedOrganizationId),
+    [connections, selectedOrganizationId]
+  );
+  const shopIds = useMemo(() => shops.map(shop => shop.id).join('|'), [shops]);
   const defaultDateTo = new Date().toISOString().slice(0, 10);
   const defaultDateFrom = new Date(Date.now() - 13 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const [isConnectFormOpen, setIsConnectFormOpen] = useState(false);
@@ -938,6 +989,54 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
   const [setupPerformanceClientSecret, setSetupPerformanceClientSecret] = useState('');
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupLoading, setSetupLoading] = useState(false);
+  const [syncGroupsByShop, setSyncGroupsByShop] = useState<Record<string, SyncGroupApiResponse[]>>({});
+
+  useEffect(() => {
+    if (!session?.accessToken || shops.length === 0) {
+      setSyncGroupsByShop({});
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadSyncGroups = async () => {
+      const results = await Promise.all(
+        shops.map(async shop => {
+          try {
+            const groups = await apiRequest<SyncGroupApiResponse[]>(`/marketplace-connections/${shop.id}/sync-groups`, {
+              token: session.accessToken,
+            });
+            return [shop.id, groups ?? []] as const;
+          } catch {
+            return [shop.id, []] as const;
+          }
+        })
+      );
+
+      if (!cancelled) {
+        setSyncGroupsByShop(Object.fromEntries(results));
+      }
+    };
+
+    void loadSyncGroups();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.accessToken, shopIds, shops]);
+
+  const refreshShopSyncGroups = async (shopId: string) => {
+    if (!session?.accessToken) return;
+
+    try {
+      const groups = await apiRequest<SyncGroupApiResponse[]>(`/marketplace-connections/${shopId}/sync-groups`, {
+        token: session.accessToken,
+      });
+      setSyncGroupsByShop(current => ({ ...current, [shopId]: groups ?? [] }));
+    } catch {
+      setSyncGroupsByShop(current => ({ ...current, [shopId]: current[shopId] ?? [] }));
+    }
+  };
 
   const openSetupModal = (shop: MarketplaceConnection) => {
     setSetupShop(shop);
@@ -1060,6 +1159,9 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
       dateTo: syncDateTo,
       syncKinds: getSupportedSyncKinds(marketplaceName),
     });
+    window.setTimeout(() => {
+      void refreshShopSyncGroups(syncShopId);
+    }, 750);
     closeSyncModal();
   };
 
@@ -1327,7 +1429,8 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
 
       <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-2">
         {shops.map(shop => {
-          const latestSync = syncRuns.find(run => run.id === shop.latestSyncRunId);
+          const activeSyncSummary = getActiveSyncSummary(syncGroupsByShop[shop.id] ?? []);
+          const syncProgress = activeSyncSummary?.progressPercent ?? 0;
 
           return (
             <article key={shop.id} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -1341,26 +1444,31 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
               <dl className="mt-6 space-y-4">
                 <MetaRow label="Доступы" value={shop.credentialSummary} />
                 <MetaRow
-                  label="Последняя синхронизация"
+                  label="Активные синхронизации"
                   value={
-                    latestSync ? (
+                    activeSyncSummary ? (
                       <div className="space-y-2">
                         <div className="flex items-center justify-between gap-3 text-sm text-slate-700">
-                          <span>{formatSyncStatus(latestSync.status)}</span>
-                          <span className="font-semibold text-slate-900">{latestSync.progressPercent}%</span>
+                          <span>{activeSyncSummary.activeRuns} в работе</span>
+                          <div className="flex items-center gap-3">
+                            {activeSyncSummary.failedRuns > 0 && (
+                              <span className="inline-flex items-center gap-1 font-semibold text-amber-700">
+                                <AlertTriangle size={14} />
+                                {activeSyncSummary.failedRuns}
+                              </span>
+                            )}
+                            <span className="font-semibold text-slate-900">{syncProgress}%</span>
+                          </div>
                         </div>
                         <div className="h-2 overflow-hidden rounded-full bg-slate-200">
                           <div
-                            className={`h-full rounded-full ${getSyncProgressColor(latestSync.status)}`}
-                            style={{ width: `${Math.min(100, Math.max(0, latestSync.progressPercent))}%` }}
+                            className="h-full rounded-full bg-blue-600"
+                            style={{ width: `${Math.min(100, Math.max(0, syncProgress))}%` }}
                           />
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          {latestSync.progressMessage || 'Синхронизация выполняется...'}
                         </div>
                       </div>
                     ) : (
-                      'Нет данных'
+                      'Нет активных запусков'
                     )
                   }
                 />
