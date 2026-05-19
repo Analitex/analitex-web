@@ -47,22 +47,22 @@ export function RevenueStructureAccordion({ items }: { items: RevenueStructureRo
                 return (
                   <div key={item.label} className="grid grid-cols-[110px_minmax(0,1fr)] items-center gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
                     <div className="truncate text-xs text-slate-600 sm:text-sm">{item.label}</div>
-                    <div className="relative h-7 overflow-hidden bg-slate-50/70 first:rounded-t-md last:rounded-b-md">
+                    <div className="relative h-7 overflow-hidden bg-slate-100/80 first:rounded-t-md last:rounded-b-md">
                       {axisMarks.map(mark => {
                         const position = ((mark + axisMax) / (axisMax * 2)) * 100;
                         return (
                           <div
                             key={mark}
                             className={`absolute inset-y-0 w-px -translate-x-1/2 ${
-                              mark === 0 ? 'bg-slate-300' : 'bg-slate-200/80'
+                              mark === 0 ? 'bg-slate-400' : 'bg-slate-300/80'
                             }`}
                             style={{ left: `${position}%` }}
                           />
                         );
                       })}
-                      <div className="absolute inset-x-0 bottom-0 h-px bg-slate-200/70" />
+                      <div className="absolute inset-x-0 bottom-0 h-px bg-slate-300/70" />
                       <div
-                        className="absolute top-1/2 h-5 -translate-y-1/2 rounded-md opacity-90"
+                        className="absolute top-1/2 h-5 -translate-y-1/2 rounded-md shadow-sm ring-1 ring-white/60"
                         style={{
                           width,
                           backgroundColor: item.color,

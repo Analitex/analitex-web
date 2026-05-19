@@ -38,14 +38,14 @@ export function Sparkline({ data, color, height = 36, width = 80, fill = true, c
         <polygon
           points={areaPoints}
           fill={color}
-          opacity={0.1}
+          opacity={0.14}
         />
       )}
       <polyline
         points={linePoints}
         fill="none"
         stroke={color}
-        strokeWidth="1.8"
+        strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

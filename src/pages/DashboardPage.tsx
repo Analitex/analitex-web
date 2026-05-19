@@ -2275,19 +2275,19 @@ function normalizeRevenueStructureItems(items: Array<{
 
 function getRevenueStructureColor(key?: string | null, effect?: string | null, index = 0) {
   const byKey: Record<string, string> = {
-    marketplace_discount: 'rgba(244,114,182,0.85)',
-    cost_of_sales: 'rgba(253,186,140,0.85)',
-    profit: 'rgba(22,189,202,0.85)',
-    logistics: 'rgba(26,86,219,0.85)',
-    tax: 'rgba(144,97,249,0.85)',
-    commission: 'rgba(214,31,105,0.85)',
-    advertising: 'rgba(41,181,115,0.85)',
-    other_marketplace_expenses: 'rgba(55,61,63,0.85)',
+    marketplace_discount: '#db2777',
+    cost_of_sales: '#ea580c',
+    profit: '#0891b2',
+    logistics: '#2563eb',
+    tax: '#7c3aed',
+    commission: '#be123c',
+    advertising: '#059669',
+    other_marketplace_expenses: '#475569',
   };
   if (key && byKey[key]) return byKey[key];
-  if (effect === 'profit') return 'rgba(22,189,202,0.85)';
-  if (effect === 'income') return 'rgba(16,185,129,0.85)';
-  const palette = ['rgba(244,114,182,0.85)', 'rgba(253,186,140,0.85)', 'rgba(26,86,219,0.85)', 'rgba(144,97,249,0.85)', 'rgba(55,61,63,0.85)'];
+  if (effect === 'profit') return '#0891b2';
+  if (effect === 'income') return '#059669';
+  const palette = ['#db2777', '#ea580c', '#2563eb', '#7c3aed', '#475569'];
   return palette[index % palette.length];
 }
 
@@ -3436,12 +3436,12 @@ function MetricColumnRow({
   const isNeutral = def.metric.trend === 'neutral';
   const goodTrend = def.invertColors ? isNegative : isPositive;
   const badTrend = def.invertColors ? isPositive : isNegative;
-  const trendColor = goodTrend ? 'text-emerald-600' : badTrend ? 'text-red-500' : 'text-slate-400';
+  const trendColor = goodTrend ? 'text-emerald-700' : badTrend ? 'text-red-600' : 'text-slate-500';
   const rowTone = goodTrend
-    ? 'border-emerald-200 bg-emerald-50/80 shadow-emerald-100/70'
+    ? 'border-emerald-300 bg-emerald-50 shadow-emerald-100'
     : badTrend
-    ? 'border-red-200 bg-red-50/80 shadow-red-100/70'
-    : 'border-slate-200 bg-slate-50/90 shadow-slate-100/70';
+    ? 'border-red-300 bg-red-50 shadow-red-100'
+    : 'border-slate-300 bg-slate-50 shadow-slate-100';
   const deltaValue = def.metric.delta ?? 0;
   const deltaPercentValue = def.metric.deltaPercent ?? 0;
   const shouldHideDeltaPercent = def.hideDeltaPercent || !Number.isFinite(def.metric.previous) || def.metric.previous === 0;

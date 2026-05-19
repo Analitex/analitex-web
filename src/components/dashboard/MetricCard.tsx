@@ -132,20 +132,20 @@ export function MetricCard({
   const goodTrend = invertColors ? isNegative : isPositive;
   const badTrend = invertColors ? isPositive : isNegative;
 
-  const trendColor = goodTrend ? 'text-emerald-600' : badTrend ? 'text-red-500' : 'text-slate-400';
-  const sparkColor = goodTrend ? '#10b981' : badTrend ? '#ef4444' : '#94a3b8';
+  const trendColor = goodTrend ? 'text-emerald-700' : badTrend ? 'text-red-600' : 'text-slate-500';
+  const sparkColor = goodTrend ? '#059669' : badTrend ? '#dc2626' : '#64748b';
   const bgColor = goodTrend
-    ? 'bg-emerald-50 border-emerald-100'
+    ? 'bg-emerald-100 border-emerald-200'
     : badTrend
-    ? 'bg-red-50 border-red-100'
-    : 'bg-slate-50 border-slate-100';
+    ? 'bg-red-100 border-red-200'
+    : 'bg-slate-100 border-slate-200';
   const cardTone = metric.sparkline.length > 1
     ? 'border-slate-200 bg-white'
     : goodTrend
-    ? 'border-emerald-200 bg-emerald-50/55'
+    ? 'border-emerald-300 bg-emerald-50'
     : badTrend
-    ? 'border-red-200 bg-red-50/55'
-    : 'border-slate-200 bg-slate-50/75';
+    ? 'border-red-300 bg-red-50'
+    : 'border-slate-300 bg-slate-50';
 
   const previousFormat = formatPrevious ?? format;
   const deltaValue = metric.delta ?? 0;
@@ -174,7 +174,7 @@ export function MetricCard({
         className={`relative z-0 w-full rounded-xl border p-3 text-left transition-all duration-200 focus-within:z-[140] sm:p-3.5 ${isEditMode ? 'cursor-default' : 'hover:z-[140] hover:-translate-y-0.5 hover:shadow-md'} ${cardTone}`}
       >
         {metric.sparkline.length > 1 && (
-          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl opacity-[0.16] transition-opacity">
+          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl opacity-[0.24] transition-opacity">
             <div className="absolute inset-0 bg-gradient-to-b from-white via-white/60 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 h-16">
               <Sparkline data={metric.sparkline} color={sparkColor} width={320} height={84} className="h-full w-full" />
@@ -301,7 +301,7 @@ export function MetricCard({
 
             <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
               {metric.sparkline.length > 1 && (
-                <div className="h-36 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                <div className="h-36 overflow-hidden rounded-xl border border-slate-200 bg-slate-100/80 p-3">
                   <Sparkline data={metric.sparkline} color={sparkColor} width={420} height={144} className="h-full w-full" />
                 </div>
               )}
