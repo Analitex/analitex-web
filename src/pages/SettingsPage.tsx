@@ -44,6 +44,7 @@ type MarketplaceFinanceSettingsResponse = {
   accountId: number;
   taxEnabled: boolean;
   taxRatePercent: number;
+  vatRatePercent: number;
   taxSystem?: string | null;
   updatedAt: string;
 };
@@ -78,7 +79,7 @@ type SyncRunApiResponse = {
 };
 
 const TAX_MODES = [
-  { id: 'usn-income', label: 'УСН "Доходы"', rateLabel: 'УСН', supportsVat: false, supportsCostExpense: false },
+  { id: 'usn-income', label: 'УСН "Доходы"', rateLabel: 'УСН', supportsVat: true, supportsCostExpense: false },
   { id: 'usn-income-expense-fixed-vat', label: 'УСН "Доходы - Расходы" с фикс. НДС', rateLabel: 'УСН', supportsVat: true, supportsCostExpense: true },
   { id: 'usn-income-expense-vat-22', label: 'УСН "Доходы - Расходы" с НДС 22%', rateLabel: 'УСН', supportsVat: true, supportsCostExpense: true },
   { id: 'ip-osno', label: 'ИП на ОСНО', rateLabel: 'НДФЛ', supportsVat: true, supportsCostExpense: true },
@@ -166,6 +167,7 @@ function buildTaxConfigFromFinanceSettings(settings?: MarketplaceFinanceSettings
   if (!settings) return base;
 
   const taxRate = settings.taxEnabled ? String(settings.taxRatePercent ?? 0) : '';
+  const vatRate = settings.taxEnabled ? String(settings.vatRatePercent ?? 0) : '';
   const mappedMode = mapFinanceTaxSystemToMode(settings.taxSystem);
 
   return {
@@ -174,11 +176,11 @@ function buildTaxConfigFromFinanceSettings(settings?: MarketplaceFinanceSettings
     quarters: base.quarters.map(quarter => ({
       ...quarter,
       taxRate,
-      vatRate: '',
+      vatRate,
       months: quarter.months.map(month => ({
         ...month,
         taxRate,
-        vatRate: '',
+        vatRate,
       })),
     })),
   };
@@ -189,6 +191,16 @@ function getEffectiveTaxRate(config: TaxConfig) {
     if (quarter.taxRate.trim()) return Number(quarter.taxRate);
     for (const month of quarter.months) {
       if (month.taxRate.trim()) return Number(month.taxRate);
+    }
+  }
+  return 0;
+}
+
+function getEffectiveVatRate(config: TaxConfig) {
+  for (const quarter of config.quarters) {
+    if (quarter.vatRate.trim()) return Number(quarter.vatRate);
+    for (const month of quarter.months) {
+      if (month.vatRate.trim()) return Number(month.vatRate);
     }
   }
   return 0;
@@ -479,12 +491,14 @@ export function SettingsPage({ activeTab }: SettingsPageProps) {
 
     try {
       const taxRatePercent = getEffectiveTaxRate(currentTaxConfig);
+      const vatRatePercent = getEffectiveVatRate(currentTaxConfig);
       await apiRequest<MarketplaceFinanceSettingsResponse>(`/config/marketplace-connections/${selectedShop.id}/finance-settings`, {
         method: 'PUT',
         token: session.accessToken,
         body: JSON.stringify({
-          taxEnabled: taxRatePercent > 0,
+          taxEnabled: taxRatePercent > 0 || vatRatePercent > 0,
           taxRatePercent,
+          vatRatePercent,
           taxSystem: mapTaxModeToFinanceTaxSystem(currentTaxConfig.taxMode),
         }),
       });
