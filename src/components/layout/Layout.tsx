@@ -68,7 +68,7 @@ export function Layout({
           activeSettingsTab={activeSettingsTab}
           onSettingsTabChange={onSettingsTabChange}
         />
-        <main className="flex-1 overflow-x-hidden overflow-y-auto">
+        <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
           {children}
         </main>
       </div>

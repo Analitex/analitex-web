@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, ArrowDown, ArrowDownWideNarrow, ArrowUp, ArrowUpDown, ArrowUpWideNarrow, Check, ChevronDown, Download, Loader2, RefreshCw, Save, Search, Upload } from 'lucide-react';
 import { useFilters } from '../context/FilterContext';
 import { usePlatform } from '../context/PlatformContext';
@@ -206,6 +207,7 @@ export function ArticleCostsPage() {
   const [appliedRangeFilters, setAppliedRangeFilters] = useState<Record<string, RangeFilterState>>({});
   const [sortState, setSortState] = useState<CostSortState>({ columnId: null, direction: null });
   const [columnMenuPosition, setColumnMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [topBarTarget, setTopBarTarget] = useState<HTMLElement | null>(null);
   const columnMenuRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -319,6 +321,10 @@ export function ArticleCostsPage() {
       void loadSettingsTabData('shops');
     }
   }, [loadSettingsTabData, shops.length]);
+
+  useEffect(() => {
+    setTopBarTarget(document.getElementById('costs-topbar-controls'));
+  }, []);
 
   useEffect(() => {
     if (!openColumnMenuId) return;
@@ -576,54 +582,98 @@ export function ArticleCostsPage() {
   };
 
   const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
-
-  return (
-    <section className="space-y-5 p-4 sm:p-6">
-      <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="text-sm font-semibold text-blue-600">Товары</div>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900">Себестоимость</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-            Таблица берет товары из синхронизированного каталога и накладывает текущие или исторические значения себестоимости.
-          </p>
+  const topBarControls = (
+    <div className="flex w-full flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="w-full sm:w-56">
+          <FancyDropdown
+            value={selectedConnection?.id ?? ''}
+            onChange={setSelectedConnectionId}
+            options={shopOptions}
+            placeholder="Магазин"
+            disabled={shops.length === 0}
+            compact
+          />
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[540px]">
-          <label>
-            <div className="mb-2 text-sm font-medium text-slate-600">Магазин</div>
-            <FancyDropdown
-              value={selectedConnection?.id ?? ''}
-              onChange={setSelectedConnectionId}
-              options={shopOptions}
-              placeholder="Нет магазинов"
-              disabled={shops.length === 0}
-            />
-          </label>
+        <div className="flex gap-2">
+          <FancyDropdown
+            value={snapshotMode}
+            onChange={setSnapshotMode}
+            options={[
+              { value: 'current', label: 'Текущие' },
+              { value: 'dated', label: 'На дату' },
+            ]}
+            compact
+          />
 
-          <label>
-            <div className="mb-2 text-sm font-medium text-slate-600">Снимок</div>
-            <FancyDropdown
-              value={snapshotMode}
-              onChange={setSnapshotMode}
-              options={[
-                { value: 'current', label: 'Текущий' },
-                { value: 'dated', label: 'На дату' },
-              ]}
-            />
-          </label>
-
-          <label>
-            <div className="mb-2 text-sm font-medium text-slate-600">Дата</div>
+          {snapshotMode === 'dated' && (
             <input
               type="date"
               value={snapshotDate}
-              disabled={snapshotMode === 'current'}
               onChange={event => setSnapshotDate(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-400"
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
             />
-          </label>
+          )}
+        </div>
+
+        <div className="text-xs text-slate-500">
+          {loading ? 'Загрузка...' : `${totalRows} строк · ${sortedRows.length} показано · ${changedRows.length} изменено`}
         </div>
       </div>
+
+      <div className="flex flex-wrap gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          className="hidden"
+          onChange={event => void importCosts(event.target.files?.[0])}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!selectedConnection || importing || exporting}
+          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+          Импорт
+        </button>
+        <button
+          type="button"
+          onClick={() => void exportCosts()}
+          disabled={!selectedConnection || exporting || importing}
+          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+          Экспорт
+        </button>
+        <button
+          type="button"
+          onClick={() => setReloadToken(current => current + 1)}
+          disabled={loading || importing || exporting}
+          className="inline-flex h-10 items-center justify-center rounded-2xl border border-slate-200 px-3 text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          aria-label="Обновить"
+          title="Обновить"
+        >
+          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+        </button>
+        <button
+          type="button"
+          onClick={() => void saveCosts()}
+          disabled={saving || importing || exporting || changedRows.length === 0}
+          className="inline-flex h-10 items-center gap-2 rounded-2xl bg-slate-900 px-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+          Сохранить
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <section className="flex h-full min-h-0 flex-col gap-4 p-4 sm:p-6">
+      {topBarTarget && createPortal(topBarControls, topBarTarget)}
 
       {error && (
         <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -632,64 +682,10 @@ export function ArticleCostsPage() {
         </div>
       )}
 
-      <div className="rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="text-sm font-semibold text-slate-900">Каталог товаров</div>
-            <div className="mt-1 text-xs text-slate-500">
-              {loading ? 'Загрузка строк...' : `Строк: ${totalRows}. Показано: ${sortedRows.length}. Изменено: ${changedRows.length}.`}
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              className="hidden"
-              onChange={event => void importCosts(event.target.files?.[0])}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={!selectedConnection || importing || exporting}
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-              Импорт XLSX
-            </button>
-            <button
-              type="button"
-              onClick={() => void exportCosts()}
-              disabled={!selectedConnection || exporting || importing}
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-              Экспорт XLSX
-            </button>
-            <button
-              type="button"
-              onClick={() => setReloadToken(current => current + 1)}
-              disabled={loading || importing || exporting}
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-              Обновить
-            </button>
-            <button
-              type="button"
-              onClick={() => void saveCosts()}
-              disabled={saving || importing || exporting || changedRows.length === 0}
-              className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-              Сохранить
-            </button>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="min-h-0 flex-1 overflow-auto">
           <table className="min-w-[760px] w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <thead className="sticky top-0 z-10 bg-slate-50 text-left text-[11px] font-semibold uppercase text-slate-500">
               <tr>
                 {COST_COLUMNS.map(column => {
                   const hasValueFilter = (appliedColumnFilterValues[column.id]?.length ?? 0) > 0;
@@ -698,12 +694,12 @@ export function ArticleCostsPage() {
                   const isActive = openColumnMenuId === column.id || sortState.columnId === column.id || hasValueFilter || hasRangeFilter;
 
                   return (
-                    <th key={column.id} className={`${column.id === 'product' ? 'px-5' : 'px-4'} py-3 ${column.align === 'right' ? 'text-right' : 'text-left'}`}>
+                    <th key={column.id} className={`${column.id === 'product' ? 'px-4' : 'px-3'} py-2 ${column.align === 'right' ? 'text-right' : 'text-left'}`}>
                       <div className={`flex ${column.align === 'right' ? 'justify-end' : ''}`}>
                         <button
                           type="button"
                           onClick={event => openColumnMenu(column.id, event.currentTarget)}
-                          className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white ${
+                          className={`inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-left transition-colors hover:bg-white ${
                             isActive ? 'bg-white text-slate-700 shadow-sm ring-1 ring-blue-200' : 'text-slate-500'
                           }`}
                         >
@@ -789,7 +785,7 @@ export function ArticleCostsPage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex shrink-0 flex-col gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-xs text-slate-500">
             Страница {page} из {totalPages}
           </div>
@@ -957,12 +953,14 @@ function FancyDropdown<T extends string>({
   onChange,
   placeholder = 'Выберите',
   disabled = false,
+  compact = false,
 }: {
   value: T | string;
   options: DropdownOption<T>[];
   onChange: (value: T) => void;
   placeholder?: string;
   disabled?: boolean;
+  compact?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -987,7 +985,9 @@ function FancyDropdown<T extends string>({
         type="button"
         onClick={() => setIsOpen(current => !current)}
         disabled={disabled}
-        className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-sm text-slate-900 outline-none transition-colors hover:border-slate-300 hover:bg-slate-50 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+        className={`flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white text-left text-sm text-slate-900 outline-none transition-colors hover:border-slate-300 hover:bg-slate-50 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 ${
+          compact ? 'h-10 px-3' : 'px-4 py-3'
+        }`}
       >
         <span className="min-w-0">
           <span className="block truncate">{selectedOption?.label ?? placeholder}</span>
