@@ -13,7 +13,6 @@ import {
   Trash2,
 } from 'lucide-react';
 import { MarketplaceBadge } from '../components/common/MarketplaceIcon';
-import { DateRangePicker } from '../components/layout/DateRangePicker';
 import { usePlatform, type MarketplaceConnection, type OrganizationMember, type SyncRun } from '../context/PlatformContext';
 import { apiRequest } from '../lib/api';
 import { getPreferredSyncKinds } from '../lib/platformCatalog';
@@ -950,7 +949,7 @@ function ProfileTab({
 }
 
 function ShopsTab({ isLoading }: { isLoading: boolean }) {
-  const { session, connections, connectors, selectedOrganizationId, validateConnection, enqueueSync, connectShop, updateConnection } = usePlatform();
+  const { session, connections, connectors, selectedOrganizationId, enqueueSync, connectShop, updateConnection } = usePlatform();
   const shops = useMemo(
     () => connections.filter(connection => connection.organizationId === selectedOrganizationId),
     [connections, selectedOrganizationId]
@@ -1512,13 +1511,6 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                 >
                   Настроить
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void validateConnection(shop.id)}
-                  className="inline-flex min-h-9 flex-1 items-center justify-center rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-slate-800 sm:flex-none"
-                >
-                  Проверить
-                </button>
                 <div
                   className="relative flex flex-1 sm:flex-none"
                   ref={isSyncFlyoutOpen && syncShopId === shop.id ? syncFlyoutRef : undefined}
@@ -1550,17 +1542,32 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                       <div className="space-y-4">
                         <div>
                           <div className="mb-2 text-sm font-medium text-slate-600">Период синхронизации</div>
-                          <DateRangePicker
-                            start={syncDateFrom}
-                            end={syncDateTo}
-                            onChange={(start, end) => {
-                              setSyncDateFrom(start);
-                              setSyncDateTo(end);
-                              setSyncDateError(null);
-                            }}
-                            fullWidth
-                            dropdownPlacement="top"
-                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="block">
+                              <span className="mb-1 block text-xs font-medium uppercase text-slate-500">От</span>
+                              <input
+                                type="date"
+                                value={syncDateFrom}
+                                onChange={event => {
+                                  setSyncDateFrom(event.target.value);
+                                  setSyncDateError(null);
+                                }}
+                                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                              />
+                            </label>
+                            <label className="block">
+                              <span className="mb-1 block text-xs font-medium uppercase text-slate-500">До</span>
+                              <input
+                                type="date"
+                                value={syncDateTo}
+                                onChange={event => {
+                                  setSyncDateTo(event.target.value);
+                                  setSyncDateError(null);
+                                }}
+                                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                              />
+                            </label>
+                          </div>
                         </div>
 
                         {syncDateError && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{syncDateError}</div>}
