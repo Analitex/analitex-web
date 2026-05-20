@@ -13,6 +13,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { MarketplaceBadge } from '../components/common/MarketplaceIcon';
+import { DateRangePicker } from '../components/layout/DateRangePicker';
 import { usePlatform, type MarketplaceConnection, type OrganizationMember, type SyncRun } from '../context/PlatformContext';
 import { apiRequest } from '../lib/api';
 import { getPreferredSyncKinds } from '../lib/platformCatalog';
@@ -1751,7 +1752,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
             }
           }}
         >
-          <div className="w-full max-w-xl overflow-hidden rounded-[2rem] bg-white shadow-2xl">
+          <div className="w-full max-w-xl overflow-visible rounded-[2rem] bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
               <div>
                 <div className="text-sm font-medium text-blue-600">Синхронизация</div>
@@ -1767,35 +1768,18 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
             </div>
 
             <div className="space-y-5 px-6 py-5">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block">
-                  <div className="mb-2 text-sm font-medium text-slate-600">Дата начала</div>
-                  <input
-                    type="date"
-                    value={syncDateFrom}
-                    max={syncDateTo || undefined}
-                    onChange={event => {
-                      setSyncDateFrom(event.target.value);
-                      setSyncDateError(null);
-                    }}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                  />
-                </label>
-
-                <label className="block">
-                  <div className="mb-2 text-sm font-medium text-slate-600">Дата окончания</div>
-                  <input
-                    type="date"
-                    value={syncDateTo}
-                    min={syncDateFrom || undefined}
-                    max={defaultDateTo}
-                    onChange={event => {
-                      setSyncDateTo(event.target.value);
-                      setSyncDateError(null);
-                    }}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                  />
-                </label>
+              <div>
+                <div className="mb-2 text-sm font-medium text-slate-600">Период синхронизации</div>
+                <DateRangePicker
+                  start={syncDateFrom}
+                  end={syncDateTo}
+                  onChange={(start, end) => {
+                    setSyncDateFrom(start);
+                    setSyncDateTo(end);
+                    setSyncDateError(null);
+                  }}
+                  fullWidth
+                />
               </div>
 
               {syncDateError && <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{syncDateError}</div>}
