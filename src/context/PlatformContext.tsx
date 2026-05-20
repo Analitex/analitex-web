@@ -786,11 +786,16 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
   const refreshAccessToken = useCallback(async () => {
     const currentSession = sessionRef.current;
     if (!currentSession) return null;
+    if (!currentSession.refreshToken) {
+      logout();
+      setApiError('Your session expired. Please sign in again.');
+      return null;
+    }
 
     try {
       const response = await apiRequest<ApiAuthTokenResponse>('/auth/refresh', {
         method: 'POST',
-        body: JSON.stringify(currentSession.refreshToken ? { refreshToken: currentSession.refreshToken } : {}),
+        body: JSON.stringify({ refreshToken: currentSession.refreshToken }),
         skipAuthRefresh: true,
       });
 
