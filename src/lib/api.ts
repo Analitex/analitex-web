@@ -9,6 +9,18 @@ type ApiErrorBody = {
   errorCode?: string;
 };
 
+type ApiRequestOptions = RequestInit & {
+  token?: string | null;
+  skipAuthRefresh?: boolean;
+};
+
+type ApiAuthHandlers = {
+  getAccessToken: () => string | null;
+  getExpiresAt: () => string | null;
+  refreshAccessToken: () => Promise<string | null>;
+  onUnauthorized: () => void;
+};
+
 export class ApiError extends Error {
   status: number;
   details?: ApiErrorBody;
@@ -24,8 +36,15 @@ export class ApiError extends Error {
 const IN_FLIGHT_REQUESTS = new Map<string, Promise<unknown>>();
 const RESPONSE_CACHE = new Map<string, { expiresAt: number; value: unknown }>();
 const RESPONSE_CACHE_TTL_MS = 5_000;
+const TOKEN_REFRESH_SKEW_MS = 60_000;
+let authHandlers: ApiAuthHandlers | null = null;
+let activeRefresh: Promise<string | null> | null = null;
 
-function isDedupableRequest(path: string, options: RequestInit & { token?: string | null }) {
+export function configureApiAuthHandlers(handlers: ApiAuthHandlers | null) {
+  authHandlers = handlers;
+}
+
+function isDedupableRequest(path: string, options: ApiRequestOptions) {
   const method = (options.method ?? 'GET').toUpperCase();
   if (method === 'GET') return true;
   if (method !== 'POST') return false;
@@ -38,7 +57,7 @@ function isDedupableRequest(path: string, options: RequestInit & { token?: strin
   );
 }
 
-function buildRequestKey(path: string, options: RequestInit & { token?: string | null }) {
+function buildRequestKey(path: string, options: ApiRequestOptions) {
   const method = (options.method ?? 'GET').toUpperCase();
   const body = typeof options.body === 'string' ? options.body : '';
   return JSON.stringify({
@@ -67,7 +86,7 @@ function resolveApiErrorMessage(details?: ApiErrorBody, fallback = 'Request fail
   return details?.detail || details?.message || details?.title || fallback;
 }
 
-function getAuthHeaders(options: RequestInit & { token?: string | null }, accept = 'application/json') {
+function getAuthHeaders(options: ApiRequestOptions, accept = 'application/json') {
   const headers = new Headers(options.headers);
   headers.set('Accept', accept);
 
@@ -80,6 +99,61 @@ function getAuthHeaders(options: RequestInit & { token?: string | null }, accept
   }
 
   return headers;
+}
+
+function isTokenExpiring(expiresAt: string | null) {
+  if (!expiresAt) return false;
+  const expiresTime = Date.parse(expiresAt);
+  return Number.isFinite(expiresTime) && expiresTime <= Date.now() + TOKEN_REFRESH_SKEW_MS;
+}
+
+async function refreshAccessToken() {
+  if (!authHandlers) return null;
+  if (!activeRefresh) {
+    activeRefresh = authHandlers.refreshAccessToken().finally(() => {
+      activeRefresh = null;
+    });
+  }
+  return activeRefresh;
+}
+
+async function resolveRequestToken(options: ApiRequestOptions) {
+  if (!options.token || options.skipAuthRefresh || !authHandlers) return options.token ?? null;
+
+  const currentToken = authHandlers.getAccessToken();
+  if (currentToken && currentToken !== options.token) {
+    return currentToken;
+  }
+
+  if (!isTokenExpiring(authHandlers.getExpiresAt())) {
+    return options.token;
+  }
+
+  return (await refreshAccessToken()) ?? options.token;
+}
+
+async function fetchJson<T>(path: string, options: ApiRequestOptions): Promise<T> {
+  const response = await fetch(buildUrl(path), {
+    ...options,
+    headers: getAuthHeaders(options),
+  });
+
+  if (!response.ok) {
+    let details: ApiErrorBody | undefined;
+    try {
+      details = (await response.json()) as ApiErrorBody;
+    } catch {
+      details = undefined;
+    }
+    const message = resolveApiErrorMessage(details, response.statusText || 'Request failed');
+    throw new ApiError(message, response.status, details);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return (await response.json()) as T;
 }
 
 function getHeaderFilename(contentDisposition: string | null) {
@@ -103,10 +177,12 @@ export async function apiPing() {
 
 export async function apiRequest<T>(
   path: string,
-  options: RequestInit & { token?: string | null } = {}
+  options: ApiRequestOptions = {}
 ): Promise<T> {
-  const canDeduplicate = isDedupableRequest(path, options);
-  const requestKey = buildRequestKey(path, options);
+  const requestToken = await resolveRequestToken(options);
+  const requestOptions = { ...options, token: requestToken };
+  const canDeduplicate = isDedupableRequest(path, requestOptions);
+  const requestKey = buildRequestKey(path, requestOptions);
   if (canDeduplicate) {
     const cachedResponse = RESPONSE_CACHE.get(requestKey);
     if (cachedResponse && cachedResponse.expiresAt > Date.now()) {
@@ -124,30 +200,25 @@ export async function apiRequest<T>(
     }
   }
 
-  const headers = getAuthHeaders(options);
-
   const requestPromise = (async () => {
-    const response = await fetch(buildUrl(path), {
-      ...options,
-      headers,
-    });
-
-    if (!response.ok) {
-      let details: ApiErrorBody | undefined;
-      try {
-        details = (await response.json()) as ApiErrorBody;
-      } catch {
-        details = undefined;
+    try {
+      return await fetchJson<T>(path, requestOptions);
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.status === 401 &&
+        requestToken &&
+        !requestOptions.skipAuthRefresh &&
+        authHandlers
+      ) {
+        const refreshedToken = await refreshAccessToken();
+        if (refreshedToken) {
+          return await fetchJson<T>(path, { ...requestOptions, token: refreshedToken });
+        }
+        authHandlers.onUnauthorized();
       }
-      const message = resolveApiErrorMessage(details, response.statusText || 'Request failed');
-      throw new ApiError(message, response.status, details);
+      throw error;
     }
-
-    if (response.status === 204) {
-      return undefined as T;
-    }
-
-    return (await response.json()) as T;
   })();
 
   if (canDeduplicate) {
@@ -172,12 +243,30 @@ export async function apiRequest<T>(
 
 export async function apiDownload(
   path: string,
-  options: RequestInit & { token?: string | null } = {}
+  options: ApiRequestOptions = {}
 ): Promise<{ blob: Blob; filename: string | null }> {
-  const response = await fetch(buildUrl(path), {
-    ...options,
-    headers: getAuthHeaders(options, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+  const requestToken = await resolveRequestToken(options);
+  const requestOptions = { ...options, token: requestToken };
+  let response = await fetch(buildUrl(path), {
+    ...requestOptions,
+    headers: getAuthHeaders(requestOptions, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
   });
+
+  if (response.status === 401 && requestToken && !requestOptions.skipAuthRefresh && authHandlers) {
+    const refreshedToken = await refreshAccessToken();
+    if (refreshedToken) {
+      response = await fetch(buildUrl(path), {
+        ...requestOptions,
+        token: refreshedToken,
+        headers: getAuthHeaders(
+          { ...requestOptions, token: refreshedToken },
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        ),
+      });
+    } else {
+      authHandlers.onUnauthorized();
+    }
+  }
 
   if (!response.ok) {
     let details: ApiErrorBody | undefined;

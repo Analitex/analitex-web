@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { CONNECTOR_CATALOG } from '../lib/platformCatalog';
-import { ApiError, apiRequest } from '../lib/api';
+import { ApiError, apiRequest, configureApiAuthHandlers } from '../lib/api';
 
 export interface PlatformUser {
   id: string;
@@ -19,6 +19,7 @@ export interface AuthSession {
   tokenType: 'Bearer';
   expiresAt: string;
   user: PlatformUser;
+  refreshToken?: string;
 }
 
 export interface RegisterResult {
@@ -331,6 +332,14 @@ type ApiRegisterResponse = {
   nextAction?: string | null;
 };
 
+type ApiAuthTokenResponse = {
+  accessToken?: string;
+  refreshToken?: string | null;
+  tokenType?: string;
+  expiresAt?: string;
+  user?: ApiUser | null;
+};
+
 function mapUserStatus(value: unknown): PlatformUser['status'] {
   if (typeof value === 'string') {
     if (value === 'Active' || value === 'Invited' || value === 'Inactive') return value;
@@ -519,6 +528,7 @@ function mapCustomMetric(metric: ApiCustomMetric): CustomMetric {
 
 export function PlatformProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(() => loadStoredSession());
+  const sessionRef = useRef<AuthSession | null>(session);
   const [isWorkspaceHydrated, setIsWorkspaceHydrated] = useState(() => loadStoredSession() === null);
   const [users, setUsers] = useState<PlatformUser[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -532,6 +542,10 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
   const [apiError, setApiError] = useState<string | null>(null);
   const [connectors, setConnectors] = useState<MarketplaceConnectorDefinition[]>(CONNECTOR_CATALOG as MarketplaceConnectorDefinition[]);
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   const refreshOrganizationConnections = useCallback(
     async (organizationId: string) => {
@@ -645,14 +659,14 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     };
   }, [session?.accessToken]);
 
-  const recordAction: PlatformContextValue['recordAction'] = action => {
+  const recordAction: PlatformContextValue['recordAction'] = useCallback(action => {
     const nextAction: ActionRecord = {
       id: createId('action'),
       timestamp: new Date().toISOString(),
       ...action,
     };
     setActionHistory(current => [nextAction, ...current].slice(0, 100));
-  };
+  }, []);
 
   const dismissNotification: PlatformContextValue['dismissNotification'] = id => {
     setNotifications(current => current.filter(notification => notification.id !== id));
@@ -719,7 +733,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     setConnectors(CONNECTOR_CATALOG as MarketplaceConnectorDefinition[]);
     setIsWorkspaceHydrated(false);
     try {
-      const response = await apiRequest<{ accessToken?: string; tokenType?: string; expiresAt?: string; user?: ApiUser }>('/auth/login', {
+      const response = await apiRequest<ApiAuthTokenResponse>('/auth/login', {
         method: 'POST',
         body: JSON.stringify(input),
       });
@@ -731,6 +745,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
         tokenType: response.tokenType === 'Bearer' ? 'Bearer' : 'Bearer',
         expiresAt: response.expiresAt,
         user: mapAuthUser(response.user),
+        refreshToken: response.refreshToken ?? undefined,
       };
       setUsers(current => [...current.filter(item => item.email !== nextSession.user.email), nextSession.user]);
       setSession(nextSession);
@@ -749,8 +764,9 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setSession(null);
+    sessionRef.current = null;
     setIsWorkspaceHydrated(true);
     setOrganizations([]);
     setSelectedOrganizationId('');
@@ -765,7 +781,62 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       title: 'Logged out',
       description: 'Current session was cleared.',
     });
-  };
+  }, [recordAction]);
+
+  const refreshAccessToken = useCallback(async () => {
+    const currentSession = sessionRef.current;
+    if (!currentSession) return null;
+
+    try {
+      const response = await apiRequest<ApiAuthTokenResponse>('/auth/refresh', {
+        method: 'POST',
+        body: JSON.stringify(currentSession.refreshToken ? { refreshToken: currentSession.refreshToken } : {}),
+        skipAuthRefresh: true,
+      });
+
+      if (!response.accessToken || !response.expiresAt) {
+        throw new Error('Backend returned incomplete refresh payload.');
+      }
+
+      const nextSession: AuthSession = {
+        ...currentSession,
+        accessToken: response.accessToken,
+        tokenType: response.tokenType === 'Bearer' ? 'Bearer' : 'Bearer',
+        expiresAt: response.expiresAt,
+        user: response.user ? mapAuthUser(response.user) : currentSession.user,
+        refreshToken: response.refreshToken ?? currentSession.refreshToken,
+      };
+
+      sessionRef.current = nextSession;
+      setSession(nextSession);
+      setApiError(null);
+      return nextSession.accessToken;
+    } catch {
+      logout();
+      setApiError('Your session expired. Please sign in again.');
+      return null;
+    }
+  }, [logout]);
+
+  useEffect(() => {
+    configureApiAuthHandlers(
+      session
+        ? {
+            getAccessToken: () => sessionRef.current?.accessToken ?? null,
+            getExpiresAt: () => sessionRef.current?.expiresAt ?? null,
+            refreshAccessToken,
+            onUnauthorized: () => {
+              logout();
+              setApiError('Your session expired. Please sign in again.');
+            },
+          }
+        : null
+    );
+
+    return () => {
+      configureApiAuthHandlers(null);
+    };
+  }, [logout, refreshAccessToken, session]);
 
   const requestEmailVerification: PlatformContextValue['requestEmailVerification'] = async email => {
     await apiRequest<void>('/auth/request-email-verification', {

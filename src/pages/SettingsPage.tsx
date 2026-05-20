@@ -970,7 +970,9 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
   const [syncDateFrom, setSyncDateFrom] = useState(defaultDateFrom);
   const [syncDateTo, setSyncDateTo] = useState(defaultDateTo);
   const [syncDateError, setSyncDateError] = useState<string | null>(null);
+  const [syncFlyoutPosition, setSyncFlyoutPosition] = useState({ left: 16, top: 16 });
   const syncFlyoutRef = useRef<HTMLDivElement>(null);
+  const syncButtonRef = useRef<HTMLButtonElement | null>(null);
   const [marketplace, setMarketplace] = useState<'Wildberries' | 'Ozon'>('Ozon');
   const [displayName, setDisplayName] = useState('');
   const [apiToken, setApiToken] = useState('');
@@ -1122,12 +1124,23 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
     }
   };
 
-  const openSyncFlyout = (shopId: string, shopName: string) => {
+  const updateSyncFlyoutPosition = useCallback((button: HTMLButtonElement) => {
+    const rect = button.getBoundingClientRect();
+    const flyoutWidth = Math.min(352, window.innerWidth - 32);
+    const estimatedHeight = 260;
+    const left = Math.min(Math.max(16, rect.right - flyoutWidth), window.innerWidth - flyoutWidth - 16);
+    const top = rect.top >= estimatedHeight + 16 ? rect.top - estimatedHeight - 8 : rect.bottom + 8;
+    setSyncFlyoutPosition({ left, top: Math.max(16, top) });
+  }, []);
+
+  const openSyncFlyout = (shopId: string, shopName: string, button: HTMLButtonElement) => {
     if (isSyncFlyoutOpen && syncShopId === shopId) {
       closeSyncFlyout();
       return;
     }
 
+    syncButtonRef.current = button;
+    updateSyncFlyoutPosition(button);
     setSyncShopId(shopId);
     setSyncShopName(shopName);
     setSyncDateFrom(defaultDateFrom);
@@ -1141,13 +1154,20 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
     setSyncShopId(null);
     setSyncShopName('');
     setSyncDateError(null);
+    syncButtonRef.current = null;
   };
 
   useEffect(() => {
     if (!isSyncFlyoutOpen) return;
 
     const handleMouseDown = (event: MouseEvent) => {
-      if (syncFlyoutRef.current && !syncFlyoutRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        syncFlyoutRef.current &&
+        !syncFlyoutRef.current.contains(target) &&
+        syncButtonRef.current &&
+        !syncButtonRef.current.contains(target)
+      ) {
         closeSyncFlyout();
       }
     };
@@ -1158,13 +1178,23 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
       }
     };
 
+    const handlePositionUpdate = () => {
+      if (syncButtonRef.current) {
+        updateSyncFlyoutPosition(syncButtonRef.current);
+      }
+    };
+
     document.addEventListener('mousedown', handleMouseDown);
     document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', handlePositionUpdate);
+    window.addEventListener('scroll', handlePositionUpdate, true);
     return () => {
       document.removeEventListener('mousedown', handleMouseDown);
       document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', handlePositionUpdate);
+      window.removeEventListener('scroll', handlePositionUpdate, true);
     };
-  }, [isSyncFlyoutOpen]);
+  }, [isSyncFlyoutOpen, updateSyncFlyoutPosition]);
 
   const getSupportedSyncKinds = (marketplaceName: 'Wildberries' | 'Ozon') => {
     const connectorKinds = connectors.find(connector => connector.marketplace === marketplaceName)?.supportedSyncKinds ?? [];
@@ -1511,20 +1541,21 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                 >
                   Настроить
                 </button>
-                <div
-                  className="relative flex flex-1 sm:flex-none"
-                  ref={isSyncFlyoutOpen && syncShopId === shop.id ? syncFlyoutRef : undefined}
-                >
+                <div className="relative flex flex-1 sm:flex-none">
                   <button
                     type="button"
-                    onClick={() => openSyncFlyout(shop.id, shop.displayName)}
+                    onClick={event => openSyncFlyout(shop.id, shop.displayName, event.currentTarget)}
                     className="inline-flex min-h-9 flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 sm:flex-none"
                   >
                     Синхронизация
                   </button>
 
                   {isSyncFlyoutOpen && syncShopId === shop.id && (
-                    <div className="absolute bottom-full right-0 z-[145] mb-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
+                    <div
+                      ref={syncFlyoutRef}
+                      className="fixed z-[160] max-h-[calc(100vh-2rem)] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl"
+                      style={{ left: syncFlyoutPosition.left, top: syncFlyoutPosition.top }}
+                    >
                       <div className="mb-4 flex items-start justify-between gap-4">
                         <div className="min-w-0">
                           <div className="text-xs font-medium text-blue-600">Синхронизация</div>
