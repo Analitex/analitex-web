@@ -14,6 +14,7 @@ interface DateRangePickerProps {
   onVisibleRangeChange?: (start: string, end: string) => void;
   className?: string;
   fullWidth?: boolean;
+  dropdownPlacement?: 'top' | 'bottom';
 }
 
 const MONTH_LABELS = [
@@ -145,6 +146,7 @@ export function DateRangePicker({
   onVisibleRangeChange,
   className = '',
   fullWidth = false,
+  dropdownPlacement = 'bottom',
 }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
   const [localStart, setLocalStart] = useState(start);
@@ -283,7 +285,9 @@ export function DateRangePicker({
 
       {open && (
         <div
-          className={`absolute top-full left-0 mt-2 z-50 max-h-[calc(100vh-140px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl ${
+          className={`absolute left-0 z-50 max-h-[calc(100vh-140px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl ${
+            dropdownPlacement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'
+          } ${
             fullWidth ? 'w-full min-w-0' : 'w-max max-w-[calc(100vw-32px)]'
           }`}
         >

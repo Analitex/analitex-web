@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -961,7 +961,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
   const [isConnectFormOpen, setIsConnectFormOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
-  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [isSyncFlyoutOpen, setIsSyncFlyoutOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyRuns, setHistoryRuns] = useState<SyncRun[]>([]);
@@ -971,6 +971,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
   const [syncDateFrom, setSyncDateFrom] = useState(defaultDateFrom);
   const [syncDateTo, setSyncDateTo] = useState(defaultDateTo);
   const [syncDateError, setSyncDateError] = useState<string | null>(null);
+  const syncFlyoutRef = useRef<HTMLDivElement>(null);
   const [marketplace, setMarketplace] = useState<'Wildberries' | 'Ozon'>('Ozon');
   const [displayName, setDisplayName] = useState('');
   const [apiToken, setApiToken] = useState('');
@@ -1122,21 +1123,49 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
     }
   };
 
-  const openSyncModal = (shopId: string, shopName: string) => {
+  const openSyncFlyout = (shopId: string, shopName: string) => {
+    if (isSyncFlyoutOpen && syncShopId === shopId) {
+      closeSyncFlyout();
+      return;
+    }
+
     setSyncShopId(shopId);
     setSyncShopName(shopName);
     setSyncDateFrom(defaultDateFrom);
     setSyncDateTo(defaultDateTo);
     setSyncDateError(null);
-    setIsSyncModalOpen(true);
+    setIsSyncFlyoutOpen(true);
   };
 
-  const closeSyncModal = () => {
-    setIsSyncModalOpen(false);
+  const closeSyncFlyout = () => {
+    setIsSyncFlyoutOpen(false);
     setSyncShopId(null);
     setSyncShopName('');
     setSyncDateError(null);
   };
+
+  useEffect(() => {
+    if (!isSyncFlyoutOpen) return;
+
+    const handleMouseDown = (event: MouseEvent) => {
+      if (syncFlyoutRef.current && !syncFlyoutRef.current.contains(event.target as Node)) {
+        closeSyncFlyout();
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeSyncFlyout();
+      }
+    };
+
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isSyncFlyoutOpen]);
 
   const getSupportedSyncKinds = (marketplaceName: 'Wildberries' | 'Ozon') => {
     const connectorKinds = connectors.find(connector => connector.marketplace === marketplaceName)?.supportedSyncKinds ?? [];
@@ -1163,7 +1192,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
     window.setTimeout(() => {
       void refreshShopSyncGroups(syncShopId);
     }, 750);
-    closeSyncModal();
+    closeSyncFlyout();
   };
 
   const openHistory = async (shopId: string, shopName: string) => {
@@ -1490,13 +1519,72 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                 >
                   Проверить
                 </button>
-                <button
-                  type="button"
-                  onClick={() => openSyncModal(shop.id, shop.displayName)}
-                  className="inline-flex min-h-9 flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 sm:flex-none"
+                <div
+                  className="relative flex flex-1 sm:flex-none"
+                  ref={isSyncFlyoutOpen && syncShopId === shop.id ? syncFlyoutRef : undefined}
                 >
-                  Синхронизация
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => openSyncFlyout(shop.id, shop.displayName)}
+                    className="inline-flex min-h-9 flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 sm:flex-none"
+                  >
+                    Синхронизация
+                  </button>
+
+                  {isSyncFlyoutOpen && syncShopId === shop.id && (
+                    <div className="absolute bottom-full right-0 z-[145] mb-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
+                      <div className="mb-4 flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="text-xs font-medium text-blue-600">Синхронизация</div>
+                          <div className="mt-1 truncate text-base font-semibold text-slate-900">{syncShopName}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={closeSyncFlyout}
+                          className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                        >
+                          Закрыть
+                        </button>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div>
+                          <div className="mb-2 text-sm font-medium text-slate-600">Период синхронизации</div>
+                          <DateRangePicker
+                            start={syncDateFrom}
+                            end={syncDateTo}
+                            onChange={(start, end) => {
+                              setSyncDateFrom(start);
+                              setSyncDateTo(end);
+                              setSyncDateError(null);
+                            }}
+                            fullWidth
+                            dropdownPlacement="top"
+                          />
+                        </div>
+
+                        {syncDateError && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{syncDateError}</div>}
+
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <button
+                            type="button"
+                            onClick={() => submitSync(shop.marketplace)}
+                            className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+                          >
+                            Запустить
+                          </button>
+                          <button
+                            type="button"
+                            onClick={closeSyncFlyout}
+                            className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                          >
+                            Отмена
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={() => void openHistory(shop.id, shop.displayName)}
@@ -1743,72 +1831,6 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
         </div>
       )}
 
-      {isSyncModalOpen && (
-        <div
-          className="fixed inset-0 z-[145] flex items-center justify-center bg-slate-950/45 p-4"
-          onMouseDown={event => {
-            if (event.target === event.currentTarget) {
-              closeSyncModal();
-            }
-          }}
-        >
-          <div className="w-full max-w-xl overflow-visible rounded-[2rem] bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
-              <div>
-                <div className="text-sm font-medium text-blue-600">Синхронизация</div>
-                <h3 className="text-2xl font-semibold text-slate-900">{syncShopName}</h3>
-              </div>
-              <button
-                type="button"
-                onClick={closeSyncModal}
-                className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-              >
-                Закрыть
-              </button>
-            </div>
-
-            <div className="space-y-5 px-6 py-5">
-              <div>
-                <div className="mb-2 text-sm font-medium text-slate-600">Период синхронизации</div>
-                <DateRangePicker
-                  start={syncDateFrom}
-                  end={syncDateTo}
-                  onChange={(start, end) => {
-                    setSyncDateFrom(start);
-                    setSyncDateTo(end);
-                    setSyncDateError(null);
-                  }}
-                  fullWidth
-                />
-              </div>
-
-              {syncDateError && <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{syncDateError}</div>}
-
-              <div className="flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const shop = shops.find(item => item.id === syncShopId);
-                    if (shop) {
-                      submitSync(shop.marketplace);
-                    }
-                  }}
-                  className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
-                >
-                  Запустить синхронизацию
-                </button>
-                <button
-                  type="button"
-                  onClick={closeSyncModal}
-                  className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-                >
-                  Отмена
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </section>
   );
 }
