@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, ArrowDown, ArrowDownWideNarrow, ArrowUp, ArrowUpDown, ArrowUpWideNarrow, Check, ChevronDown, Download, Loader2, RefreshCw, Save, Search, Upload } from 'lucide-react';
+import { MarketplaceIcon } from '../components/common/MarketplaceIcon';
 import { useFilters } from '../context/FilterContext';
 import { usePlatform } from '../context/PlatformContext';
 import { useAnalyticsWorkspaceData } from '../hooks/useAnalyticsWorkspaceData';
@@ -612,13 +613,9 @@ export function ArticleCostsPage() {
               type="date"
               value={snapshotDate}
               onChange={event => setSnapshotDate(event.target.value)}
-              className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
             />
           )}
-        </div>
-
-        <div className="text-xs text-slate-500">
-          {loading ? 'Загрузка...' : `${totalRows} строк · ${sortedRows.length} показано · ${changedRows.length} изменено`}
         </div>
       </div>
 
@@ -634,7 +631,7 @@ export function ArticleCostsPage() {
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={!selectedConnection || importing || exporting}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
           Импорт
@@ -643,7 +640,7 @@ export function ArticleCostsPage() {
           type="button"
           onClick={() => void exportCosts()}
           disabled={!selectedConnection || exporting || importing}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
           Экспорт
@@ -652,7 +649,7 @@ export function ArticleCostsPage() {
           type="button"
           onClick={() => setReloadToken(current => current + 1)}
           disabled={loading || importing || exporting}
-          className="inline-flex h-10 items-center justify-center rounded-2xl border border-slate-200 px-3 text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 px-3 text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           aria-label="Обновить"
           title="Обновить"
         >
@@ -662,7 +659,7 @@ export function ArticleCostsPage() {
           type="button"
           onClick={() => void saveCosts()}
           disabled={saving || importing || exporting || changedRows.length === 0}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl bg-slate-900 px-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
           Сохранить
@@ -672,7 +669,7 @@ export function ArticleCostsPage() {
   );
 
   return (
-    <section className="flex h-full min-h-0 flex-col gap-4 p-4 sm:p-6">
+    <section className="flex h-full min-h-0 flex-col gap-3">
       {topBarTarget && createPortal(topBarControls, topBarTarget)}
 
       {error && (
@@ -682,7 +679,7 @@ export function ArticleCostsPage() {
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-y border-slate-200 bg-white">
         <div className="min-h-0 flex-1 overflow-auto">
           <table className="min-w-[760px] w-full divide-y divide-slate-200 text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50 text-left text-[11px] font-semibold uppercase text-slate-500">
@@ -735,13 +732,13 @@ export function ArticleCostsPage() {
 
                   return (
                     <tr key={row.key} className="align-top hover:bg-slate-50/70">
-                      <td className="px-5 py-4">
-                        <div className="max-w-sm font-medium text-slate-900">{row.title || row.vendorCode || row.article}</div>
-                        <div className="mt-1 text-xs text-slate-500">{row.vendorCode || 'SKU не указан'}</div>
+                      <td className="px-4 py-2">
+                        <div className="max-w-sm truncate font-medium text-slate-900">{row.title || row.vendorCode || row.article}</div>
+                        {row.title && row.vendorCode && <div className="mt-0.5 truncate text-xs text-slate-500">{row.vendorCode}</div>}
                       </td>
-                      <td className="px-4 py-4 text-slate-700">{row.article || '-'}</td>
+                      <td className="px-3 py-2 text-slate-700">{row.article || '-'}</td>
                       {(['cost', 'fulfillment', 'vat'] as const).map(field => (
-                        <td key={field} className="px-4 py-3">
+                        <td key={field} className="px-3 py-2 text-right">
                           <input
                             inputMode="decimal"
                             value={draft[field]}
@@ -754,7 +751,7 @@ export function ArticleCostsPage() {
                                 },
                               }))
                             }
-                            className="w-28 rounded-xl border border-slate-200 bg-white px-3 py-2 text-right text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                            className="h-8 w-24 rounded-lg border border-slate-200 bg-white px-2 text-right text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                           />
                         </td>
                       ))}
@@ -985,19 +982,19 @@ function FancyDropdown<T extends string>({
         type="button"
         onClick={() => setIsOpen(current => !current)}
         disabled={disabled}
-        className={`flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white text-left text-sm text-slate-900 outline-none transition-colors hover:border-slate-300 hover:bg-slate-50 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 ${
-          compact ? 'h-10 px-3' : 'px-4 py-3'
+        className={`flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white text-left text-sm text-slate-900 outline-none transition-colors hover:border-slate-300 hover:bg-slate-50 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 ${
+          compact ? 'h-9 px-3' : 'px-4 py-3'
         }`}
       >
-        <span className="min-w-0">
+        <span className="flex min-w-0 items-center gap-2">
+          {selectedOption?.meta && <MarketplaceIcon marketplace={selectedOption.meta} className="shrink-0" />}
           <span className="block truncate">{selectedOption?.label ?? placeholder}</span>
-          {selectedOption?.meta && <span className="mt-0.5 block truncate text-xs text-slate-400">{selectedOption.meta}</span>}
         </span>
         <ChevronDown size={16} className={`shrink-0 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && !disabled && (
-        <div className="absolute left-0 right-0 top-full z-[90] mt-2 max-h-64 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-2xl">
+        <div className="absolute left-0 right-0 top-full z-[90] mt-1 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
           {options.length === 0 ? (
             <div className="px-3 py-2.5 text-sm text-slate-400">{placeholder}</div>
           ) : (
@@ -1012,13 +1009,13 @@ function FancyDropdown<T extends string>({
                     onChange(option.value);
                     setIsOpen(false);
                   }}
-                  className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${
+                  className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors ${
                     active ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
                   }`}
                 >
-                  <span className="min-w-0">
+                  <span className="flex min-w-0 items-center gap-2">
+                    {option.meta && <MarketplaceIcon marketplace={option.meta} className="shrink-0" />}
                     <span className="block truncate font-medium">{option.label}</span>
-                    {option.meta && <span className="mt-0.5 block truncate text-xs text-slate-400">{option.meta}</span>}
                   </span>
                   {active && <Check size={15} className="shrink-0 text-blue-600" />}
                 </button>

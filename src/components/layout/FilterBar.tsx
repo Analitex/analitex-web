@@ -127,12 +127,12 @@ export function FilterBar({
 
   if (isCostsPage) {
     return (
-      <div className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+      <div className="border-b border-slate-200 bg-white px-4 py-2 sm:px-6">
         <div className="flex min-w-0 items-start gap-3 md:items-center">
           <button
             type="button"
             onClick={onOpenMobileNav}
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-white md:hidden"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-white md:hidden"
             aria-label="Открыть навигацию"
           >
             <Menu size={18} />
