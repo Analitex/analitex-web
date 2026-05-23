@@ -302,16 +302,27 @@ Example response shape:
     "label": "Ozon",
     "supportedSyncKinds": [
       "catalog",
+      "ozon.catalog.products",
       "postings",
+      "ozon.orders.operations",
       "finance",
+      "ozon.finance.operations",
+      "ozon.finance.balance",
+      "ozon.finance.realization",
+      "realizationPosting",
       "storage",
       "returns",
+      "ozon.returns.operations",
       "stocks",
+      "ozon.stock.sources",
       "analytics",
       "performanceProducts",
       "performanceOrders",
       "performancePhrases",
-      "performanceExternalTraffic"
+      "performanceExternalTraffic",
+      "performanceExpense",
+      "performanceAllSkuPromoOrders",
+      "performanceCampaignObjects"
     ],
     "credentialFields": [
       { "key": "clientId", "label": "Client ID", "secret": true },
@@ -358,7 +369,17 @@ For Ozon:
   },
   "startInitialSync": true,
   "initialSyncDays": 14,
-  "initialSyncKinds": ["catalog", "postings", "finance", "returns", "stocks"]
+  "initialSyncKinds": [
+    "ozon.catalog.products",
+    "ozon.stock.sources",
+    "ozon.orders.operations",
+    "ozon.returns.operations",
+    "ozon.finance.operations",
+    "ozon.finance.balance",
+    "ozon.finance.realization",
+    "realizationPosting",
+    "analytics"
+  ]
 }
 ```
 
@@ -376,6 +397,7 @@ Current behavior:
 - if one performance field is sent, the other must also be sent
 - seller API credentials remain required even when performance credentials are present
 - Ozon `analytics` sync kind now pulls seller-side organic funnel data from `/v1/analytics/data`
+- Ozon `ozon.finance.balance` sync kind captures `/v1/finance/balance` as a source-only audit artifact for account-level balance and discount-points validation; it does not change dashboard formulas yet
 - Ozon `storage` sync kind pulls `FBO -> Стоимость размещения -> По товарам` via `/v1/report/placement/by-products/create` plus `/v1/report/info`
 - Ozon `finance` sync now also pulls the same storage report automatically, so storage is fetched by default for the standard financial pipeline
 - if both Ozon `finance` and `storage` are requested in one sync request, the standalone `storage` run is skipped to avoid double import
@@ -549,6 +571,9 @@ Query response shape:
 
 Query behavior:
 - returns catalog articles even when no cost is configured yet
+- also returns configured cost rows whose article is no longer present in the current synced catalog, unless the active brand/category filters require catalog metadata
+- article labels prefer synced catalog metadata over imported/configured cost metadata, because imported cost files can contain corrupted text; when an Ozon `vendorCode` is just the marketplace article id, the API uses product name as the display label; configured-only rows without usable catalog names are sorted after named catalog rows
+- Ozon catalog normalization also avoids persisting marketplace article ids as cost-grid display vendor codes when product names are available
 - excludes reporting-only residual rows such as `article = "0"` / `Неопознанный товар`
 - supports dashboard-style filters by account, marketplace, brand, category, and article/product id
 - returns marketplace/shop filter dictionaries from the current marketplace connection, with catalog row metadata used only as an additional source
@@ -658,7 +683,7 @@ Export request:
 ```
 
 Export behavior:
-- returns a binary `.xlsx` attachment with all matching real catalog articles, not only one query page
+- returns a binary `.xlsx` attachment with all matching real catalog articles plus configured cost rows that no longer have a current catalog match, not only one query page
 - response content type is `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
 - response header includes `Content-Disposition: attachment; filename="article-costs-{timestamp}.xlsx"`
 - writes the selected export date into the first row as `Дата`; when `date` is omitted, the date cell contains `-`
@@ -666,6 +691,8 @@ Export behavior:
 - otherwise uses the current/default organization cost value (`date: null`) when present
 - if only dated values exist for an article, exports the latest dated value
 - if no organization cost is configured yet, exports `0` for `Себестоимость`, `Фулфилмент`, and `НДС`
+- when a configured cost row has no size or barcode, export uses the synced product catalog metadata for that article
+- stale catalog alias rows where marketplace article was accidentally stored as the seller article are suppressed when a canonical marketplace article exists for the same product
 - excludes reporting-only residual rows such as `article = "0"` / `Неопознанный товар`
 - the same XLSX shape can be edited by the user and sent to the import endpoint
 - row `1` date is optional:
@@ -785,7 +812,9 @@ Mode-specific reporting behavior:
   - `commission = sale_commission + others_amount`
   - `logistics = processing_and_delivery + refunds_and_cancellations`
   - `returns` remains product-attributed from Ozon finance refund operations instead of using account-level `refunds_and_cancellations`, because that account-level bucket is already included in logistics
-  - `totalPaid = accruals_for_sale - commission - logistics - services_amount`
+  - `totalPaid` prefers Ozon finance operation `amount` / account money transfer when available; otherwise it is reconstructed as `accruals_for_sale - commission - logistics - services_amount`
+  - `ozon.finance.operations` now writes date-scoped account finance facts, so weekly and cross-month financial summaries do not depend on monthly realization rows
+  - `realizationPosting` is treated as a date-scoped marketplace discount source and writes account finance discount facts only; it must not duplicate operation-backed realization or sold-piece rows
   - if Ozon catalog rows expose VAT and tax settings are configured, `taxBase = sales - VAT` and `tax = VAT + taxBase * taxRatePercent`
 - Ozon service expenses are classified as:
   - `advertisingExpense`: CPC and cost-per-order promotion operations
@@ -793,15 +822,22 @@ Mode-specific reporting behavior:
   - `otherDeduction`: remaining Ozon service expenses after advertising and storage
   - `financeDeduction`: full Ozon `services_amount` service-expense pool
 - Ozon product source priority:
-  - finance rows contribute final product `realisation`, `sales`, `salesCount`, and `totalSales`
+  - finance operation rows contribute date-scoped product `realisation`, `salesCount`, `refunds`, and `totalSales`
+  - realization/discount sources contribute `sales` and `marketplaceDiscount` when the source exposes Ozon-funded discounts or co-investment
+  - only `marketplaceDiscount` reduces `sales`; other Ozon compensation/reimbursement rows remain compensation income and must not be treated as customer discount
   - Ozon finance `ClientReturnAgentOperation` rows are treated as financial refunds and reduce net `totalSales`
   - Ozon `/v1/returns/list` is treated as operational return workflow data for return-count style metrics, not the primary financial refund amount source
+  - source-first Ozon maintenance syncs should include `ozon.returns.operations`; without that source, `returnsCount` only reflects finance refund rows and undercounts TrueStats-style operational return counts
+  - Ozon realization refund quantity contributes to `refunds`, not `returnsCount`; `returnsCount` is reserved for operational return workflows
+  - Ozon posting `financial_data.products[].payout` is captured for audit, but it is not mapped to reporting `toTransfer`; live March/April validation showed it overstates TrueStats `toTransfer`
+  - Ozon `toTransfer` remains a known gap until the exact Ozon source/report column is identified; do not synthesize it from posting payout or finance operation `amount`
   - realization-by-day rows, when available, reduce product `sales` by Ozon-funded discounts/points and store that bucket as `compensation`
   - Ozon currently gates `/v1/finance/realization/by-day` behind Premium Plus; if the seller token receives `403 Data is available only with a Premium plus subscription`, this discount/co-investment bucket remains unavailable from Ozon API
-  - when realization-by-day is unavailable, reporting falls back to posting-side discount-point evidence, currently `Максимальный бустинг`, Ozon bonus/points labels, and Ozon Bank credit-card grace-period labels
+  - when realization-by-day is unavailable, only explicit posting-side discount evidence is used; reporting must not invent marketplace discount from posting payout or monthly pro-rating
   - commerce/posting rows contribute order-side `orders` and `ordersCount`; Ozon posting product prices are treated as unit prices and multiplied by product quantity for order amount/count
   - this avoids using order/posting dates as final sales units while still preserving order widgets
 - Ozon stock reporting currently counts FBO catalog stock as marketplace stock; FBS offer stock is exposed in source detail and is not counted as in-way stock
+- stock card metrics are snapshot-style values: reporting first uses the latest stock snapshot at or before `dateTo`; if no earlier snapshot exists, it uses the latest available snapshot for the selected scope and preserves the real snapshot date in source/history endpoints
 - `capitalizationByPrice` uses sales-derived average price when available; for stocked products without sales in the selected period it falls back to the latest non-zero catalog snapshot price
 - remaining known Ozon parity gaps are capitalization by retail price and small source/timing differences in stock and co-investment compensation
 - current configured Ozon `costOfSales` uses accounting unit cost (`costPerUnit + fulfillmentPerUnit + vatPerUnit`) multiplied by net sold pieces after financial refunds
@@ -1521,21 +1557,21 @@ Current `breakdowns` groups:
 - `logistics`
   - `logistics_total`
   - future raw WB/Ozon logistics taxonomy can add stable subkeys such as delivery, return, cancellation, and correction groups without changing `items[]`
-- `stockBalance`
+- `stock_balance`
   - `marketplace_warehouse_stock`
   - `in_way_to_customer`
   - `in_way_from_customer`
-- `otherMarketplaceExpenses`
+- `other_marketplace_expenses`
   - `storage`
   - `paid_acceptance`
   - `fines`
   - `other_deduction`
   - `finance_deduction`
   - `compensation`
-- `costOfSales`
+- `cost_of_sales`
 - `tax`
 - `capitalization`
-- `marketplaceReward`
+- `marketplace_reward`
 
 Frontend usage:
 - render `items[]` as the main revenue-structure/waterfall blocks
@@ -1760,6 +1796,7 @@ Current behavior:
 - powered by `analytics_product_period_aggregates`
 - Ozon organic funnel metrics are merged from `analytics_product_traffic_daily_facts`
 - row identity and dimension enrichment now prefer canonical `analytics_product_catalog`
+- product, brand, category, stock, and traffic filters resolve through canonical product catalog metadata when available, so sparse source rows without repeated brand/category labels remain attached to the correct filtered article
 - normalization also writes a compact parallel daily read model, `analytics_product_daily_facts`
   - one row per marketplace/account/product identity/date
   - numeric metrics only plus a stable product identity key
@@ -2169,7 +2206,8 @@ Response shape:
 
 Current behavior:
 - built from dedicated `analytics_stock_source_snapshots`
-- returns the latest available source-level snapshot within the requested date range
+- returns the latest source-level snapshot at or before `dateTo`
+- does not fall forward to a future source-level snapshot outside the requested range; if no source-level snapshot exists in range, the response is empty
 - Wildberries source rows are warehouse-oriented
 - Ozon source rows are source-bucket-oriented from the catalog stock payload
 - now returns an inventory drawer-style payload:
@@ -2666,6 +2704,7 @@ Current behavior:
 - `products` now use a canonical product catalog read model built during normalization
 - product, brand, category, and account dictionaries are no longer limited only by the requested activity window
 - they are built from the canonical product catalog under the requested marketplace/account/filter subtree
+- stale catalog aliases where a seller article/vendor code was accidentally stored as `marketplaceArticle` are suppressed when a canonical marketplace article exists for the same connection/account/product family
 - product filter `id` prefers seller-facing product identity:
   - primary key returned to the frontend: canonical product identity for the current scope
 - product filter `label` prefers:
@@ -3077,6 +3116,7 @@ Still evolving:
   - reporting reads compact breakdown facts first and falls back to legacy breakdown rows for already-synced historical data
   - after the next migration is created/applied, rerunning a sync replaces the legacy rows for that sync run with compact facts
   - Ozon finance historical pulls are chunked month-by-month in the connector for safer backfills
+  - Ozon monthly realization reports can be unavailable for the current or not-yet-finalized month; `404 Report was not found` is treated as a skipped month, not a failed sync
   - real connector coverage is stronger than before, but still not feature-complete for every marketplace report family
   - no build/test verification has been run automatically
   - password-reset flow is stronger than before, but still needs production-grade durable token storage
