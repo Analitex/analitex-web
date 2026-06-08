@@ -37,6 +37,7 @@ const IN_FLIGHT_REQUESTS = new Map<string, Promise<unknown>>();
 const RESPONSE_CACHE = new Map<string, { expiresAt: number; value: unknown }>();
 const RESPONSE_CACHE_TTL_MS = 5_000;
 const TOKEN_REFRESH_SKEW_MS = 60_000;
+const API_REQUEST_TIMEOUT_MS = 120_000;
 let authHandlers: ApiAuthHandlers | null = null;
 let activeRefresh: Promise<string | null> | null = null;
 
@@ -133,10 +134,32 @@ async function resolveRequestToken(options: ApiRequestOptions) {
 }
 
 async function fetchJson<T>(path: string, options: ApiRequestOptions): Promise<T> {
-  const response = await fetch(buildUrl(path), {
-    ...options,
-    headers: getAuthHeaders(options),
-  });
+  const timeoutController = new AbortController();
+  const callerSignal = options.signal;
+  const abortFromCaller = () => timeoutController.abort(callerSignal?.reason);
+  if (callerSignal?.aborted) {
+    abortFromCaller();
+  } else {
+    callerSignal?.addEventListener('abort', abortFromCaller, { once: true });
+  }
+
+  const timeoutId = globalThis.setTimeout(() => timeoutController.abort(), API_REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(buildUrl(path), {
+      ...options,
+      signal: timeoutController.signal,
+      headers: getAuthHeaders(options),
+    });
+  } catch (error) {
+    if (timeoutController.signal.aborted && !callerSignal?.aborted) {
+      throw new ApiError('Request timed out. Please try again.', 408);
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+    callerSignal?.removeEventListener('abort', abortFromCaller);
+  }
 
   if (!response.ok) {
     let details: ApiErrorBody | undefined;

@@ -199,6 +199,10 @@ type ProductRowsResponse = {
   meta?: ResponseMeta | null;
 };
 
+type ProductMainResponse = ProductRowsResponse & {
+  topProducts?: ProductReportingRow[] | null;
+};
+
 type ProductRevenueStructureResponse = {
   realisation?: number | null;
   sales?: number | null;
@@ -419,61 +423,65 @@ export function useProductReportingData(options?: {
         const selectedMetrics = metricsCatalog.length > 0 ? metricsCatalog : [...PRODUCT_REPORT_METRICS_CATALOG];
         const overviewMetrics = preferMetrics(SUMMARY_PRIORITY_METRICS, selectedMetrics);
 
-        const [summary, overview, table, revenueStructure] = await Promise.all([
-          apiRequest<ProductSummaryResponse>('/reporting/products/summary', {
-            method: 'POST',
-            token: session.accessToken,
-            body: JSON.stringify({
-              ...baseRequest,
-              metrics: [...PRODUCT_SUMMARY_METRICS],
-            }),
+        const mainMetrics = [...new Set([...selectedMetrics, ...PRODUCT_SUMMARY_METRICS])];
+        const revenueStructurePromise = apiRequest<ProductRevenueStructureResponse>('/reporting/products/revenue-structure', {
+          method: 'POST',
+          token: session.accessToken,
+          body: JSON.stringify(baseRequest),
+        }).catch(() => null);
+
+        const main = await apiRequest<ProductMainResponse>('/reporting/products/main', {
+          method: 'POST',
+          token: session.accessToken,
+          body: JSON.stringify({
+            ...baseRequest,
+            metrics: mainMetrics,
+            sort: { metric: 'sales', direction: 'Desc' },
+            page: 1,
+            limit,
+            topProductMetrics: overviewMetrics.slice(0, 6),
+            topProductsSortMetric: 'sales',
+            topProductsSortDirection: 'Desc',
+            topProductsLimit: 5,
+            marginMetrics: [],
+            marginLimit: 1,
+            includeOthers: false,
           }),
-          apiRequest<ProductOverviewResponse>('/reporting/products/overview', {
-            method: 'POST',
-            token: session.accessToken,
-            body: JSON.stringify({
-              ...baseRequest,
-              summaryMetrics: overviewMetrics.slice(0, 8),
-              topProductMetrics: overviewMetrics.slice(0, 6),
-              topProductsSortMetric: 'sales',
-              topProductsSortDirection: 'Desc',
-              topProductsLimit: 5,
-            }),
-          }),
-          apiRequest<ProductRowsResponse>('/reporting/products/query', {
-            method: 'POST',
-            token: session.accessToken,
-            body: JSON.stringify({
-              ...baseRequest,
-              metrics: selectedMetrics,
-              sort: { metric: 'sales', direction: 'Desc' },
-              page: 1,
-              limit,
-            }),
-          }),
-          apiRequest<ProductRevenueStructureResponse>('/reporting/products/revenue-structure', {
-            method: 'POST',
-            token: session.accessToken,
-            body: JSON.stringify(baseRequest),
-          }),
-        ]);
+        });
 
         if (cancelled) return;
 
+        const mainSummaryMetrics = main.summary?.total ?? null;
+
         setState(current => ({
-          summary: summary ?? null,
-          overview: overview ?? null,
-          tableSummary: table.summary ?? null,
-          revenueStructure: revenueStructure ?? null,
+          summary: {
+            metrics: mainSummaryMetrics,
+            meta: main.meta ?? null,
+          },
+          overview: {
+            summary: mainSummaryMetrics,
+            topProducts: main.topProducts ?? [],
+            meta: main.meta ?? null,
+          },
+          tableSummary: main.summary ?? null,
+          revenueStructure: null,
           marginTop: current.marginTop,
           marginCategories: current.marginCategories,
-          rows: table.rows ?? [],
+          rows: main.rows ?? [],
           metricsCatalog,
           metricCards,
           metricDefinitions,
           loading: false,
           marginLoading: current.marginLoading,
           error: null,
+        }));
+
+        const revenueStructure = await revenueStructurePromise;
+        if (cancelled) return;
+
+        setState(current => ({
+          ...current,
+          revenueStructure,
         }));
       } catch (error) {
         if (cancelled) return;
