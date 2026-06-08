@@ -154,6 +154,7 @@ interface PlatformContextValue {
     initialSyncKinds: string[];
   }) => MarketplaceConnection;
   updateConnection: (input: { connectionId: string; displayName?: string; credentials?: Record<string, string> }) => Promise<MarketplaceConnection>;
+  deleteConnection: (connectionId: string) => Promise<void>;
   validateConnection: (connectionId: string) => Promise<MarketplaceConnection>;
   enqueueSync: (input: { connectionId: string; dateFrom: string; dateTo: string; syncKinds: string[] }) => SyncRun | null;
   retrySync: (syncRunId: string) => SyncRun | null;
@@ -1127,6 +1128,21 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     return refreshedConnection;
   };
 
+  const deleteConnection: PlatformContextValue['deleteConnection'] = async connectionId => {
+    const source = connections.find(connection => connection.id === connectionId);
+    await apiRequest<void>(`/marketplace-connections/${connectionId}`, {
+      method: 'DELETE',
+      token: session?.accessToken,
+    });
+    setConnections(current => current.filter(connection => connection.id !== connectionId));
+    setSyncRuns(current => current.filter(run => run.connectionId !== connectionId));
+    recordAction({
+      kind: 'connection',
+      title: 'Deleted marketplace shop',
+      description: `${source?.displayName ?? connectionId} was deleted through the backend API.`,
+    });
+  };
+
   const validateConnection = async (connectionId: string) => {
     await apiRequest<void>(`/marketplace-connections/${connectionId}/validate`, {
       method: 'POST',
@@ -1390,6 +1406,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     revokeInvitation,
     connectShop,
     updateConnection,
+    deleteConnection,
     validateConnection,
     enqueueSync,
     retrySync,
