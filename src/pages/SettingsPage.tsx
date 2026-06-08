@@ -949,7 +949,7 @@ function ProfileTab({
 }
 
 function ShopsTab({ isLoading }: { isLoading: boolean }) {
-  const { session, connections, connectors, selectedOrganizationId, enqueueSync, connectShop, updateConnection } = usePlatform();
+  const { session, connections, connectors, selectedOrganizationId, enqueueSync, connectShop, updateConnection, deleteConnection } = usePlatform();
   const shops = useMemo(
     () => connections.filter(connection => connection.organizationId === selectedOrganizationId),
     [connections, selectedOrganizationId]
@@ -992,6 +992,9 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
   const [setupPerformanceClientSecret, setSetupPerformanceClientSecret] = useState('');
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupLoading, setSetupLoading] = useState(false);
+  const [deleteShop, setDeleteShop] = useState<MarketplaceConnection | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [syncGroupsByShop, setSyncGroupsByShop] = useState<Record<string, SyncGroupApiResponse[]>>({});
 
   useEffect(() => {
@@ -1155,6 +1158,42 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
     setSyncShopName('');
     setSyncDateError(null);
     syncButtonRef.current = null;
+  };
+
+  const openDeleteModal = (shop: MarketplaceConnection) => {
+    setDeleteShop(shop);
+    setDeleteError(null);
+  };
+
+  const closeDeleteModal = () => {
+    if (deleteLoading) return;
+    setDeleteShop(null);
+    setDeleteError(null);
+  };
+
+  const submitDeleteShop = async () => {
+    if (!deleteShop) return;
+
+    setDeleteLoading(true);
+    setDeleteError(null);
+    try {
+      await deleteConnection(deleteShop.id);
+      setSyncGroupsByShop(current => {
+        const next = { ...current };
+        delete next[deleteShop.id];
+        return next;
+      });
+      if (syncShopId === deleteShop.id) {
+        closeSyncFlyout();
+      }
+      setIsHistoryOpen(false);
+      setHistoryRuns([]);
+      setDeleteShop(null);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Не удалось удалить магазин.');
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -1630,6 +1669,14 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                 >
                   История
                 </button>
+                <button
+                  type="button"
+                  onClick={() => openDeleteModal(shop)}
+                  className="inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-50 sm:flex-none"
+                >
+                  <Trash2 size={14} />
+                  Удалить
+                </button>
               </div>
             </article>
           );
@@ -1641,6 +1688,54 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
           </div>
         )}
       </div>
+
+      {deleteShop && (
+        <div
+          className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/45 p-4"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget) {
+              closeDeleteModal();
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-[2rem] bg-white p-6 shadow-2xl">
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+                <Trash2 size={20} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-rose-600">Удаление магазина</div>
+                <h3 className="mt-1 text-xl font-semibold text-slate-900">{deleteShop.displayName}</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  Подключение, ключи доступа и связанные запуски синхронизации будут удалены из Analitex.
+                </p>
+              </div>
+            </div>
+
+            {deleteError && <div className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{deleteError}</div>}
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={closeDeleteModal}
+                disabled={deleteLoading}
+                className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitDeleteShop()}
+                disabled={deleteLoading}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {deleteLoading ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isSetupModalOpen && setupShop && (
         <div
