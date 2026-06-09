@@ -353,8 +353,21 @@ export function DashboardPage() {
   });
   const [articleMarginLimit, setArticleMarginLimit] = useState<number | 'all'>(10);
   const [categoryMarginLimit, setCategoryMarginLimit] = useState<number | 'all'>(10);
+  const productReportingMarketplaces = useMemo(
+    () =>
+      (analytics.filterOptions?.marketplaces ?? [])
+        .map(item => item.id)
+        .filter((id): id is string => Boolean(id)),
+    [analytics.filterOptions?.marketplaces]
+  );
+  const isProductReportingEnabled =
+    !analytics.loading &&
+    analytics.accountIds.length > 0 &&
+    productReportingMarketplaces.length > 0;
   const productReportingData = useProductReportingData({
+    enabled: isProductReportingEnabled,
     accountIds: analytics.accountIds,
+    marketplaces: productReportingMarketplaces,
     limit: 100,
     marginProductLimit: articleMarginLimit === 'all' ? 0 : articleMarginLimit,
     marginCategoryLimit: categoryMarginLimit === 'all' ? 0 : categoryMarginLimit,

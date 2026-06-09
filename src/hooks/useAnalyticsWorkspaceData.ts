@@ -22,6 +22,7 @@ type AnalyticsMetricComparisonRecord = Partial<
 
 type FilterOptionsResponse = {
   accounts?: { id: number; label?: string | null; marketplace?: string | null }[];
+  marketplaces?: { id: string; label?: string | null; marketplace?: string | null }[];
   products?: { id: string; label?: string | null }[];
   brands?: { id: string; label?: string | null }[];
   categories?: { id: string; label?: string | null }[];
@@ -245,6 +246,7 @@ export function useAnalyticsWorkspaceData(options?: {
     }
 
     let cancelled = false;
+    const requestController = new AbortController();
     const loadAnalytics = async () => {
       const cachedState = getCachedAnalyticsState(requestKey);
       if (cachedState) {
@@ -262,6 +264,7 @@ export function useAnalyticsWorkspaceData(options?: {
             const filterOptions = await apiRequest<FilterOptionsResponse>('/metadata/filter-options', {
               token: session.accessToken,
               method: 'POST',
+              signal: requestController.signal,
               body: JSON.stringify({
                 dateFrom: filters.dateStart,
                 dateTo: filters.dateEnd,
@@ -290,6 +293,7 @@ export function useAnalyticsWorkspaceData(options?: {
                   ? (
                       ((await apiRequest<MetricsCatalogResponse>('/metadata/metrics', {
                         token: session.accessToken,
+                        signal: requestController.signal,
                       })).metrics ?? []) as { key?: string | null; label?: string | null }[]
                     )
                       .map(item => item.key ?? item.label)
@@ -307,6 +311,10 @@ export function useAnalyticsWorkspaceData(options?: {
               })
               .map(item => item.id)
               .filter((id): id is number => Number.isInteger(id));
+            const availableMarketplaces = (filterOptions.marketplaces ?? [])
+              .map(item => item.id)
+              .filter((id): id is string => Boolean(id));
+            const requestMarketplaces = filters.marketplace.length > 0 ? filters.marketplace : availableMarketplaces;
 
             const analyticsFilters: AnalyticsQueryFilters = {
               productIds: filters.sku,
@@ -320,7 +328,7 @@ export function useAnalyticsWorkspaceData(options?: {
               dateFrom: filters.dateStart,
               dateTo: filters.dateEnd,
               mode: reportMode === 'financial' ? 'Financial' : 'Management',
-              marketplaces: filters.marketplace,
+              marketplaces: requestMarketplaces,
               filters: analyticsFilters,
             };
             const maybeAccountIds = accountIds.length > 0 ? { accountIds } : {};
@@ -334,6 +342,7 @@ export function useAnalyticsWorkspaceData(options?: {
                 ? apiRequest<SummaryResponse>('/overview/summary', {
                     token: session.accessToken,
                     method: 'POST',
+                    signal: requestController.signal,
                     body: JSON.stringify({
                       ...analyticsBaseRequest,
                       ...maybeAccountIds,
@@ -345,6 +354,7 @@ export function useAnalyticsWorkspaceData(options?: {
                 ? apiRequest<TrendResponse>('/analytics/trends', {
                     token: session.accessToken,
                     method: 'POST',
+                    signal: requestController.signal,
                     body: JSON.stringify({
                       ...analyticsBaseRequest,
                       ...maybeAccountIds,
@@ -357,6 +367,7 @@ export function useAnalyticsWorkspaceData(options?: {
                 ? apiRequest<BreakdownResponse>('/analytics/breakdown', {
                     token: session.accessToken,
                     method: 'POST',
+                    signal: requestController.signal,
                     body: JSON.stringify({
                       ...analyticsBaseRequest,
                       ...maybeAccountIds,
@@ -372,6 +383,7 @@ export function useAnalyticsWorkspaceData(options?: {
                 ? apiRequest<ExplanationResponse>('/analytics/explanations', {
                     token: session.accessToken,
                     method: 'POST',
+                    signal: requestController.signal,
                     body: JSON.stringify({
                       ...analyticsBaseRequest,
                       ...maybeAccountIds,
@@ -423,6 +435,7 @@ export function useAnalyticsWorkspaceData(options?: {
 
     return () => {
       cancelled = true;
+      requestController.abort();
     };
   }, [
     breakdownGroupBy,
