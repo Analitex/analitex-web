@@ -1082,26 +1082,17 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
       const trimmedPerformanceClientSecret = setupPerformanceClientSecret.trim();
       const hasCredentialInput = Boolean(trimmedClientId || trimmedApiKey || trimmedPerformanceClientId || trimmedPerformanceClientSecret);
 
-      if ((trimmedPerformanceClientId && !trimmedPerformanceClientSecret) || (!trimmedPerformanceClientId && trimmedPerformanceClientSecret)) {
-        setSetupError('Для Ozon performance credentials нужно заполнить оба поля: Client ID и Client Secret.');
-        return;
-      }
-
       if (hasCredentialInput) {
-        if (!trimmedClientId || !trimmedApiKey) {
-          setSetupError('Для обновления доступа Ozon укажите Client ID и ключ.');
+        if (!trimmedClientId || !trimmedApiKey || !trimmedPerformanceClientId || !trimmedPerformanceClientSecret) {
+          setSetupError('Для обновления доступа Ozon укажите Client ID, ключ доступа, Performance Client ID и Performance Client Secret.');
           return;
         }
 
         credentials = {
           clientId: trimmedClientId,
           apiKey: trimmedApiKey,
-          ...(trimmedPerformanceClientId && trimmedPerformanceClientSecret
-            ? {
-                performanceClientId: trimmedPerformanceClientId,
-                performanceClientSecret: trimmedPerformanceClientSecret,
-              }
-            : {}),
+          performanceClientId: trimmedPerformanceClientId,
+          performanceClientSecret: trimmedPerformanceClientSecret,
         };
       }
     }
@@ -1404,6 +1395,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                     <input
                       value={clientId}
                       onChange={event => setClientId(event.target.value)}
+                      required
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                     />
                   </label>
@@ -1415,28 +1407,31 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                         setApiKey(event.target.value);
                         setConnectError(null);
                       }}
+                      required
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                     />
                   </label>
                   <label className="block">
-                    <div className="mb-2 text-sm font-medium text-slate-600">Performance Client ID (необязательно)</div>
+                    <div className="mb-2 text-sm font-medium text-slate-600">Performance Client ID</div>
                     <input
                       value={performanceClientId}
                       onChange={event => {
                         setPerformanceClientId(event.target.value);
                         setConnectError(null);
                       }}
+                      required
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                     />
                   </label>
                   <label className="block">
-                    <div className="mb-2 text-sm font-medium text-slate-600">Performance Client Secret (необязательно)</div>
+                    <div className="mb-2 text-sm font-medium text-slate-600">Performance Client Secret</div>
                     <input
                       value={performanceClientSecret}
                       onChange={event => {
                         setPerformanceClientSecret(event.target.value);
                         setConnectError(null);
                       }}
+                      required
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                     />
                   </label>
@@ -1466,8 +1461,8 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                   onClick={() => {
                     const trimmedPerformanceClientId = performanceClientId.trim();
                     const trimmedPerformanceClientSecret = performanceClientSecret.trim();
-                    if ((trimmedPerformanceClientId && !trimmedPerformanceClientSecret) || (!trimmedPerformanceClientId && trimmedPerformanceClientSecret)) {
-                      setConnectError('Для Ozon performance credentials нужно заполнить оба поля: Client ID и Client Secret.');
+                    if (marketplace === 'Ozon' && (!clientId.trim() || !apiKey.trim() || !trimmedPerformanceClientId || !trimmedPerformanceClientSecret)) {
+                      setConnectError('Для Ozon нужно заполнить Client ID, ключ доступа, Performance Client ID и Performance Client Secret.');
                       return;
                     }
 
@@ -1480,12 +1475,8 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                           ? {
                               clientId: clientId.trim(),
                               apiKey: apiKey.trim(),
-                              ...(trimmedPerformanceClientId && trimmedPerformanceClientSecret
-                                ? {
-                                    performanceClientId: trimmedPerformanceClientId,
-                                    performanceClientSecret: trimmedPerformanceClientSecret,
-                                  }
-                                : {}),
+                              performanceClientId: trimmedPerformanceClientId,
+                              performanceClientSecret: trimmedPerformanceClientSecret,
                             }
                           : { apiToken: apiToken.trim() },
                       startInitialSync,
@@ -1813,7 +1804,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                         setSetupPerformanceClientId(event.target.value);
                         setSetupError(null);
                       }}
-                      placeholder="Необязательно"
+                      placeholder="Заполните для обновления credentials"
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                     />
                   </label>
@@ -1825,7 +1816,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
                         setSetupPerformanceClientSecret(event.target.value);
                         setSetupError(null);
                       }}
-                      placeholder="Необязательно"
+                      placeholder="Заполните для обновления credentials"
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                     />
                   </label>
