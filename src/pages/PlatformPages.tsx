@@ -619,6 +619,7 @@ export function ConnectionsPage() {
   const [dateTo, setDateTo] = useState('2026-04-18');
   const [syncKinds, setSyncKinds] = useState(() => serializeSyncKinds(getPreferredSyncKinds('Wildberries')));
   const [credentials, setCredentials] = useState<Record<string, string>>({ apiToken: 'token' });
+  const [connectionFormError, setConnectionFormError] = useState<string | null>(null);
 
   const connector = useMemo(() => connectors.find(item => item.marketplace === marketplace) ?? connectors[0], [connectors, marketplace]);
   const preferredSyncKinds = useMemo(
@@ -636,6 +637,7 @@ export function ConnectionsPage() {
     setCredentials(next);
     setDisplayName(marketplace === 'Wildberries' ? 'WB Main Shop' : 'Ozon Main Shop');
     setSyncKinds(serializeSyncKinds(preferredSyncKinds));
+    setConnectionFormError(null);
   }, [marketplace, preferredSyncKinds]);
 
   return (
@@ -680,12 +682,22 @@ export function ConnectionsPage() {
                   <input
                     type={field.secret ? 'password' : 'text'}
                     value={credentials[field.key] ?? ''}
-                    onChange={event => setCredentials(current => ({ ...current, [field.key]: event.target.value }))}
+                    required={field.required !== false}
+                    onChange={event => {
+                      setCredentials(current => ({ ...current, [field.key]: event.target.value }));
+                      setConnectionFormError(null);
+                    }}
                     className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition-colors focus:border-blue-500"
                   />
                 </label>
               ))}
             </div>
+
+            {connectionFormError ? (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {connectionFormError}
+              </div>
+            ) : null}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <label>
@@ -719,7 +731,18 @@ export function ConnectionsPage() {
 
             <button
               type="button"
-              onClick={() =>
+              onClick={() => {
+                const missingCredentialFields = connector.credentialFields.filter(
+                  field => field.required !== false && !(credentials[field.key] ?? '').trim()
+                );
+                if (missingCredentialFields.length > 0) {
+                  setConnectionFormError(
+                    `Заполните обязательные поля: ${missingCredentialFields.map(field => field.label).join(', ')}.`
+                  );
+                  return;
+                }
+
+                setConnectionFormError(null);
                 connectShop({
                   marketplace,
                   displayName,
@@ -727,8 +750,8 @@ export function ConnectionsPage() {
                   startInitialSync,
                   initialSyncDays,
                   initialSyncKinds: syncKinds.split(',').map(item => item.trim()).filter(Boolean),
-                })
-              }
+                });
+              }}
               className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
             >
               <Rocket size={16} />

@@ -90,7 +90,7 @@ export const CONNECTOR_CATALOG = [
     label: 'Wildberries',
     supportedSyncKinds: ['catalog', 'orders', 'sales', 'stocks', 'finance'],
     credentialFields: [
-      { key: 'apiToken', label: 'API token', secret: true },
+      { key: 'apiToken', label: 'API token', secret: true, required: true },
     ],
   },
   {
@@ -121,10 +121,10 @@ export const CONNECTOR_CATALOG = [
       'performanceCampaignObjects',
     ],
     credentialFields: [
-      { key: 'clientId', label: 'Client ID', secret: true },
-      { key: 'apiKey', label: 'API key', secret: true },
-      { key: 'performanceClientId', label: 'Performance client ID', secret: true },
-      { key: 'performanceClientSecret', label: 'Performance client secret', secret: true },
+      { key: 'clientId', label: 'Client ID', secret: true, required: true },
+      { key: 'apiKey', label: 'API key', secret: true, required: true },
+      { key: 'performanceClientId', label: 'Performance client ID', secret: true, required: true },
+      { key: 'performanceClientSecret', label: 'Performance client secret', secret: true, required: true },
     ],
   },
 ] as const;

@@ -96,7 +96,7 @@ export interface MarketplaceConnectorDefinition {
   marketplace: 'Wildberries' | 'Ozon';
   label: string;
   supportedSyncKinds: string[];
-  credentialFields: { key: string; label: string; secret: boolean }[];
+  credentialFields: { key: string; label: string; secret: boolean; required: boolean }[];
 }
 
 export interface ActionRecord {
@@ -271,8 +271,22 @@ type ApiConnector = {
   marketplace?: string | number;
   label?: string | null;
   supportedSyncKinds?: string[] | null;
-  credentialFields?: { key?: string | null; label?: string | null; secret?: boolean }[] | null;
+  credentialFields?: { key?: string | null; label?: string | null; secret?: boolean; required?: boolean }[] | null;
 };
+
+function createFallbackConnectors(): MarketplaceConnectorDefinition[] {
+  return CONNECTOR_CATALOG.map(connector => ({
+    marketplace: connector.marketplace,
+    label: connector.label,
+    supportedSyncKinds: [...connector.supportedSyncKinds],
+    credentialFields: connector.credentialFields.map(field => ({
+      key: field.key,
+      label: field.label,
+      secret: field.secret,
+      required: field.required,
+    })),
+  }));
+}
 
 type ApiConnection = {
   id: string;
@@ -542,7 +556,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
   const [actionHistory, setActionHistory] = useState<ActionRecord[]>(() => loadStoredActionHistory());
   const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
   const [apiError, setApiError] = useState<string | null>(null);
-  const [connectors, setConnectors] = useState<MarketplaceConnectorDefinition[]>(CONNECTOR_CATALOG as MarketplaceConnectorDefinition[]);
+  const [connectors, setConnectors] = useState<MarketplaceConnectorDefinition[]>(() => createFallbackConnectors());
 
   useEffect(() => {
     sessionRef.current = session;
@@ -690,7 +704,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     setConnections([]);
     setSyncRuns([]);
     setCustomMetrics([]);
-    setConnectors(CONNECTOR_CATALOG as MarketplaceConnectorDefinition[]);
+    setConnectors(createFallbackConnectors());
     setIsWorkspaceHydrated(false);
     try {
       const response = await apiRequest<ApiRegisterResponse>('/auth/register', {
@@ -731,7 +745,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     setConnections([]);
     setSyncRuns([]);
     setCustomMetrics([]);
-    setConnectors(CONNECTOR_CATALOG as MarketplaceConnectorDefinition[]);
+    setConnectors(createFallbackConnectors());
     setIsWorkspaceHydrated(false);
     try {
       const response = await apiRequest<ApiAuthTokenResponse>('/auth/login', {
@@ -776,7 +790,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     setConnections([]);
     setSyncRuns([]);
     setCustomMetrics([]);
-    setConnectors(CONNECTOR_CATALOG as MarketplaceConnectorDefinition[]);
+    setConnectors(createFallbackConnectors());
     recordAction({
       kind: 'auth',
       title: 'Logged out',
@@ -1324,6 +1338,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
               key: String(field.key),
               label: field.label ?? String(field.key),
               secret: Boolean(field.secret),
+              required: field.required !== false,
             })),
           }))
         );
@@ -1366,7 +1381,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     setConnections([]);
     setSyncRuns([]);
     setCustomMetrics([]);
-    setConnectors(CONNECTOR_CATALOG as MarketplaceConnectorDefinition[]);
+    setConnectors(createFallbackConnectors());
     recordAction({
       kind: 'auth',
       title: 'Deleted account',
