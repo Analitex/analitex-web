@@ -877,7 +877,7 @@ export function DashboardPage() {
       formatDelta: deltaMoney,
       invertColors: true,
       description: 'Возвраты, ₽/шт',
-      faq: tooltip(['returns', 'returnsCount', 'returnsUnits'], 'Возвраты, ₽/шт'),
+      faq: tooltip(['returns', 'refunds', 'returnsUnits'], 'Возвраты, ₽/шт'),
       section: 'metrics',
     },
     {

@@ -59,7 +59,7 @@ export function buildAnalyticsRowsFromApi(rows: ProductReportingApiRow[]) {
     const capitalizationByCost = getMetricNumber(metrics, ['capitalizationByCost']);
     const capitalizationByRetail = getMetricNumber(metrics, ['capitalizationByPrice']);
     const capitalizationOwnWarehouse = getMetricNumber(metrics, ['userWarehouseCapitalizationByCost']);
-    const rejectionsAndReturns = getMetricNumber(metrics, ['returnsCount']);
+    const rejectionsAndReturns = getMetricNumber(metrics, ['refunds', 'returnsUnits', 'returnsCount']);
     const profit = getMetricNumber(metrics, ['profit']);
     const profitWithoutExpense = getMetricNumber(metrics, ['profitWithoutExpense']);
     const advertisingExpenseBonus = getMetricNumber(metrics, ['advertisingExpenseBonus']);

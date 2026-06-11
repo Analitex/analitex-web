@@ -46,7 +46,7 @@ export function buildFormulaMetricValues(summaryMetrics: Record<string, number |
     averageLogisticsCost: metric('averageLogisticsCost'),
     logistics: metric('logistics'),
     storage: metric('storage'),
-    rejectionsAndReturns: metric('returnsCount'),
+    rejectionsAndReturns: metric('refunds'),
     totalSales: metric('totalSales'),
     totalSalesAmount: metric('sales'),
     averageRedemption: metric('averageRedemption'),
