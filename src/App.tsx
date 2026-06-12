@@ -11,6 +11,7 @@ import { SummaryPage } from './pages/SummaryPage';
 import { FinancePage } from './pages/FinancePage';
 import { InventoryPage } from './pages/InventoryPage';
 import { ArticleCostsPage } from './pages/ArticleCostsPage';
+import { OperationsPage } from './pages/OperationsPage';
 import { ExternalTrafficPage } from './pages/ExternalTrafficPage';
 import { SearchPhrasesPage } from './pages/SearchPhrasesPage';
 import { PlanFactPage } from './pages/PlanFactPage';
@@ -41,6 +42,7 @@ type MainPage =
   | 'finance'
   | 'inventory'
   | 'costs'
+  | 'operations'
   | 'external-traffic'
   | 'search-phrases'
   | 'planfact'
@@ -71,7 +73,7 @@ const PREVIEW_ROUTE_PATTERN = /^\/preview(?:\/([^/?#]+))?\/?$/;
 const PENDING_INVITE_TOKEN_KEY = 'aistats-pending-invite-token';
 const PENDING_INVITE_EMAIL_KEY = 'aistats-pending-invite-email';
 const DEV_PAGES = new Set<DevPage>(['home', 'auth', 'organizations', 'connections', 'analytics', 'docs', 'history']);
-const PREVIEW_PAGES = new Set<PreviewPage>(['dashboard', 'summary', 'finance', 'inventory', 'costs', 'external-traffic', 'search-phrases', 'planfact', 'ai', 'settings']);
+const PREVIEW_PAGES = new Set<PreviewPage>(['dashboard', 'summary', 'finance', 'inventory', 'costs', 'operations', 'external-traffic', 'search-phrases', 'planfact', 'ai', 'settings']);
 
 function normalizeSettingsTab(value: string | undefined): SettingsTabId {
   if (value === 'shops' || value === 'users' || value === 'taxes' || value === 'metrics') {
@@ -103,6 +105,8 @@ function normalizeMainPage(pathname: string): MainPage {
       return 'inventory';
     case '/costs':
       return 'costs';
+    case '/operations':
+      return 'operations';
     case '/external-traffic':
       return 'external-traffic';
     case '/search-phrases':
@@ -181,6 +185,8 @@ function pathForRoute(route: RouteState) {
       return '/inventory';
     case 'costs':
       return '/costs';
+    case 'operations':
+      return '/operations';
     case 'external-traffic':
       return '/external-traffic';
     case 'search-phrases':
@@ -220,6 +226,7 @@ function isMainPage(page: Page): page is Exclude<MainPage, 'login' | 'register'>
       page === 'finance' ||
       page === 'inventory' ||
       page === 'costs' ||
+      page === 'operations' ||
       page === 'external-traffic' ||
       page === 'search-phrases' ||
       page === 'planfact' ||
@@ -670,6 +677,8 @@ function AppRouter() {
         return <InventoryPage />;
       case 'costs':
         return <ArticleCostsPage />;
+      case 'operations':
+        return <OperationsPage />;
       case 'external-traffic':
         return <ExternalTrafficPage />;
       case 'search-phrases':

@@ -64,7 +64,8 @@ export function FilterBar({
   const [isReportModeMenuOpen, setIsReportModeMenuOpen] = useState(false);
   const reportModeRef = useRef<HTMLDivElement | null>(null);
   const isCostsPage = currentPage === 'costs';
-  const showFilters = currentPage !== 'settings' && !isCostsPage;
+  const isOperationsPage = currentPage === 'operations';
+  const showFilters = currentPage !== 'settings' && !isCostsPage && !isOperationsPage;
   const supportsReportMode =
     showFilters &&
     (currentPage === 'dashboard' ||
@@ -125,7 +126,7 @@ export function FilterBar({
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [isReportModeMenuOpen]);
 
-  if (isCostsPage) {
+  if (isCostsPage || isOperationsPage) {
     return (
       <div className="border-b border-slate-200 bg-white px-4 py-2 sm:px-6">
         <div className="flex min-w-0 items-start gap-3 md:items-center">
@@ -137,7 +138,7 @@ export function FilterBar({
           >
             <Menu size={18} />
           </button>
-          <div id="costs-topbar-controls" className="flex min-w-0 flex-1" />
+          {isCostsPage && <div id="costs-topbar-controls" className="flex min-w-0 flex-1" />}
         </div>
       </div>
     );
