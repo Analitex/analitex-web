@@ -1,7 +1,7 @@
 services:
   analitex-web:
     image: ${IMAGE_TAG}
-    container_name: analitex-web
+    container_name: ${CONTAINER_NAME:-analitex-web}
     restart: unless-stopped
     ports:
       - "${APP_PORT:-3000}:${CONTAINER_PORT:-3000}"
