@@ -1,0 +1,134 @@
+name: Deploy Docker image Staging
+
+on:
+  push:
+    branches:
+      - staging
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-deploy-web-staging
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  CONTAINER_PORT: 3000
+  DEPLOY_PATH: ${{ vars.STAGING_DEPLOY_PATH || '/opt/analitex-web-staging' }}
+  CONTAINER_NAME: ${{ vars.STAGING_CONTAINER_NAME || 'analitex-web-staging' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    environment: staging
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      tag: ${{ steps.image.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare image name
+        id: image
+        shell: bash
+        run: |
+          image="${REGISTRY}/${GITHUB_REPOSITORY,,}"
+          tag="${image}:staging-${GITHUB_SHA}"
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.image.outputs.tag }}
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.STAGING_VITE_API_BASE_URL }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: staging
+    env:
+      APP_PORT: ${{ vars.STAGING_APP_PORT || '3001' }}
+      DEPLOY_HOST: ${{ vars.STAGING_DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ vars.STAGING_DEPLOY_PORT || '22' }}
+      DEPLOY_USER: ${{ vars.STAGING_DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY || secrets.DEPLOY_SSH_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate staging deployment configuration
+        shell: bash
+        run: |
+          missing=0
+          if [[ -z "${DEPLOY_HOST}" ]]; then echo "STAGING_DEPLOY_HOST is required." >&2; missing=1; fi
+          if [[ -z "${DEPLOY_USER}" ]]; then echo "STAGING_DEPLOY_USER is required." >&2; missing=1; fi
+          if [[ -z "${DEPLOY_SSH_KEY}" ]]; then echo "STAGING_DEPLOY_SSH_KEY or DEPLOY_SSH_KEY is required." >&2; missing=1; fi
+          exit "${missing}"
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${DEPLOY_PORT}" "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload compose file
+        shell: bash
+        run: |
+          printf -v remote_env 'DEPLOY_PATH=%q' "$DEPLOY_PATH"
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "$remote_env bash -s" <<'SCRIPT'
+          set -euo pipefail
+          mkdir -p "$DEPLOY_PATH" 2>/dev/null || {
+            sudo mkdir -p "$DEPLOY_PATH"
+            sudo chown "$USER":"$USER" "$DEPLOY_PATH"
+          }
+          SCRIPT
+          scp -i ~/.ssh/deploy_key -P "$DEPLOY_PORT" docker-compose.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/docker-compose.yml"
+
+      - name: Deploy compose stack
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USERNAME: ${{ github.actor }}
+          IMAGE_TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          printf -v remote_env \
+            'APP_PORT=%q CONTAINER_PORT=%q CONTAINER_NAME=%q DEPLOY_PATH=%q GHCR_TOKEN=%q GHCR_USERNAME=%q IMAGE_TAG=%q' \
+            "$APP_PORT" "$CONTAINER_PORT" "$CONTAINER_NAME" "$DEPLOY_PATH" "$GHCR_TOKEN" "$GHCR_USERNAME" "$IMAGE_TAG"
+
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "$remote_env bash -s" <<'SCRIPT'
+          set -euo pipefail
+
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+          docker pull "$IMAGE_TAG"
+
+          cat > "$DEPLOY_PATH/.env" <<EOF
+          APP_PORT=$APP_PORT
+          CONTAINER_PORT=$CONTAINER_PORT
+          CONTAINER_NAME=$CONTAINER_NAME
+          IMAGE_TAG=$IMAGE_TAG
+          EOF
+
+          cd "$DEPLOY_PATH"
+          docker compose -f docker-compose.yml up -d
+          docker compose -f docker-compose.yml ps
+          docker image prune -f
+          SCRIPT
