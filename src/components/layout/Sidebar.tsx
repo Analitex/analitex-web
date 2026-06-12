@@ -34,6 +34,7 @@ const navItems: NavItem[] = [
   { id: 'external-traffic', label: 'Внешний трафик', icon: Radio },
   { id: 'search-phrases', label: 'Поисковые фразы', icon: Search },
   { id: 'planfact', label: 'План / Факт', icon: BarChart3 },
+  { id: 'operations', label: 'Операции', icon: ReceiptText },
   { id: 'ai', label: 'AI Инсайты', icon: Sparkles },
   { id: 'settings', label: 'Настройки', icon: Settings },
 ];
