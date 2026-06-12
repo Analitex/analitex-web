@@ -110,12 +110,12 @@ const AVAILABLE_FORMULA_METRICS = [
   { label: 'ДРР по заказам', value: 'drrByOrders' },
   { label: 'Платная приемка', value: 'acceptanceSum' },
   { label: 'Прочие удержания', value: 'otherDeduction' },
-  { label: 'Операционные расходы', value: 'expense' },
+  { label: 'Операционные расходы', value: 'operatingExpenses' },
   { label: 'Стоимость всех заказов', value: 'orders' },
   { label: 'Количество всех заказов', value: 'ordersCount' },
   { label: 'Комиссия', value: 'commission' },
   { label: 'Компенсация', value: 'compensation' },
-  { label: 'Итоговое вознаграждение ВБ', value: 'netMarketplaceReward' },
+  { label: 'Итоговое вознаграждение МП', value: 'netMarketplaceReward' },
   { label: 'Итого к оплате', value: 'totalPaid' },
   { label: 'Остатки', value: 'stockBalanceOverall' },
   { label: 'Остатки на складах WB (за вычетом в пути)', value: 'stockBalanceInWh' },
@@ -145,9 +145,16 @@ interface WidgetDefinition {
   formatDelta?: (v: number) => string;
   hideDeltaPercent?: boolean;
   invertColors?: boolean;
+  tone?: MetricTone;
   faq?: string;
   documents?: WidgetDocuments;
   customMetricId?: string;
+}
+
+type MetricTone = 'positive' | 'negative' | 'neutral';
+
+function getWidgetTone(def: Pick<WidgetDefinition, 'invertColors' | 'tone'>): MetricTone {
+  return def.tone ?? (def.invertColors ? 'negative' : 'positive');
 }
 
 interface WidgetDocuments {
@@ -235,7 +242,7 @@ const ANALYTICS_COLUMNS: AnalyticsColumnDefinition[] = [
   { id: 'ordersCount', label: 'Заказы', align: 'right', unit: 'шт.' },
   { id: 'ordersAmount', label: 'Заказы', align: 'right', unit: '₽' },
   { id: 'commission', label: 'Комиссия', align: 'right', unit: '₽' },
-  { id: 'netMarketplaceReward', label: 'Итоговое вознаграждение ВБ', align: 'right', unit: '₽' },
+  { id: 'netMarketplaceReward', label: 'Итоговое вознаграждение МП', align: 'right', unit: '₽' },
   { id: 'compensation', label: 'Компенсация', align: 'right', unit: '₽' },
   { id: 'averageLogisticsCost', label: 'Ср. стоимость логистики', align: 'right', unit: '₽' },
   { id: 'capitalizationByCost', label: 'Капитализация по себеc.', align: 'right', unit: '₽' },
@@ -555,13 +562,13 @@ export function DashboardPage() {
     },
     {
       id: 'metric-wb-final-reward',
-      title: 'Вознаграждение ВБ',
+      title: 'Вознаграждение МП',
       metric: metricValue('netMarketplaceReward'),
       format: formatCurrency,
       formatDelta: deltaMoney,
       invertColors: true,
-      description: 'Итоговое вознаграждение ВБ, ₽',
-      faq: tooltip(['netMarketplaceReward'], 'Итоговое вознаграждение ВБ, ₽'),
+      description: 'Итоговое вознаграждение МП, ₽',
+      faq: tooltip(['netMarketplaceReward'], 'Итоговое вознаграждение МП, ₽'),
       section: 'metrics',
     },
     {
@@ -675,14 +682,14 @@ export function DashboardPage() {
     {
       id: 'metric-operating-expense',
       title: 'Операционные расходы',
-      metric: metricValue('expense'),
-      format: moneyShare('expense'),
-      formatPrevious: moneyShare('expense', 'previous'),
+      metric: metricValue('operatingExpenses'),
+      format: moneyShare('operatingExpenses'),
+      formatPrevious: moneyShare('operatingExpenses', 'previous'),
       formatDelta: deltaMoney,
       hideDeltaPercent: !hasCurrentRevenue,
       invertColors: true,
       description: 'Операционные расходы, ₽/%',
-      faq: tooltip(['expense'], 'Операционные расходы, ₽/%'),
+      faq: tooltip(['operatingExpenses'], 'Операционные расходы, ₽/%'),
       section: 'metrics',
     },
     {
@@ -740,6 +747,7 @@ export function DashboardPage() {
       formatDelta: deltaMoney,
       description: 'Капитализация по себес., ₽',
       faq: tooltip(['capitalizationByCost'], 'Капитализация по себес., ₽'),
+      tone: 'neutral',
       section: 'metrics',
     },
     {
@@ -750,6 +758,7 @@ export function DashboardPage() {
       formatDelta: deltaMoney,
       description: 'Капитализация по розн., ₽',
       faq: tooltip(['capitalizationByPrice'], 'Капитализация по розн., ₽'),
+      tone: 'neutral',
       section: 'metrics',
     },
     {
@@ -759,6 +768,7 @@ export function DashboardPage() {
       format: formatNumber,
       description: 'Остатки, шт',
       faq: tooltip(['stockBalanceOverall'], 'Остатки, шт'),
+      tone: 'neutral',
       section: 'metrics',
     },
     {
@@ -768,6 +778,7 @@ export function DashboardPage() {
       format: formatNumber,
       description: 'Остатки на моих складах, шт',
       faq: tooltip(['userWarehouseStockBalance'], 'Остатки на моих складах, шт'),
+      tone: 'neutral',
       section: 'metrics',
     },
     {
@@ -778,6 +789,7 @@ export function DashboardPage() {
       formatDelta: deltaMoney,
       description: 'Капитализ. на моих складах, ₽',
       faq: tooltip(['userWarehouseCapitalizationByCost'], 'Капитализ. на моих складах, ₽'),
+      tone: 'neutral',
       section: 'metrics',
     },
     {
@@ -1474,6 +1486,7 @@ export function DashboardPage() {
                 formatDelta={def.formatDelta}
                 hideDeltaPercent={def.hideDeltaPercent}
                 invertColors={def.invertColors}
+                tone={getWidgetTone(def)}
                   isLoading={isMetricsLoading && isVisible}
                   isPlaceholder={showMetricPlaceholders && isVisible}
                   isEditMode={isWidgetEditMode}
@@ -3450,11 +3463,13 @@ function MetricColumnRow({
   const goodTrend = def.invertColors ? isNegative : isPositive;
   const badTrend = def.invertColors ? isPositive : isNegative;
   const trendColor = goodTrend ? 'text-emerald-700' : badTrend ? 'text-red-600' : 'text-slate-500';
-  const rowTone = goodTrend
-    ? 'border-emerald-300 bg-emerald-50 shadow-emerald-100'
-    : badTrend
-    ? 'border-red-300 bg-red-50 shadow-red-100'
-    : 'border-slate-300 bg-slate-50 shadow-slate-100';
+  const tone = getWidgetTone(def);
+  const rowTone =
+    tone === 'positive'
+      ? 'border-emerald-100 bg-emerald-50/45 shadow-emerald-50'
+      : tone === 'negative'
+      ? 'border-rose-100 bg-rose-50/45 shadow-rose-50'
+      : 'border-slate-200 bg-white shadow-slate-100';
   const deltaValue = def.metric.delta ?? 0;
   const deltaPercentValue = def.metric.deltaPercent ?? 0;
   const shouldHideDeltaPercent = def.hideDeltaPercent || !Number.isFinite(def.metric.previous) || def.metric.previous === 0;

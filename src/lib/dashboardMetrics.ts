@@ -29,11 +29,35 @@ export function buildApiMetricValue(current: number | null | undefined, comparis
 
 export function buildFormulaMetricValues(summaryMetrics: Record<string, number | null> | null = null, summaryComparisons: ApiComparisons = null) {
   const metric = (key: string) => buildApiMetricValue(readApiMetric(summaryMetrics, key), summaryComparisons?.[key]);
+  const metricAny = (keys: string[]) => {
+    const key = keys.find(candidate => readApiMetric(summaryMetrics, candidate) !== null);
+    return key ? metric(key) : buildApiMetricValue(null);
+  };
+  const hasMetric = (key: string) => readApiMetric(summaryMetrics, key) !== null;
+
+  const realisation = metric('realisation');
+  const profit = metric('profit');
+  const operatingExpenses = metricAny(['operatingExpenses', 'expense']);
+  const profitWithoutExpense = hasMetric('profitWithoutExpense')
+    ? metric('profitWithoutExpense')
+    : buildMetricValue(
+        profit.current + operatingExpenses.current,
+        profit.previous + operatingExpenses.previous,
+        []
+      );
+  const profitability = metric('profitability');
+  const marginalityWithoutExpense = hasMetric('marginalityWithoutExpense')
+    ? metric('marginalityWithoutExpense')
+    : buildMetricValue(
+        calculatePercent(profitWithoutExpense.current, realisation.current),
+        calculatePercent(profitWithoutExpense.previous, realisation.previous),
+        []
+      );
 
   return {
     averagePriceAfterSPP: metric('averagePriceAfterSPP'),
     averagePriceBeforeSPP: metric('averagePriceBeforeSPP'),
-    realisation: metric('realisation'),
+    realisation,
     sales: metric('salesCount'),
     salesCount: metric('salesCount'),
     toTransfer: metric('toTransfer'),
@@ -53,11 +77,11 @@ export function buildFormulaMetricValues(summaryMetrics: Record<string, number |
     averageProfitPerPiece: metric('averageProfitPerPiece'),
     tax: metric('tax'),
     taxBase: metric('taxBase'),
-    profit: metric('profit'),
-    profitWithoutExpense: metric('profit'),
+    profit,
+    profitWithoutExpense,
     roi: metric('roi'),
-    profitability: metric('profitability'),
-    marginality: metric('profitability'),
+    profitability,
+    marginality: profitability,
     advertisingExpense: metric('advertisingExpense'),
     advertisingExpenseBonus: metric('advertisingExpenseBonus'),
     advertisingExpenseSum: metric('advertisingExpenseSum'),
@@ -67,7 +91,8 @@ export function buildFormulaMetricValues(summaryMetrics: Record<string, number |
     drrByOrders: metric('drrByOrders'),
     acceptanceSum: metric('acceptanceSum'),
     otherDeduction: metric('otherDeduction'),
-    expense: metric('expense'),
+    operatingExpenses,
+    expense: operatingExpenses,
     orders: metric('orders'),
     ordersCount: metric('ordersCount'),
     commission: metric('commission'),
@@ -92,7 +117,7 @@ export function buildFormulaMetricValues(summaryMetrics: Record<string, number |
     gmroiYear: metric('gmroiYear'),
     salesTurnover: metric('salesTurnover'),
     ordersTurnover: metric('ordersTurnover'),
-    marginalityWithoutExpense: metric('profitability'),
+    marginalityWithoutExpense,
   };
 }
 
@@ -159,6 +184,10 @@ export function describeCustomMetricFormula(formula: string, variables: Array<{ 
 function readApiMetric(metrics: Record<string, number | null> | null, key: string) {
   const value = metrics?.[key];
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function calculatePercent(numerator: number, denominator: number) {
+  return denominator === 0 ? 0 : (numerator / denominator) * 100;
 }
 
 function evaluateFormula(formula: string, variables: FormulaMetricValues, field: 'current' | 'previous') {

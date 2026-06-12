@@ -168,6 +168,7 @@ export const METRICS_CATALOG = [
   'stockBalance',
   'profit',
   'profitWithoutExpense',
+  'operatingExpenses',
   'profitability',
   'roi',
   'gmroi',

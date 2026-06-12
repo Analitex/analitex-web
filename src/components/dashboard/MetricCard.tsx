@@ -25,6 +25,7 @@ interface MetricCardProps {
   formatDelta?: (v: number) => string;
   hideDeltaPercent?: boolean;
   invertColors?: boolean;
+  tone?: 'positive' | 'negative' | 'neutral';
   unit?: string;
   description?: string;
   isLoading?: boolean;
@@ -82,6 +83,7 @@ export function MetricCard({
   formatDelta,
   hideDeltaPercent = false,
   invertColors = false,
+  tone = 'neutral',
   unit,
   description,
   isLoading = false,
@@ -135,17 +137,16 @@ export function MetricCard({
   const trendColor = goodTrend ? 'text-emerald-700' : badTrend ? 'text-red-600' : 'text-slate-500';
   const sparkColor = goodTrend ? '#059669' : badTrend ? '#dc2626' : '#64748b';
   const bgColor = goodTrend
-    ? 'bg-emerald-100 border-emerald-200'
+    ? 'bg-emerald-50 border-emerald-100'
     : badTrend
-    ? 'bg-red-100 border-red-200'
+    ? 'bg-rose-50 border-rose-100'
     : 'bg-slate-100 border-slate-200';
-  const cardTone = metric.sparkline.length > 1
-    ? 'border-slate-200 bg-white'
-    : goodTrend
-    ? 'border-emerald-300 bg-emerald-50'
-    : badTrend
-    ? 'border-red-300 bg-red-50'
-    : 'border-slate-300 bg-slate-50';
+  const cardTone =
+    tone === 'positive'
+      ? 'border-emerald-100 bg-emerald-50/40'
+      : tone === 'negative'
+      ? 'border-rose-100 bg-rose-50/40'
+      : 'border-slate-200 bg-white';
 
   const previousFormat = formatPrevious ?? format;
   const deltaValue = metric.delta ?? 0;

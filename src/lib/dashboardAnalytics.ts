@@ -67,8 +67,9 @@ export function buildAnalyticsRowsFromApi(rows: ProductReportingApiRow[]) {
     const drrByOrders = getMetricNumber(metrics, ['drrByOrders']);
     const drr = getMetricNumber(metrics, ['drr']);
     const drrTotal = getMetricNumber(metrics, ['drrSum']);
-    const marginalityWithoutExpense = getMetricNumber(metrics, ['marginalityWithoutExpense']);
-    const operationalExpense = getMetricNumber(metrics, ['expense']);
+    const marginalityWithoutExpenseRaw = getMetricNumber(metrics, ['marginalityWithoutExpense']);
+    const marginalityWithoutExpense = marginalityWithoutExpenseRaw || (realisation ? (profitWithoutExpense / realisation) * 100 : 0);
+    const operationalExpense = getMetricNumber(metrics, ['operatingExpenses', 'expense']);
     const otherDeduction = getMetricNumber(metrics, ['otherDeduction']);
     const netMarketplaceReward = getMetricNumber(metrics, ['netMarketplaceReward']);
     const compensation = getMetricNumber(metrics, ['compensation']);
