@@ -117,6 +117,7 @@ const DEFAULT_ANALYTICS_METRICS: AnalyticsMetricKey[] = [
   ...DEFAULT_METRICS,
   'profit',
   'profitWithoutExpense',
+  'operatingExpenses',
   'costOfSales',
   'advertisingExpense',
   'drr',
