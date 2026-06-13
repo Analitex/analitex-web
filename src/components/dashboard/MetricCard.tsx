@@ -143,10 +143,16 @@ export function MetricCard({
     : 'bg-slate-100 border-slate-200';
   const cardTone =
     tone === 'positive'
-      ? 'border-emerald-100 bg-emerald-50/40'
+      ? 'border-emerald-200 bg-gradient-to-br from-emerald-100/85 via-emerald-50/95 to-white shadow-sm shadow-emerald-900/5'
       : tone === 'negative'
-      ? 'border-rose-100 bg-rose-50/40'
-      : 'border-slate-200 bg-white';
+      ? 'border-rose-200 bg-gradient-to-br from-rose-100/85 via-rose-50/95 to-white shadow-sm shadow-rose-900/5'
+      : 'border-slate-300 bg-white shadow-sm shadow-slate-900/5';
+  const cardAccent =
+    tone === 'positive'
+      ? 'bg-emerald-300'
+      : tone === 'negative'
+      ? 'bg-rose-300'
+      : 'bg-slate-200';
 
   const previousFormat = formatPrevious ?? format;
   const deltaValue = metric.delta ?? 0;
@@ -172,8 +178,10 @@ export function MetricCard({
             setIsDetailsOpen(true);
           }
         }}
-        className={`relative z-0 w-full rounded-xl border p-3 text-left transition-all duration-200 focus-within:z-[140] sm:p-3.5 ${isEditMode ? 'cursor-default' : 'hover:z-[140] hover:-translate-y-0.5 hover:shadow-md'} ${cardTone}`}
+        className={`relative z-0 w-full overflow-hidden rounded-xl border p-3 text-left transition-all duration-200 focus-within:z-[140] sm:p-3.5 ${isEditMode ? 'cursor-default' : 'hover:z-[140] hover:-translate-y-0.5 hover:shadow-lg'} ${cardTone}`}
       >
+        <div className={`pointer-events-none absolute inset-y-0 left-0 w-1 ${cardAccent}`} />
+
         {metric.sparkline.length > 1 && (
           <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl opacity-[0.24] transition-opacity">
             <div className="absolute inset-0 bg-gradient-to-b from-white via-white/60 to-transparent" />
