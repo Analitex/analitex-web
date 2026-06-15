@@ -1981,6 +1981,7 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
   const [organizationName, setOrganizationName] = useState('');
   const [busyInvitationId, setBusyInvitationId] = useState<string | null>(null);
+  const [accessEditorMemberId, setAccessEditorMemberId] = useState<string | null>(null);
   const activeOrganization = organizations.find(org => org.id === selectedOrganizationId);
   const activeMemberEmails = useMemo(
     () => new Set(members.map(member => member.email.trim().toLowerCase()).filter(Boolean)),
@@ -1998,6 +1999,8 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
     () => connections.filter(connection => connection.organizationId === selectedOrganizationId),
     [connections, selectedOrganizationId]
   );
+  const inviteNeedsAssignedConnections = inviteRole === 'Manager' && inviteAccessMode === 'Assigned';
+  const canSendInvite = Boolean(inviteEmail.trim()) && (!inviteNeedsAssignedConnections || inviteConnectionIds.length > 0);
 
   useEffect(() => {
     setOrganizationName(activeOrganization?.name ?? '');
@@ -2005,7 +2008,7 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
 
   const handleInvite = () => {
     const email = inviteEmail.trim();
-    if (!email) return;
+    if (!email || !canSendInvite) return;
 
     inviteMember({
       email,
@@ -2024,7 +2027,57 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
   const handleRoleChange = async (memberId: string, role: OrganizationMember['role']) => {
     setBusyMemberId(memberId);
     try {
-      await updateMemberRole({ memberId, role });
+      await updateMemberRole({
+        memberId,
+        role,
+        accountAccessMode: role === 'Manager' ? 'Assigned' : 'Full',
+        marketplaceConnectionIds: [],
+      });
+      if (role !== 'Manager') {
+        setAccessEditorMemberId(current => (current === memberId ? null : current));
+      }
+    } finally {
+      setBusyMemberId(null);
+    }
+  };
+
+  const handleMemberAccessModeChange = async (
+    member: OrganizationMember,
+    accountAccessMode: OrganizationMember['accountAccessMode']
+  ) => {
+    if (member.role !== 'Manager') return;
+
+    setBusyMemberId(member.id);
+    try {
+      await updateMemberRole({
+        memberId: member.id,
+        role: member.role,
+        accountAccessMode,
+        marketplaceConnectionIds: accountAccessMode === 'Full' ? [] : member.marketplaceConnectionIds,
+      });
+    } finally {
+      setBusyMemberId(null);
+    }
+  };
+
+  const handleMemberConnectionToggle = async (member: OrganizationMember, connectionId: string, checked: boolean) => {
+    if (member.role !== 'Manager') return;
+
+    const currentIds = new Set(member.marketplaceConnectionIds);
+    if (checked) {
+      currentIds.add(connectionId);
+    } else {
+      currentIds.delete(connectionId);
+    }
+
+    setBusyMemberId(member.id);
+    try {
+      await updateMemberRole({
+        memberId: member.id,
+        role: member.role,
+        accountAccessMode: 'Assigned',
+        marketplaceConnectionIds: Array.from(currentIds),
+      });
     } finally {
       setBusyMemberId(null);
     }
@@ -2057,17 +2110,41 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
     }
   };
 
-  const formatAccountAccess = (
+  const getAssignedConnections = (marketplaceConnectionIds: string[]) =>
+    marketplaceConnectionIds
+      .map(connectionId => organizationConnections.find(connection => connection.id === connectionId))
+      .filter((connection): connection is MarketplaceConnection => Boolean(connection));
+
+  const renderConnectionLabel = (connection: MarketplaceConnection) => (
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <MarketplaceBadge marketplace={connection.marketplace} compact className="shrink-0 border-transparent bg-slate-100" />
+      <span className="truncate font-medium text-slate-800">{connection.displayName}</span>
+    </span>
+  );
+
+  const renderAccessSummary = (
     accountAccessMode: OrganizationMember['accountAccessMode'],
     marketplaceConnectionIds: string[]
   ) => {
-    if (accountAccessMode === 'Full') return 'Полный доступ';
-    if (marketplaceConnectionIds.length === 0) return 'Нет назначенных магазинов';
+    if (accountAccessMode === 'Full') {
+      return <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">Полный доступ</span>;
+    }
 
-    const connectionNames = marketplaceConnectionIds.map(connectionId =>
-      organizationConnections.find(connection => connection.id === connectionId)?.displayName ?? 'Магазин'
+    const assignedConnections = getAssignedConnections(marketplaceConnectionIds);
+    if (assignedConnections.length === 0) {
+      return <span className="inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">Нет магазинов</span>;
+    }
+
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {assignedConnections.map(connection => (
+          <span key={connection.id} className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700">
+            <MarketplaceBadge marketplace={connection.marketplace} compact className="border-transparent bg-white" />
+            <span>{connection.displayName}</span>
+          </span>
+        ))}
+      </div>
     );
-    return connectionNames.join(', ');
   };
 
   return (
@@ -2111,14 +2188,6 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
               Список сотрудников текущей организации с ролями, доступами и статусами приглашений.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleInvite}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
-          >
-            <Plus size={16} />
-            Пригласить пользователя
-          </button>
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-[1fr_220px_240px_auto]">
@@ -2148,7 +2217,8 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
           <button
             type="button"
             onClick={handleInvite}
-            className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            disabled={!canSendInvite}
+            className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Отправить
           </button>
@@ -2159,7 +2229,7 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
             <div className="text-sm font-semibold text-slate-700">Магазины менеджера</div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {organizationConnections.map(connection => (
-                <label key={connection.id} className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm text-slate-700">
+                <label key={connection.id} className="flex min-w-0 items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm text-slate-700">
                   <input
                     type="checkbox"
                     checked={inviteConnectionIds.includes(connection.id)}
@@ -2172,12 +2242,17 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
                     }}
                     className="h-4 w-4 rounded border-slate-300 text-blue-600"
                   />
-                  <span>{connection.displayName}</span>
+                  {renderConnectionLabel(connection)}
                 </label>
               ))}
             </div>
             {organizationConnections.length === 0 && (
               <div className="mt-2 text-sm text-slate-500">Сначала подключите магазин.</div>
+            )}
+            {organizationConnections.length > 0 && inviteConnectionIds.length === 0 && (
+              <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700">
+                Выберите хотя бы один магазин для менеджера.
+              </div>
             )}
           </div>
         )}
@@ -2193,7 +2268,7 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="hidden grid-cols-[1.2fr_0.75fr_1fr_1fr_1.05fr_0.8fr] gap-4 border-b border-slate-200 px-6 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 md:grid">
+        <div className="hidden grid-cols-[1.05fr_0.7fr_1fr_1.55fr_0.95fr_0.65fr] gap-4 border-b border-slate-200 px-6 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 md:grid">
           <div>Пользователь</div>
           <div>Роль</div>
           <div>Контакты</div>
@@ -2204,14 +2279,14 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
 
         <div className="divide-y divide-slate-200">
           {members.map(member => {
-            const fullName = `${member.firstName} ${member.lastName}`.trim() || member.email;
-            const accessDescription = formatAccountAccess(member.accountAccessMode, member.marketplaceConnectionIds);
+            const fullName = `${member.firstName} ${member.lastName}`.trim() || member.email || 'Пользователь';
+            const isAccessEditorOpen = accessEditorMemberId === member.id && member.role === 'Manager';
 
             return (
-              <div key={member.id} className="grid gap-4 px-5 py-5 md:grid-cols-[1.2fr_0.75fr_1fr_1fr_1.05fr_0.8fr] md:px-6">
+              <div key={member.id} className="grid gap-4 px-5 py-5 md:grid-cols-[1.05fr_0.7fr_1fr_1.55fr_0.95fr_0.65fr] md:px-6">
                 <div className="space-y-3 md:space-y-1">
                   <div className="font-semibold text-slate-900">{fullName}</div>
-                  <div className="text-sm text-slate-500">{member.phone}</div>
+                  {member.phone && <div className="text-sm text-slate-500">{member.phone}</div>}
                 </div>
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 md:hidden">Роль</div>
@@ -2221,12 +2296,61 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
                     disabled={member.role === 'Owner' || busyMemberId === member.id}
                     className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none disabled:bg-slate-50"
                   >
+                    <option value="Owner" disabled>Владелец</option>
                     <option value="Admin">Администратор</option>
                     <option value="Manager">Менеджер</option>
                   </select>
                 </div>
                 <MobileInfoRow label="Контакты" value={member.email} />
-                <MobileInfoRow label="Доступ" value={accessDescription} />
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 md:hidden">Доступ</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {renderAccessSummary(member.accountAccessMode, member.marketplaceConnectionIds)}
+                    {member.role === 'Manager' && (
+                      <button
+                        type="button"
+                        onClick={() => setAccessEditorMemberId(current => (current === member.id ? null : member.id))}
+                        disabled={busyMemberId === member.id}
+                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <ChevronRight size={13} className={`transition-transform ${isAccessEditorOpen ? 'rotate-90' : ''}`} />
+                        Настроить
+                      </button>
+                    )}
+                  </div>
+                  {isAccessEditorOpen && (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                      <select
+                        value={member.accountAccessMode}
+                        onChange={event => void handleMemberAccessModeChange(member, event.target.value as OrganizationMember['accountAccessMode'])}
+                        disabled={busyMemberId === member.id}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none disabled:bg-slate-100"
+                      >
+                        <option value="Full">Полный доступ</option>
+                        <option value="Assigned">По выбранным магазинам</option>
+                      </select>
+                      {member.accountAccessMode === 'Assigned' && (
+                        <div className="mt-3 grid gap-2">
+                          {organizationConnections.map(connection => (
+                            <label key={connection.id} className="flex min-w-0 items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={member.marketplaceConnectionIds.includes(connection.id)}
+                                onChange={event => void handleMemberConnectionToggle(member, connection.id, event.target.checked)}
+                                disabled={busyMemberId === member.id}
+                                className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                              />
+                              {renderConnectionLabel(connection)}
+                            </label>
+                          ))}
+                          {organizationConnections.length === 0 && (
+                            <div className="text-sm text-slate-500">Сначала подключите магазин.</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <div className="space-y-2">
                   <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 md:hidden">Действия</div>
                   <div className="flex flex-wrap gap-2">
@@ -2263,13 +2387,16 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
           })}
 
           {pendingInvitations.map(invitation => (
-            <div key={invitation.id} className="grid gap-4 px-5 py-5 md:grid-cols-[1.2fr_0.75fr_1fr_1fr_1.05fr_0.8fr] md:px-6">
+            <div key={invitation.id} className="grid gap-4 px-5 py-5 md:grid-cols-[1.05fr_0.7fr_1fr_1.55fr_0.95fr_0.65fr] md:px-6">
               <div className="space-y-3 md:space-y-1">
                 <div className="font-semibold text-slate-900">{invitation.email}</div>
               </div>
               <MobileInfoRow label="Роль" value={formatRole(invitation.role)} />
               <MobileInfoRow label="Контакты" value="—" />
-              <MobileInfoRow label="Доступ" value={formatAccountAccess(invitation.accountAccessMode, invitation.marketplaceConnectionIds)} />
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 md:hidden">Доступ</div>
+                {renderAccessSummary(invitation.accountAccessMode, invitation.marketplaceConnectionIds)}
+              </div>
               <MobileInfoRow label="Действия" value="Приглашение отправлено" />
               <div className="flex items-center justify-between gap-3 md:block">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 md:hidden">Статус</div>
