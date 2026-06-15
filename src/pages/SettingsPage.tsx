@@ -16,7 +16,7 @@ import { MarketplaceBadge } from '../components/common/MarketplaceIcon';
 import { usePlatform, type MarketplaceConnection, type OrganizationMember, type SyncRun } from '../context/PlatformContext';
 import { apiRequest } from '../lib/api';
 import { getPreferredSyncKinds } from '../lib/platformCatalog';
-import type { SettingsTabId } from './settingsConfig';
+import { canAccessSettingsTab, type SettingsTabId } from './settingsConfig';
 
 type TaxModeId = 'usn-income' | 'usn-income-expense-fixed-vat' | 'usn-income-expense-vat-22' | 'ip-osno' | 'ooo-osno';
 
@@ -312,6 +312,7 @@ export function SettingsPage({ activeTab }: SettingsPageProps) {
     session,
     customMetrics,
     connections,
+    organizations,
     selectedOrganizationId,
     loadSettingsTabData,
     logout,
@@ -348,6 +349,8 @@ export function SettingsPage({ activeTab }: SettingsPageProps) {
   const [taxConfigs, setTaxConfigs] = useState<Record<string, Record<number, TaxConfig>>>(() => {
     return {};
   });
+  const activeOrganization = organizations.find(organization => organization.id === selectedOrganizationId);
+  const effectiveActiveTab = canAccessSettingsTab(activeTab, activeOrganization?.currentUserRole) ? activeTab : 'profile';
 
   useEffect(() => {
     setProfile({
@@ -360,7 +363,7 @@ export function SettingsPage({ activeTab }: SettingsPageProps) {
   }, [session?.user.email, session?.user.firstName, session?.user.lastName, session?.user.phone]);
 
   useEffect(() => {
-    const requestedTab = activeTab === 'shops' || activeTab === 'users' || activeTab === 'metrics' ? activeTab : null;
+    const requestedTab = effectiveActiveTab === 'shops' || effectiveActiveTab === 'users' || effectiveActiveTab === 'metrics' ? effectiveActiveTab : null;
     if (!requestedTab) {
       setSettingsTabLoading(null);
       return;
@@ -377,7 +380,7 @@ export function SettingsPage({ activeTab }: SettingsPageProps) {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, loadSettingsTabData]);
+  }, [effectiveActiveTab, loadSettingsTabData]);
 
   const taxShops = useMemo(
     () => connections.filter(connection => connection.organizationId === selectedOrganizationId),
@@ -411,7 +414,7 @@ export function SettingsPage({ activeTab }: SettingsPageProps) {
   }, [taxShops]);
 
   useEffect(() => {
-    if (activeTab !== 'taxes' || !session?.accessToken || !selectedShopId || loadedFinanceSettingsKeys[selectedShopId]) return;
+    if (effectiveActiveTab !== 'taxes' || !session?.accessToken || !selectedShopId || loadedFinanceSettingsKeys[selectedShopId]) return;
 
     let cancelled = false;
     setTaxSettingsLoading(true);
@@ -440,7 +443,7 @@ export function SettingsPage({ activeTab }: SettingsPageProps) {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, loadedFinanceSettingsKeys, selectedShopId, session?.accessToken]);
+  }, [effectiveActiveTab, loadedFinanceSettingsKeys, selectedShopId, session?.accessToken]);
 
   const selectedShop = useMemo(
     () => taxShops.find(shop => shop.id === selectedShopId) ?? taxShops[0] ?? null,
@@ -595,7 +598,7 @@ export function SettingsPage({ activeTab }: SettingsPageProps) {
       <div className="min-h-full">
         <div className="min-h-full overflow-hidden border border-slate-200 bg-white shadow-sm">
           <div className="min-w-0 bg-slate-50 p-4 sm:p-6">
-            {activeTab === 'profile' && (
+            {effectiveActiveTab === 'profile' && (
               <ProfileTab
                 profile={profile}
                 isEditing={isEditingProfile}
@@ -617,11 +620,11 @@ export function SettingsPage({ activeTab }: SettingsPageProps) {
               />
             )}
 
-            {activeTab === 'shops' && <ShopsTab isLoading={settingsTabLoading === 'shops'} />}
+            {effectiveActiveTab === 'shops' && <ShopsTab isLoading={settingsTabLoading === 'shops'} />}
 
-            {activeTab === 'users' && <UsersTab isLoading={settingsTabLoading === 'users'} />}
+            {effectiveActiveTab === 'users' && <UsersTab isLoading={settingsTabLoading === 'users'} />}
 
-            {activeTab === 'taxes' && (
+            {effectiveActiveTab === 'taxes' && (
               <TaxesTab
                 shops={taxShops}
                 selectedYear={selectedYear}
@@ -653,7 +656,7 @@ export function SettingsPage({ activeTab }: SettingsPageProps) {
               />
             )}
 
-            {activeTab === 'metrics' && <MetricsTab customMetrics={customMetrics} isLoading={settingsTabLoading === 'metrics'} />}
+            {effectiveActiveTab === 'metrics' && <MetricsTab customMetrics={customMetrics} isLoading={settingsTabLoading === 'metrics'} />}
           </div>
         </div>
       </div>

@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { usePlatform, type OrganizationMember } from '../../context/PlatformContext';
 import type { Page } from '../../types';
 
 interface NavItem {
@@ -48,6 +49,21 @@ const navSections: { label: string; items: NavItem[] }[] = [
 ];
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'aistats-sidebar-collapsed';
+type NavigationRole = OrganizationMember['role'] | null | undefined;
+
+function canAccessNavItem(item: NavItem, role: NavigationRole) {
+  if (role === 'Manager' && (item.id === 'costs' || item.id === 'operations')) return false;
+  return true;
+}
+
+function getVisibleNavSections(role: NavigationRole) {
+  return navSections
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => canAccessNavItem(item, role)),
+    }))
+    .filter(section => section.items.length > 0);
+}
 
 interface SidebarProps {
   currentPage: Page;
@@ -57,6 +73,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ currentPage, onNavigate, isMobileOpen = false, onMobileClose }: SidebarProps) {
+  const { organizations, selectedOrganizationId } = usePlatform();
   const [isCollapsed, setIsCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true';
@@ -70,6 +87,8 @@ export function Sidebar({ currentPage, onNavigate, isMobileOpen = false, onMobil
     onNavigate(page);
     onMobileClose?.();
   };
+  const activeOrganization = organizations.find(organization => organization.id === selectedOrganizationId);
+  const visibleNavSections = getVisibleNavSections(activeOrganization?.currentUserRole);
 
   return (
     <>
@@ -82,6 +101,7 @@ export function Sidebar({ currentPage, onNavigate, isMobileOpen = false, onMobil
           currentPage={currentPage}
           onNavigate={handleNavigate}
           isCollapsed={isCollapsed}
+          navSections={visibleNavSections}
           onCollapse={() => setIsCollapsed(true)}
           onExpand={() => setIsCollapsed(false)}
         />
@@ -122,7 +142,7 @@ export function Sidebar({ currentPage, onNavigate, isMobileOpen = false, onMobil
           </div>
 
           <nav className="flex-1 overflow-y-auto px-4 py-5">
-            {navSections.map(section => (
+            {visibleNavSections.map(section => (
               <div key={section.label} className="mb-5 last:mb-0">
                 <div className="mb-3 px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{section.label}</div>
                 <ul className="space-y-1.5">
@@ -173,12 +193,14 @@ function SidebarInner({
   currentPage,
   onNavigate,
   isCollapsed,
+  navSections,
   onCollapse,
   onExpand,
 }: {
   currentPage: Page;
   onNavigate: (page: Page) => void;
   isCollapsed: boolean;
+  navSections: { label: string; items: NavItem[] }[];
   onCollapse: () => void;
   onExpand: () => void;
 }) {

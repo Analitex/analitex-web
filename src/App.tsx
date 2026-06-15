@@ -34,7 +34,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { PREVIEW_ROUTE_PREFIX } from './lib/previewMode';
 import { CheckCircle2, AlertTriangle, Info, Loader2, X } from 'lucide-react';
 import type { Page } from './types';
-import type { SettingsTabId } from './pages/settingsConfig';
+import { canAccessSettingsTab, type SettingsRole, type SettingsTabId } from './pages/settingsConfig';
 
 type MainPage =
   | 'dashboard'
@@ -74,6 +74,25 @@ const PENDING_INVITE_TOKEN_KEY = 'aistats-pending-invite-token';
 const PENDING_INVITE_EMAIL_KEY = 'aistats-pending-invite-email';
 const DEV_PAGES = new Set<DevPage>(['home', 'auth', 'organizations', 'connections', 'analytics', 'docs', 'history']);
 const PREVIEW_PAGES = new Set<PreviewPage>(['dashboard', 'summary', 'finance', 'inventory', 'costs', 'operations', 'external-traffic', 'search-phrases', 'planfact', 'ai', 'settings']);
+
+function canAccessMainPage(page: MainPage, role: SettingsRole) {
+  if (role === 'Manager' && (page === 'costs' || page === 'operations')) return false;
+  return true;
+}
+
+function constrainRouteForRole(route: RouteState, role: SettingsRole): RouteState {
+  if (route.mode !== 'main') return route;
+
+  if (route.page === 'settings' && !canAccessSettingsTab(route.settingsTab, role)) {
+    return { ...route, settingsTab: DEFAULT_SETTINGS_TAB };
+  }
+
+  if (!canAccessMainPage(route.page, role)) {
+    return { mode: 'main', page: 'dashboard', settingsTab: DEFAULT_SETTINGS_TAB };
+  }
+
+  return route;
+}
 
 function normalizeSettingsTab(value: string | undefined): SettingsTabId {
   if (value === 'shops' || value === 'users' || value === 'taxes' || value === 'metrics') {
@@ -219,7 +238,7 @@ function isDevPage(page: Page): page is DevPage {
   return DEV_PAGES.has(page as DevPage);
 }
 
-function isMainPage(page: Page): page is Exclude<MainPage, 'login' | 'register'> {
+function isMainPage(page: Page): page is Exclude<MainPage, 'login' | 'register' | 'setup'> {
   return (
     page === 'dashboard' ||
       page === 'summary' ||
@@ -370,12 +389,14 @@ function NotificationToast({
 }
 
 function AppRouter() {
-  const { recordAction, session, organizations, isWorkspaceHydrated, acceptInvitation } = usePlatform();
+  const { recordAction, session, organizations, selectedOrganizationId, isWorkspaceHydrated, acceptInvitation } = usePlatform();
   const acceptInvitationRef = useRef(acceptInvitation);
   const [route, setRoute] = useState<RouteState>(() => {
     if (typeof window === 'undefined') return { mode: 'main', page: 'dashboard', settingsTab: DEFAULT_SETTINGS_TAB };
     return parseRoute(window.location.pathname);
   });
+  const activeOrganization = organizations.find(organization => organization.id === selectedOrganizationId);
+  const currentOrganizationRole = activeOrganization?.currentUserRole;
   const shouldLoadAnalyticsShell =
     (route.mode === 'main' || route.mode === 'preview') &&
     (route.page === 'dashboard' ||
@@ -386,7 +407,8 @@ function AppRouter() {
       route.page === 'external-traffic' ||
       route.page === 'search-phrases' ||
       route.page === 'planfact' ||
-      route.page === 'ai');
+      route.page === 'ai') &&
+    (route.mode !== 'main' || canAccessMainPage(route.page, currentOrganizationRole));
   const analyticsWorkspace = useAnalyticsWorkspaceData({
     enabled: shouldLoadAnalyticsShell,
     includeWorkspaceMetrics: false,
@@ -458,18 +480,19 @@ function AppRouter() {
         : isMainPage(page)
           ? { mode: 'main', page, settingsTab: DEFAULT_SETTINGS_TAB }
           : { mode: 'main', page: 'dashboard', settingsTab: DEFAULT_SETTINGS_TAB };
+    const allowedRoute = constrainRouteForRole(nextRoute, currentOrganizationRole);
 
-    const nextPath = pathForRoute(nextRoute);
+    const nextPath = pathForRoute(allowedRoute);
     if (window.location.pathname !== nextPath) {
       window.history.pushState(null, '', nextPath);
     }
 
-    setRoute(nextRoute);
-    if (nextRoute.mode === 'dev') {
+    setRoute(allowedRoute);
+    if (allowedRoute.mode === 'dev') {
       recordAction({
         kind: 'navigation',
         title: 'Navigated to dev page',
-        description: `Opened /dev/${nextRoute.page}.`,
+        description: `Opened /dev/${allowedRoute.page}.`,
       });
     }
   };
@@ -563,8 +586,18 @@ function AppRouter() {
         window.history.replaceState(null, '', nextPath);
       }
       setRoute(nextRoute);
+      return;
     }
-  }, [isWorkspaceHydrated, organizations.length, route.mode, route.page, session]);
+
+    if (session && organizations.length > 0) {
+      const nextRoute = constrainRouteForRole(route, currentOrganizationRole);
+      const nextPath = pathForRoute(nextRoute);
+      if (nextPath !== pathForRoute(route)) {
+        window.history.replaceState(null, '', nextPath);
+        setRoute(nextRoute);
+      }
+    }
+  }, [currentOrganizationRole, isWorkspaceHydrated, organizations.length, route, session]);
 
   if (route.mode === 'dev') {
     const devPage = (() => {
@@ -649,7 +682,7 @@ function AppRouter() {
     );
   }
 
-  if (session && !isWorkspaceHydrated && route.page !== 'login' && route.page !== 'register' && route.page !== 'verify-email') {
+  if (session && !isWorkspaceHydrated) {
     return (
       <>
         <WorkspaceLoader />
