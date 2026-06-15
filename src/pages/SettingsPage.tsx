@@ -1961,6 +1961,7 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
 
 function UsersTab({ isLoading }: { isLoading: boolean }) {
   const {
+    session,
     members,
     invitations,
     selectedOrganizationId,
@@ -1983,6 +1984,8 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
   const [busyInvitationId, setBusyInvitationId] = useState<string | null>(null);
   const [accessEditorMemberId, setAccessEditorMemberId] = useState<string | null>(null);
   const activeOrganization = organizations.find(org => org.id === selectedOrganizationId);
+  const currentMember = members.find(member => member.id === session?.user.id);
+  const canTransferOwnership = currentMember?.role === 'Owner';
   const activeMemberEmails = useMemo(
     () => new Set(members.map(member => member.email.trim().toLowerCase()).filter(Boolean)),
     [members]
@@ -2357,7 +2360,8 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
                     <button
                       type="button"
                       onClick={() => void handleTransfer(member.id)}
-                      disabled={member.id === activeOrganization?.ownerUserId || busyMemberId === member.id}
+                      title={!canTransferOwnership ? 'Передать права может только владелец организации' : undefined}
+                      disabled={!canTransferOwnership || member.id === activeOrganization?.ownerUserId || busyMemberId === member.id}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Передать права
