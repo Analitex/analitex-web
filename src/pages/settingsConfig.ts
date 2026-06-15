@@ -5,7 +5,7 @@ export type SettingsTabId = 'profile' | 'shops' | 'users' | 'taxes' | 'metrics';
 export const SETTINGS_TABS = [
   { id: 'profile', label: 'Профиль', icon: UserCog, description: 'Личные данные и доступ' },
   { id: 'shops', label: 'Магазины', icon: Store, description: 'Подключенные кабинеты' },
-  { id: 'users', label: 'Пользователи', icon: Users, description: 'Команда организации' },
+  { id: 'users', label: 'Пользователи', icon: Users, description: 'Доступы' },
   { id: 'taxes', label: 'Налоги', icon: ReceiptText, description: 'Режимы и квартальные ставки' },
   { id: 'metrics', label: 'Метрики', icon: Plus, description: 'Пользовательские метрики' },
 ] satisfies {
