@@ -1411,13 +1411,15 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       }
 
       if (tab === 'users') {
-        const [membersResponse, invitationsResponse] = await Promise.all([
+        const [membersResponse, invitationsResponse, connectionsResponse] = await Promise.all([
           apiRequest<ApiMember[]>(`/organizations/${selectedOrganizationId}/members`, { token: session.accessToken }),
           apiRequest<ApiInvitation[]>(`/organizations/${selectedOrganizationId}/invitations`, { token: session.accessToken }),
+          apiRequest<ApiConnection[]>(`/organizations/${selectedOrganizationId}/marketplace-connections`, { token: session.accessToken }),
         ]);
 
         setMembers((membersResponse ?? []).map(mapMember));
         setInvitations((invitationsResponse ?? []).map(mapInvitation));
+        setConnections((connectionsResponse ?? []).map(mapConnection));
       }
 
       if (tab === 'metrics') {
