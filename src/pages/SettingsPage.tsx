@@ -2306,6 +2306,16 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
                           )}
                         </div>
                       )}
+                      <div className="mt-3 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setAccessEditorMemberId(null)}
+                          disabled={busyMemberId === member.id}
+                          className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Применить
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
