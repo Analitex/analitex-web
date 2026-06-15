@@ -32,6 +32,9 @@ export interface Organization {
   id: string;
   name: string;
   ownerUserId: string;
+  currentUserRole?: OrganizationMember['role'] | null;
+  currentUserAccountAccessMode?: OrganizationMember['accountAccessMode'] | null;
+  currentUserMarketplaceConnectionIds: string[];
   createdAt: string;
 }
 
@@ -243,6 +246,9 @@ type ApiOrganization = {
   id: string;
   name?: string | null;
   ownerUserId?: string;
+  currentUserRole?: string | number | null;
+  currentUserAccountAccessMode?: string | number | null;
+  currentUserMarketplaceConnectionIds?: string[] | null;
   createdAt?: string;
 };
 
@@ -399,9 +405,19 @@ function mapRole(value: unknown): OrganizationMember['role'] {
   }
 }
 
+function mapOptionalRole(value: unknown): OrganizationMember['role'] | null {
+  if (value === undefined || value === null) return null;
+  return mapRole(value);
+}
+
 function mapAccountAccessMode(value: unknown): OrganizationMember['accountAccessMode'] {
   if (value === 'Assigned' || value === 1) return 'Assigned';
   return 'Full';
+}
+
+function mapOptionalAccountAccessMode(value: unknown): OrganizationMember['accountAccessMode'] | null {
+  if (value === undefined || value === null) return null;
+  return mapAccountAccessMode(value);
 }
 
 function toApiRole(role: OrganizationMember['role']) {
@@ -477,6 +493,9 @@ function mapOrganization(org: ApiOrganization): Organization {
     id: String(org.id),
     name: org.name ?? '',
     ownerUserId: String(org.ownerUserId ?? ''),
+    currentUserRole: mapOptionalRole(org.currentUserRole),
+    currentUserAccountAccessMode: mapOptionalAccountAccessMode(org.currentUserAccountAccessMode),
+    currentUserMarketplaceConnectionIds: org.currentUserMarketplaceConnectionIds ?? [],
     createdAt: org.createdAt ?? new Date().toISOString(),
   };
 }
@@ -940,6 +959,9 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       id: createId('org'),
       name,
       ownerUserId: session?.user.id ?? '',
+      currentUserRole: 'Owner',
+      currentUserAccountAccessMode: 'Full',
+      currentUserMarketplaceConnectionIds: [],
       createdAt: new Date().toISOString(),
     };
     setOrganizations(current => [...current, optimistic]);

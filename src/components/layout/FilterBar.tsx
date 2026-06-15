@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Info, Menu, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
 import { useFilters } from '../../context/FilterContext';
+import { usePlatform } from '../../context/PlatformContext';
 import { useReportMode } from '../../context/ReportModeContext';
 import { MultiSelect, type MultiSelectOption } from '../filters/MultiSelect';
 import { DateRangePicker } from './DateRangePicker';
 import type { Page } from '../../types';
-import { SETTINGS_TABS, type SettingsTabId } from '../../pages/settingsConfig';
+import { getVisibleSettingsTabs, type SettingsTabId } from '../../pages/settingsConfig';
 
 interface FilterBarProps {
   currentPage: Page;
@@ -58,6 +59,7 @@ export function FilterBar({
   activeSettingsTab,
   onSettingsTabChange,
 }: FilterBarProps) {
+  const { organizations, selectedOrganizationId } = usePlatform();
   const { filters, setFilters, resetFilters } = useFilters();
   const { reportMode, setReportMode } = useReportMode();
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
@@ -65,6 +67,8 @@ export function FilterBar({
   const reportModeRef = useRef<HTMLDivElement | null>(null);
   const isCostsPage = currentPage === 'costs';
   const isOperationsPage = currentPage === 'operations';
+  const activeOrganization = organizations.find(organization => organization.id === selectedOrganizationId);
+  const visibleSettingsTabs = getVisibleSettingsTabs(activeOrganization?.currentUserRole);
   const showFilters = currentPage !== 'settings' && !isCostsPage && !isOperationsPage;
   const supportsReportMode =
     showFilters &&
@@ -159,7 +163,7 @@ export function FilterBar({
             </button>
 
             <nav className="-mb-3 flex min-w-0 flex-1 gap-6 overflow-x-auto" aria-label="Разделы настроек">
-              {SETTINGS_TABS.map(tab => {
+              {visibleSettingsTabs.map(tab => {
                 const Icon = tab.icon;
                 const isActive = activeSettingsTab === tab.id;
 
