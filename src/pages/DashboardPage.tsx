@@ -954,8 +954,11 @@ export function DashboardPage() {
   }, [customMetrics, formulaMetricValues, productMetricTooltips]);
 
   const availableWidgetDefs = useMemo(
-    () => widgetDefs,
-    [widgetDefs]
+    () =>
+      reportMode === 'financial'
+        ? widgetDefs
+        : widgetDefs.filter(widget => widget.id !== FINANCIAL_TOTAL_PAID_WIDGET_ID),
+    [reportMode, widgetDefs]
   );
   const defaultWidgetIds = useMemo(() => {
     const availableIds = new Set(availableWidgetDefs.map(widget => widget.id));

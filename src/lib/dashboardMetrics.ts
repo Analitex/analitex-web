@@ -58,7 +58,7 @@ export function buildFormulaMetricValues(summaryMetrics: Record<string, number |
     averagePriceAfterSPP: metric('averagePriceAfterSPP'),
     averagePriceBeforeSPP: metric('averagePriceBeforeSPP'),
     realisation,
-    sales: metric('salesCount'),
+    sales: metric('totalSales'),
     salesCount: metric('salesCount'),
     toTransfer: metric('toTransfer'),
     returns: metric('returns'),
