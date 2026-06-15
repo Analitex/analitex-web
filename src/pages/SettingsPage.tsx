@@ -1964,16 +1964,13 @@ function ShopsTab({ isLoading }: { isLoading: boolean }) {
 
 function UsersTab({ isLoading }: { isLoading: boolean }) {
   const {
-    session,
     members,
     invitations,
     selectedOrganizationId,
     connections,
-    organizations,
     inviteMember,
     updateMemberRole,
     removeMember,
-    transferOrganizationOwnership,
     revokeInvitation,
     apiError,
   } = usePlatform();
@@ -1984,9 +1981,6 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
   const [busyInvitationId, setBusyInvitationId] = useState<string | null>(null);
   const [accessEditorMemberId, setAccessEditorMemberId] = useState<string | null>(null);
-  const activeOrganization = organizations.find(org => org.id === selectedOrganizationId);
-  const currentMember = members.find(member => member.id === session?.user.id);
-  const canTransferOwnership = currentMember?.role === 'Owner';
   const activeMemberEmails = useMemo(
     () => new Set(members.map(member => member.email.trim().toLowerCase()).filter(Boolean)),
     [members]
@@ -2082,15 +2076,6 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
     setBusyMemberId(memberId);
     try {
       await removeMember(memberId);
-    } finally {
-      setBusyMemberId(null);
-    }
-  };
-
-  const handleTransfer = async (memberId: string) => {
-    setBusyMemberId(memberId);
-    try {
-      await transferOrganizationOwnership(memberId);
     } finally {
       setBusyMemberId(null);
     }
@@ -2325,15 +2310,6 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
                 <div className="space-y-2">
                   <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 md:hidden">Действия</div>
                   <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void handleTransfer(member.id)}
-                      title={!canTransferOwnership ? 'Передать права может только владелец организации' : undefined}
-                      disabled={!canTransferOwnership || member.id === activeOrganization?.ownerUserId || busyMemberId === member.id}
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Передать права
-                    </button>
                     <button
                       type="button"
                       onClick={() => void handleRemove(member.id)}
