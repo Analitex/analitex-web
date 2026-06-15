@@ -1968,7 +1968,6 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
     connections,
     organizations,
     inviteMember,
-    renameOrganization,
     updateMemberRole,
     removeMember,
     transferOrganizationOwnership,
@@ -1980,7 +1979,6 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
   const [inviteAccessMode, setInviteAccessMode] = useState<OrganizationMember['accountAccessMode']>('Assigned');
   const [inviteConnectionIds, setInviteConnectionIds] = useState<string[]>([]);
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
-  const [organizationName, setOrganizationName] = useState('');
   const [busyInvitationId, setBusyInvitationId] = useState<string | null>(null);
   const [accessEditorMemberId, setAccessEditorMemberId] = useState<string | null>(null);
   const activeOrganization = organizations.find(org => org.id === selectedOrganizationId);
@@ -2005,10 +2003,6 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
   const inviteNeedsAssignedConnections = inviteRole === 'Manager' && inviteAccessMode === 'Assigned';
   const canSendInvite = Boolean(inviteEmail.trim()) && (!inviteNeedsAssignedConnections || inviteConnectionIds.length > 0);
 
-  useEffect(() => {
-    setOrganizationName(activeOrganization?.name ?? '');
-  }, [activeOrganization?.id, activeOrganization?.name]);
-
   const handleInvite = () => {
     const email = inviteEmail.trim();
     if (!email || !canSendInvite) return;
@@ -2020,11 +2014,6 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
       marketplaceConnectionIds: inviteRole === 'Admin' || inviteAccessMode === 'Full' ? [] : inviteConnectionIds,
     });
     setInviteEmail('');
-  };
-
-  const handleRenameOrganization = async () => {
-    if (!activeOrganization || !organizationName.trim()) return;
-    await renameOrganization(activeOrganization.id, organizationName.trim());
   };
 
   const handleRoleChange = async (memberId: string, role: OrganizationMember['role']) => {
@@ -2155,41 +2144,7 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="text-sm font-medium text-blue-600">Организация</div>
-            <h2 className="mt-1 text-2xl font-semibold text-slate-900">Настройки организации</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Переименуйте рабочее пространство и управляйте участниками, приглашениями и правами владельца.
-            </p>
-          </div>
-          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            {activeOrganization?.name ?? 'Организация не выбрана'}
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-4 md:grid-cols-[1fr_auto]">
-          <input
-            value={organizationName}
-            onChange={event => setOrganizationName(event.target.value)}
-            placeholder="Название организации"
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-          />
-          <button
-            type="button"
-            onClick={() => void handleRenameOrganization()}
-            disabled={!activeOrganization || !organizationName.trim()}
-            className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Переименовать
-          </button>
-        </div>
-
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <div className="text-sm font-medium text-blue-600">Пользователи</div>
-            <h2 className="mt-1 text-2xl font-semibold text-slate-900">Команда организации</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Список сотрудников текущей организации с ролями, доступами и статусами приглашений.
-            </p>
+            <h2 className="text-xl font-semibold text-slate-900">Добавить пользователя</h2>
           </div>
         </div>
 
