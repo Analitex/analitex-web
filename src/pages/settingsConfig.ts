@@ -17,7 +17,7 @@ export const SETTINGS_TABS = [
 }[];
 
 export function canAccessSettingsTab(tabId: SettingsTabId, role: SettingsRole) {
-  if (tabId === 'profile' || tabId === 'metrics') return true;
+  if (tabId === 'profile') return true;
   return role === 'Owner' || role === 'Admin';
 }
 
