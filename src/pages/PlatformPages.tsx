@@ -487,7 +487,7 @@ export function OrganizationsPage() {
   const { organizations, selectedOrganizationId, selectOrganization, members, invitations, createOrganization, inviteMember } = usePlatform();
   const [organizationName, setOrganizationName] = useState('Acme');
   const [inviteEmail, setInviteEmail] = useState('manager@company.com');
-  const [inviteRole, setInviteRole] = useState<'Manager' | 'Admin' | 'Owner'>('Manager');
+  const [inviteRole, setInviteRole] = useState<'Manager' | 'Admin'>('Manager');
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
@@ -577,7 +577,6 @@ export function OrganizationsPage() {
               >
                 <option value="Manager">Менеджер</option>
                 <option value="Admin">Администратор</option>
-                <option value="Owner">Владелец</option>
               </select>
               <button
                 type="button"

@@ -1964,6 +1964,7 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
     members,
     invitations,
     selectedOrganizationId,
+    connections,
     organizations,
     inviteMember,
     renameOrganization,
@@ -1974,7 +1975,9 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
     apiError,
   } = usePlatform();
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<OrganizationMember['role']>('Manager');
+  const [inviteRole, setInviteRole] = useState<Exclude<OrganizationMember['role'], 'Owner'>>('Manager');
+  const [inviteAccessMode, setInviteAccessMode] = useState<OrganizationMember['accountAccessMode']>('Assigned');
+  const [inviteConnectionIds, setInviteConnectionIds] = useState<string[]>([]);
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
   const [organizationName, setOrganizationName] = useState('');
   const [busyInvitationId, setBusyInvitationId] = useState<string | null>(null);
@@ -1991,6 +1994,10 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
       }),
     [activeMemberEmails, invitations]
   );
+  const organizationConnections = useMemo(
+    () => connections.filter(connection => connection.organizationId === selectedOrganizationId),
+    [connections, selectedOrganizationId]
+  );
 
   useEffect(() => {
     setOrganizationName(activeOrganization?.name ?? '');
@@ -2000,7 +2007,12 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
     const email = inviteEmail.trim();
     if (!email) return;
 
-    inviteMember({ email, role: inviteRole });
+    inviteMember({
+      email,
+      role: inviteRole,
+      accountAccessMode: inviteRole === 'Admin' ? 'Full' : inviteAccessMode,
+      marketplaceConnectionIds: inviteRole === 'Admin' || inviteAccessMode === 'Full' ? [] : inviteConnectionIds,
+    });
     setInviteEmail('');
   };
 
@@ -2043,6 +2055,19 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
     } finally {
       setBusyInvitationId(null);
     }
+  };
+
+  const formatAccountAccess = (
+    accountAccessMode: OrganizationMember['accountAccessMode'],
+    marketplaceConnectionIds: string[]
+  ) => {
+    if (accountAccessMode === 'Full') return 'Полный доступ';
+    if (marketplaceConnectionIds.length === 0) return 'Нет назначенных магазинов';
+
+    const connectionNames = marketplaceConnectionIds.map(connectionId =>
+      organizationConnections.find(connection => connection.id === connectionId)?.displayName ?? 'Магазин'
+    );
+    return connectionNames.join(', ');
   };
 
   return (
@@ -2096,7 +2121,7 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
           </button>
         </div>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-[1fr_220px_auto]">
+        <div className="mt-5 grid gap-4 md:grid-cols-[1fr_220px_240px_auto]">
           <input
             value={inviteEmail}
             onChange={event => setInviteEmail(event.target.value)}
@@ -2105,12 +2130,20 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
           />
           <select
             value={inviteRole}
-            onChange={event => setInviteRole(event.target.value as OrganizationMember['role'])}
+            onChange={event => setInviteRole(event.target.value as Exclude<OrganizationMember['role'], 'Owner'>)}
             className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
           >
-            <option value="Owner">Владелец</option>
             <option value="Admin">Администратор</option>
             <option value="Manager">Менеджер</option>
+          </select>
+          <select
+            value={inviteRole === 'Admin' ? 'Full' : inviteAccessMode}
+            onChange={event => setInviteAccessMode(event.target.value as OrganizationMember['accountAccessMode'])}
+            disabled={inviteRole === 'Admin'}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-50"
+          >
+            <option value="Full">Полный доступ</option>
+            <option value="Assigned">По выбранным магазинам</option>
           </select>
           <button
             type="button"
@@ -2120,6 +2153,34 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
             Отправить
           </button>
         </div>
+
+        {inviteRole === 'Manager' && inviteAccessMode === 'Assigned' && (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-sm font-semibold text-slate-700">Магазины менеджера</div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {organizationConnections.map(connection => (
+                <label key={connection.id} className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={inviteConnectionIds.includes(connection.id)}
+                    onChange={event => {
+                      setInviteConnectionIds(current =>
+                        event.target.checked
+                          ? [...current, connection.id]
+                          : current.filter(id => id !== connection.id)
+                      );
+                    }}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                  />
+                  <span>{connection.displayName}</span>
+                </label>
+              ))}
+            </div>
+            {organizationConnections.length === 0 && (
+              <div className="mt-2 text-sm text-slate-500">Сначала подключите магазин.</div>
+            )}
+          </div>
+        )}
 
         {isLoading && (
           <div className="mt-4 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
@@ -2132,20 +2193,22 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="hidden grid-cols-[1.2fr_0.8fr_1fr_0.9fr_0.8fr] gap-4 border-b border-slate-200 px-6 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 md:grid">
+        <div className="hidden grid-cols-[1.2fr_0.75fr_1fr_1fr_1.05fr_0.8fr] gap-4 border-b border-slate-200 px-6 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 md:grid">
           <div>Пользователь</div>
           <div>Роль</div>
           <div>Контакты</div>
           <div>Доступ</div>
+          <div>Действия</div>
           <div>Статус</div>
         </div>
 
         <div className="divide-y divide-slate-200">
           {members.map(member => {
             const fullName = `${member.firstName} ${member.lastName}`.trim() || member.email;
+            const accessDescription = formatAccountAccess(member.accountAccessMode, member.marketplaceConnectionIds);
 
             return (
-              <div key={member.id} className="grid gap-4 px-5 py-5 md:grid-cols-[1.2fr_0.8fr_1fr_1fr_0.8fr] md:px-6">
+              <div key={member.id} className="grid gap-4 px-5 py-5 md:grid-cols-[1.2fr_0.75fr_1fr_1fr_1.05fr_0.8fr] md:px-6">
                 <div className="space-y-3 md:space-y-1">
                   <div className="font-semibold text-slate-900">{fullName}</div>
                   <div className="text-sm text-slate-500">{member.phone}</div>
@@ -2158,12 +2221,12 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
                     disabled={member.role === 'Owner' || busyMemberId === member.id}
                     className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none disabled:bg-slate-50"
                   >
-                    <option value="Owner">Владелец</option>
                     <option value="Admin">Администратор</option>
                     <option value="Manager">Менеджер</option>
                   </select>
                 </div>
                 <MobileInfoRow label="Контакты" value={member.email} />
+                <MobileInfoRow label="Доступ" value={accessDescription} />
                 <div className="space-y-2">
                   <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 md:hidden">Действия</div>
                   <div className="flex flex-wrap gap-2">
@@ -2200,13 +2263,14 @@ function UsersTab({ isLoading }: { isLoading: boolean }) {
           })}
 
           {pendingInvitations.map(invitation => (
-            <div key={invitation.id} className="grid gap-4 px-5 py-5 md:grid-cols-[1.2fr_0.8fr_1fr_0.9fr_0.8fr] md:px-6">
+            <div key={invitation.id} className="grid gap-4 px-5 py-5 md:grid-cols-[1.2fr_0.75fr_1fr_1fr_1.05fr_0.8fr] md:px-6">
               <div className="space-y-3 md:space-y-1">
                 <div className="font-semibold text-slate-900">{invitation.email}</div>
               </div>
               <MobileInfoRow label="Роль" value={formatRole(invitation.role)} />
               <MobileInfoRow label="Контакты" value="—" />
-              <MobileInfoRow label="Доступ" value="Приглашение отправлено" />
+              <MobileInfoRow label="Доступ" value={formatAccountAccess(invitation.accountAccessMode, invitation.marketplaceConnectionIds)} />
+              <MobileInfoRow label="Действия" value="Приглашение отправлено" />
               <div className="flex items-center justify-between gap-3 md:block">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 md:hidden">Статус</div>
                 <div className="flex flex-wrap items-center gap-2">

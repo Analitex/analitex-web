@@ -37,18 +37,24 @@ export interface Organization {
 
 export interface OrganizationMember extends PlatformUser {
   role: 'Owner' | 'Admin' | 'Manager';
+  accountAccessMode: 'Full' | 'Assigned';
+  marketplaceConnectionIds: string[];
 }
 
 export interface Invitation {
   id: string;
   email: string;
   role: 'Owner' | 'Admin' | 'Manager';
+  accountAccessMode: 'Full' | 'Assigned';
+  marketplaceConnectionIds: string[];
   status: 'Pending' | 'Accepted' | 'Revoked';
 }
 
 export interface InvitationPreview {
   email: string;
   role: OrganizationMember['role'];
+  accountAccessMode: OrganizationMember['accountAccessMode'];
+  marketplaceConnectionIds: string[];
   status: Invitation['status'];
   expiresAt: string;
   organizationName: string;
@@ -138,10 +144,10 @@ interface PlatformContextValue {
   createOrganization: (name: string) => Organization;
   renameOrganization: (organizationId: string, name: string) => Promise<Organization>;
   selectOrganization: (organizationId: string) => void;
-  inviteMember: (input: { email: string; role: OrganizationMember['role'] }) => Invitation;
+  inviteMember: (input: { email: string; role: OrganizationMember['role']; accountAccessMode?: OrganizationMember['accountAccessMode']; marketplaceConnectionIds?: string[] }) => Invitation;
   previewInvitation: (token: string) => Promise<InvitationPreview>;
   acceptInvitation: (token: string) => Promise<void>;
-  updateMemberRole: (input: { memberId: string; role: OrganizationMember['role'] }) => Promise<void>;
+  updateMemberRole: (input: { memberId: string; role: OrganizationMember['role']; accountAccessMode?: OrganizationMember['accountAccessMode']; marketplaceConnectionIds?: string[] }) => Promise<void>;
   removeMember: (memberId: string) => Promise<void>;
   transferOrganizationOwnership: (newOwnerUserId: string) => Promise<void>;
   revokeInvitation: (invitationId: string) => Promise<void>;
@@ -249,18 +255,24 @@ type ApiMember = {
   phone?: string | null;
   status?: string | number;
   role?: string | number;
+  accountAccessMode?: string | number;
+  marketplaceConnectionIds?: string[] | null;
 };
 
 type ApiInvitation = {
   id: string;
   email?: string | null;
   role?: string | number;
+  accountAccessMode?: string | number;
+  marketplaceConnectionIds?: string[] | null;
   status?: string | number;
 };
 
 type ApiInvitationPreview = {
   email?: string | null;
   role?: string | number;
+  accountAccessMode?: string | number;
+  marketplaceConnectionIds?: string[] | null;
   status?: string | number;
   expiresAt?: string;
   organizationName?: string | null;
@@ -372,6 +384,7 @@ function mapUserStatus(value: unknown): PlatformUser['status'] {
 
 function mapRole(value: unknown): OrganizationMember['role'] {
   if (typeof value === 'string') {
+    if (value === 'OrgOwner') return 'Owner';
     if (value === 'Owner' || value === 'Admin' || value === 'Manager') return value;
   }
 
@@ -384,6 +397,31 @@ function mapRole(value: unknown): OrganizationMember['role'] {
     default:
       return 'Manager';
   }
+}
+
+function mapAccountAccessMode(value: unknown): OrganizationMember['accountAccessMode'] {
+  if (value === 'Assigned' || value === 1) return 'Assigned';
+  return 'Full';
+}
+
+function toApiRole(role: OrganizationMember['role']) {
+  return role === 'Owner' ? 'OrgOwner' : role;
+}
+
+function resolveAccountAccessInput(
+  role: OrganizationMember['role'],
+  accountAccessMode?: OrganizationMember['accountAccessMode'],
+  marketplaceConnectionIds?: string[]
+) {
+  if (role !== 'Manager') {
+    return { accountAccessMode: 'Full' as const, marketplaceConnectionIds: [] };
+  }
+
+  const resolvedMode = accountAccessMode ?? 'Assigned';
+  return {
+    accountAccessMode: resolvedMode,
+    marketplaceConnectionIds: resolvedMode === 'Full' ? [] : marketplaceConnectionIds ?? [],
+  };
 }
 
 function mapMarketplace(value: unknown): 'Wildberries' | 'Ozon' {
@@ -454,6 +492,8 @@ function mapMember(member: ApiMember): OrganizationMember {
     emailVerifiedAt: null,
     isEmailVerified: false,
     role: mapRole(member.role),
+    accountAccessMode: mapAccountAccessMode(member.accountAccessMode),
+    marketplaceConnectionIds: member.marketplaceConnectionIds ?? [],
   };
 }
 
@@ -462,6 +502,8 @@ function mapInvitation(invitation: ApiInvitation): Invitation {
     id: String(invitation.id),
     email: invitation.email ?? '',
     role: mapRole(invitation.role),
+    accountAccessMode: mapAccountAccessMode(invitation.accountAccessMode),
+    marketplaceConnectionIds: invitation.marketplaceConnectionIds ?? [],
     status: mapInvitationStatus(invitation.status),
   };
 }
@@ -479,6 +521,8 @@ function mapInvitationPreview(preview: ApiInvitationPreview): InvitationPreview 
   return {
     email: preview.email ?? '',
     role: mapRole(preview.role),
+    accountAccessMode: mapAccountAccessMode(preview.accountAccessMode),
+    marketplaceConnectionIds: preview.marketplaceConnectionIds ?? [],
     status: mapInvitationStatus(preview.status),
     expiresAt: preview.expiresAt ?? '',
     organizationName: preview.organizationName ?? '',
@@ -950,17 +994,25 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
   };
 
   const inviteMember: PlatformContextValue['inviteMember'] = input => {
+    const access = resolveAccountAccessInput(input.role, input.accountAccessMode, input.marketplaceConnectionIds);
     const optimistic: Invitation = {
       id: createId('inv'),
       email: input.email,
       role: input.role,
+      accountAccessMode: access.accountAccessMode,
+      marketplaceConnectionIds: access.marketplaceConnectionIds,
       status: 'Pending',
     };
     setInvitations(current => [optimistic, ...current]);
     void apiRequest<ApiInvitation>(`/organizations/${selectedOrganizationId}/invitations`, {
       method: 'POST',
       token: session?.accessToken,
-      body: JSON.stringify(input),
+      body: JSON.stringify({
+        email: input.email,
+        role: toApiRole(input.role),
+        accountAccessMode: access.accountAccessMode,
+        marketplaceConnectionIds: access.marketplaceConnectionIds,
+      }),
     })
       .then(response => {
         const next = mapInvitation(response);
@@ -1007,13 +1059,27 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
   };
 
   const updateMemberRole: PlatformContextValue['updateMemberRole'] = async input => {
+    const access = resolveAccountAccessInput(input.role, input.accountAccessMode, input.marketplaceConnectionIds);
     await apiRequest<void>(`/organizations/${selectedOrganizationId}/members/${input.memberId}/role`, {
       method: 'PATCH',
       token: session?.accessToken,
-      body: JSON.stringify({ role: input.role }),
+      body: JSON.stringify({
+        role: toApiRole(input.role),
+        accountAccessMode: access.accountAccessMode,
+        marketplaceConnectionIds: access.marketplaceConnectionIds,
+      }),
     });
     setMembers(current =>
-      current.map(member => (member.id === input.memberId ? { ...member, role: input.role } : member))
+      current.map(member =>
+        member.id === input.memberId
+          ? {
+              ...member,
+              role: input.role,
+              accountAccessMode: access.accountAccessMode,
+              marketplaceConnectionIds: access.marketplaceConnectionIds,
+            }
+          : member
+      )
     );
     recordAction({
       kind: 'organization',
@@ -1049,9 +1115,9 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     setMembers(current =>
       current.map(member =>
         member.id === newOwnerUserId
-          ? { ...member, role: 'Owner' }
+          ? { ...member, role: 'Owner', accountAccessMode: 'Full', marketplaceConnectionIds: [] }
           : member.role === 'Owner'
-            ? { ...member, role: 'Admin' }
+            ? { ...member, role: 'Admin', accountAccessMode: 'Full', marketplaceConnectionIds: [] }
             : member
       )
     );
