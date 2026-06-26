@@ -75,6 +75,7 @@ type CostRow = {
 
 type CostColumnId = 'product' | 'article' | 'cost' | 'fulfillment' | 'vat';
 type CostSortDir = 'asc' | 'desc' | null;
+type CostImportMode = 'default' | 'values-only';
 
 type CostColumn = {
   id: CostColumnId;
@@ -211,6 +212,7 @@ export function ArticleCostsPage() {
   const [topBarTarget, setTopBarTarget] = useState<HTMLElement | null>(null);
   const columnMenuRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const importModeRef = useRef<CostImportMode>('default');
 
   const selectedConnection = useMemo(() => {
     const explicitConnection = shops.find(shop => shop.id === selectedConnectionId);
@@ -552,8 +554,9 @@ export function ArticleCostsPage() {
     try {
       const form = new FormData();
       form.append('file', file);
+      const importQuery = importModeRef.current === 'values-only' ? '?enqueueReadModelRebuild=false' : '';
       const importResponse = await apiRequest<ArticleCostsImportResponse>(
-        `/config/marketplace-connections/${selectedConnection.id}/article-costs/import`,
+        `/config/marketplace-connections/${selectedConnection.id}/article-costs/import${importQuery}`,
         {
           token: session.accessToken,
           method: 'POST',
@@ -578,6 +581,7 @@ export function ArticleCostsPage() {
       setError(importError instanceof Error ? importError.message : 'Не удалось импортировать файл себестоимости.');
     } finally {
       setImporting(false);
+      importModeRef.current = 'default';
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -629,12 +633,28 @@ export function ArticleCostsPage() {
         />
         <button
           type="button"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => {
+            importModeRef.current = 'default';
+            fileInputRef.current?.click();
+          }}
           disabled={!selectedConnection || importing || exporting}
           className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
           Импорт
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            importModeRef.current = 'values-only';
+            fileInputRef.current?.click();
+          }}
+          disabled={!selectedConnection || importing || exporting}
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+          title="Только значения, без автопересчета"
+        >
+          {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+          Импорт D1
         </button>
         <button
           type="button"
