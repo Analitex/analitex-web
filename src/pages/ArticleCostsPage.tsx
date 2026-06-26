@@ -546,6 +546,21 @@ export function ArticleCostsPage() {
     }
   };
 
+  const openImportFilePicker = (mode: CostImportMode) => {
+    if (mode === 'values-only') {
+      const confirmed = window.confirm(
+        'Импорт без пересчёта обновит значения себестоимости без автоматического пересчёта read-model. Используйте его только по инструкции. Продолжить?'
+      );
+      if (!confirmed) {
+        importModeRef.current = 'default';
+        return;
+      }
+    }
+
+    importModeRef.current = mode;
+    fileInputRef.current?.click();
+  };
+
   const importCosts = async (file: File | null | undefined) => {
     if (!file || !session?.accessToken || !selectedConnection) return;
 
@@ -633,10 +648,7 @@ export function ArticleCostsPage() {
         />
         <button
           type="button"
-          onClick={() => {
-            importModeRef.current = 'default';
-            fileInputRef.current?.click();
-          }}
+          onClick={() => openImportFilePicker('default')}
           disabled={!selectedConnection || importing || exporting}
           className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
@@ -645,16 +657,13 @@ export function ArticleCostsPage() {
         </button>
         <button
           type="button"
-          onClick={() => {
-            importModeRef.current = 'values-only';
-            fileInputRef.current?.click();
-          }}
+          onClick={() => openImportFilePicker('values-only')}
           disabled={!selectedConnection || importing || exporting}
           className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-          title="Только значения, без автопересчета"
+          title="Только значения, без автоматического пересчёта"
         >
           {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-          Импорт D1
+          Импорт D1 без пересчёта
         </button>
         <button
           type="button"
